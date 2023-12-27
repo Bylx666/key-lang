@@ -1,1 +1,1 @@
-print@$_("hello world!");
+print("hello key script!");

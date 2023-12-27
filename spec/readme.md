@@ -4,7 +4,8 @@
 let loop 
 and or
 key(same as type)
-Uninit
+uninit
+Any
 
 不搞新概念，并尽可能减少歧义，学习难度低
 作为脚本语言，更规范的类型系统

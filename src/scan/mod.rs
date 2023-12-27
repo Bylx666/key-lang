@@ -6,9 +6,9 @@ use crate::ast::{
   Statmnt,
   Imme, KsAssign
 };
-use crate::Ident;
+use crate::ast::Ident;
 
-// 将字符整理为ast
+/// 将字符整理为ast
 pub fn scan(src: Vec<u8>)-> Vec<Statmnt> {
   let mut scanner = Scanner {src, i:0};
   scanner.scan()
@@ -175,6 +175,6 @@ impl Scanner {
       i += 1;
       if i > len {break;}
     }
-    format!("(第{}行第{}列)",ln,col)
+    format!("解析脚本错误(第{}行第{}列)",ln,col)
   }
 }
