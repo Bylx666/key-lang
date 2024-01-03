@@ -1,12 +1,16 @@
 //! 运行时环境
+//! 将解析的ast放在实际作用域中运行
 
 use crate::ast::{
   Statements,
-  Statmnt,
+  Stmt,
   Expr,
   Ident,
   KsType, 
-  KsAssign, Imme, KsLocalFunc, Executable
+  Litr,
+  KsLocalFunc,
+  Executable,
+  KsCall
 };
 use std::collections::HashMap;
 
@@ -16,83 +20,154 @@ struct Var {
   p: usize, // pointer
   t: Ident  // type
 }
+
+/// 一个运行时作用域
+/// run函数需要mut因为需要跟踪行数
 #[derive(Debug)]
 pub struct Scope {
   parent: Option<Box<Scope>>,
   types: HashMap<Ident, KsType>,
-  vars: HashMap<Ident, Imme>
+  vars: HashMap<Ident, Litr>,
+  line: usize
 }
 impl Scope {
   /// 在此作用域运行ast代码
-  pub fn run(&self, codes:&Statements) {
-    for sm in codes {
+  pub fn run(&mut self, codes:&Statements) {
+    for (l, sm) in &codes.exec {
+      self.line = *l;
       self.evil(sm);
     }
   }
 
   /// 在作用域解析一个语句
-  pub fn evil(&self, code:&Statmnt) {
-    use Statmnt::*;
+  pub fn evil(&mut self, code:&Stmt) {
+    use Stmt::*;
     match code {
       Expression(e)=> {
-        match &**e {
-          Expr::Call { args, targ }=> {
-            self.call(args, targ);
-          },
-          _=> {}
-        };
+        if let Expr::Call(call)= &**e {
+          self.call(call);
+        }
+      }
+      Let(a)=> {
+        let v = self.calc(&a.val);
+        self.set_var(a.id.clone(), v);
       }
       _=> {}
     }
   }
 
   /// 调用一个函数
-  pub fn call(&self, args:&Vec<Box<Expr>>, targ: &Vec<u8>) {
-    match self.var(targ) {
-      Imme::Func(exec)=> {
-        use Executable::*;
+  pub fn call(&self, call: &Box<KsCall>) {
+    let targ = self.calc(&call.targ);
+    let expr = &call.args;
+    if let Litr::Func(exec) = targ {
+      let args:Vec<Litr> = match expr {
+        Expr::Args(a)=> 
+          a.iter().map(|e| self.calc(e)).collect(),
+        _=> vec![self.calc(expr)]
+      };
 
-        let args_calced = args.iter().map(|e| self.calc(e)).collect();
-        match exec {
-          RTVoid(f)=> f(&args_calced),
-          _=> {}
-        }
-      },
-      _=> panic!("'{}' 不是一个函数 (运行时)", String::from_utf8_lossy(targ))
+      use Executable::*;
+      match &*exec {
+        RTVoid(f)=> f(&args),
+        _=> {}
+      }
     }
+    else {self.err(&format!("'{:?}' 不是一个函数", targ))}
   }
 
   /// 在作用域找一个变量
-  pub fn var(&self, s:&Ident)-> &Imme {
+  pub fn var(&self, s:&Ident)-> Litr {
     if let Some(v) = self.vars.get(s) {
-      return v;
+      return v.clone();
     }
     if let Some(v) = &self.parent {
-      return &*v.var(s);
+      return v.var(s).clone();
     }else {
-      panic!("无法找到变量 '{}' (运行时)", String::from_utf8_lossy(s));
+      self.err(&format!("无法找到变量 '{}'", String::from_utf8_lossy(s)));
     }
   }
 
+  pub fn set_var(&mut self, s:Ident, v:Litr) {
+    let old = self.vars.insert(s, v);
+    drop(old);
+  }
+
   /// 在此作用域计算表达式的值
-  pub fn calc(&self, e:&Expr)-> Imme {
+  /// 会将变量计算成实际值
+  pub fn calc(&self, e:&Expr)-> Litr {
     use Expr::*;
     match e {
-      Immediate(imme)=> {
-        return imme.clone();
+      Literal(litr)=> {
+        let ret = if let Litr::Variant(id) = litr {
+          self.var(id)
+        }else {
+          litr.clone()
+        };
+        return ret;
       }
-      _=> panic!("算不出来 (运行时)")
+      Binary(bin)=> {
+        let left = if let Literal(Litr::Variant(id)) = &bin.left {
+          self.var(id)
+        }else {
+          self.calc(&bin.left)
+        };
+        let right = if let Literal(Litr::Variant(id)) = &bin.right {
+          self.var(id)  
+        }else {
+          self.calc(&bin.right)
+        };
+
+        use Litr::{Uint, Int, Float, Str, Byte};
+        match bin.sym {
+
+          0x2B => {
+            match (left, right) {
+              (Int(l),Int(r))=> Int(l+r),
+              (Uint(l),Uint(r))=> Uint(l+r),
+              (Float(l),Float(r))=> Float(l+r),
+              _=> self.err("相加类型不同")
+            }
+          }
+          0x2D => {
+            match (left, right) {
+              (Int(l),Int(r))=> Int(l-r),
+              _=> self.err("相减类型不同")
+            }
+          }
+          0x2A => {
+            match (left, right) {
+              (Int(l),Int(r))=> Int(l*r),
+              _=> self.err("相乘类型不同")
+            }
+          }
+          0x2F => {
+            match (left, right) {
+              (Int(l),Int(r))=> Int(l/r),
+              _=> self.err("相除类型不同")
+            }
+          }
+          _=> self.err("非法运算符")
+        }
+      }
+      _=> self.err("算不出来 ")
     }
   }
+
+  fn err(&self, s:&str)-> ! {
+    panic!("{} 运行时({})", s, self.line)
+  }
 }
+
+
 
 /// 自定义此函数为脚本添加新函数和变量
 pub fn top_scope()-> Scope {
   let types = HashMap::<Ident, KsType>::new();
-  let mut vars = HashMap::<Ident, Imme>::new();
+  let mut vars = HashMap::<Ident, Litr>::new();
   vars.insert(b"print".to_vec(), 
-    Imme::Func(Executable::RTVoid(io::print))
+    Litr::Func(Box::new(Executable::RTVoid(io::print)))
   );
-  Scope {parent: None, types, vars}
+  Scope {parent: None, types, vars, line:0}
 }
 

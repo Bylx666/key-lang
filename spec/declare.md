@@ -1,15 +1,43 @@
 
 ## 基础类型
 
-以下写法相当于类型声明写在数值后面。
+表示类型大小写不限。
 ```
-let i = 0i; // Int
-let u = 0u?; // Uint
-let f = 0.0f?; // Float
-let f = 0f; // 同上
-let b = 1b; // Bool
-let str = ""; // Str
-let vec:[Int] = [2, 5, 6, 8]; // Int Vec 类型不能缺
+let i = 0i;                 // Int   (可省略i，代表指针长度有符号整数)
+let u = 0u;                 // Uint  (不可省略u，指针长度无符号整数)
+let f = 0.0l;               // Float (可省略l，通过"."标识浮点)
+let f = 0l;                 // Float (不加"."时不可省略l)
+let u8 = 0h;                // Byte  (不可省略h，uint8)
+let b = 0t;                 // Bool  (1t:true,0t:false 可以加减)
+let str = "test";           // Str   (字符串字面量)
+let vec = [2, 5, 6, 8];     // Array (Int类型,禁止多类型)
+let buf = [29x, 28, 40, 26];// Array (u8类型)
+let vec = 2, 5, 6, 8;       // Array (Int类型)
+
+```
+
+## 数字字面量扩展语法
+
+```
+let a = 0b1001_x; // 二进制 9 Uint8
+let a = 0x2b_u;   // 十六进制 43 Uint
+let a = 0xB3_f;   // 十六进制 179.0 Float
+```
+扩展语法中不支持小数点。必须使用下划线接类型，否则默认Int。
+
+## 字符串扩展语法
+
+```
+let a = "\n\r\"\0";
+```
+
+## 比较
+
+赋值只允许出现在语句中。因此表达式中=表示全等而非赋值。
+```
+a = 5; // 赋值
+if a = 5 {} // a全等于5
+if a >= 5 {} // a大于等于5
 ```
 
 ## 使用块语句初始化值
@@ -25,18 +53,16 @@ let a = {
 ## 定义类型
 
 let a = Type::new();
-let a:Type = Type::new();
+let a = Type::new();
 
 ## 未初始化
 
-let a:Type;
-let a:Type = uninit;
+let a;
+let a = uninit;
 
 上述两行代码等价。
 
-我用了uninit这个词，理解为null就好。uninit可以适配任何类型。
-
-在使用uninit时，程序会提前留出其类型长度的空间，因此使用其指针是有效的。
+我用了uninit关键词，理解为null就好。uninit不占空间，使用其指针会返回0。
 
 
 ## 泛型
@@ -52,3 +78,16 @@ Any不是关键词，但你不能在let表达式中使用Any。同时定义Any�
 ## 常量
 每次使用都会复制一份出去
 const a = Type::new();
+
+## 变量提升
+
+为了前后引用顺畅，函数、类型会在编译期进行变量提升。
+
+## match
+```
+match a {
+  a {}
+  b {}
+  ? {}
+}
+```

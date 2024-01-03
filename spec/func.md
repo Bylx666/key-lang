@@ -26,3 +26,6 @@ extern(/a/a.dll) ok() {
 
 }
 
+
+自定义参数：把Expr的raw值转换一下扔进去
+
