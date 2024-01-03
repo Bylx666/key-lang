@@ -59,14 +59,8 @@ impl Scope {
   /// 调用一个函数
   pub fn call(&self, call: &Box<KsCall>) {
     let targ = self.calc(&call.targ);
-    let expr = &call.args;
+    let args = self.calc(&call.args);
     if let Litr::Func(exec) = targ {
-      let args:Vec<Litr> = match expr {
-        Expr::Args(a)=> 
-          a.iter().map(|e| self.calc(e)).collect(),
-        _=> vec![self.calc(expr)]
-      };
-
       use Executable::*;
       match &*exec {
         RTVoid(f)=> f(&args),
@@ -118,10 +112,10 @@ impl Scope {
           self.calc(&bin.right)
         };
 
-        use Litr::{Uint, Int, Float, Str, Byte};
-        match bin.sym {
+        use Litr::*;
+        match &*bin.sym {
 
-          0x2B => {
+          b"+" => {
             match (left, right) {
               (Int(l),Int(r))=> Int(l+r),
               (Uint(l),Uint(r))=> Uint(l+r),
@@ -129,25 +123,38 @@ impl Scope {
               _=> self.err("相加类型不同")
             }
           }
-          0x2D => {
+          b"-" => {
             match (left, right) {
               (Int(l),Int(r))=> Int(l-r),
               _=> self.err("相减类型不同")
             }
           }
-          0x2A => {
+          b"*" => {
             match (left, right) {
               (Int(l),Int(r))=> Int(l*r),
               _=> self.err("相乘类型不同")
             }
           }
-          0x2F => {
+          b"/" => {
             match (left, right) {
               (Int(l),Int(r))=> Int(l/r),
               _=> self.err("相除类型不同")
             }
           }
-          _=> self.err("非法运算符")
+
+          // 解析,运算符
+          b"," => {
+            match left {
+              Array(mut o)=> {
+                o.push(right);
+                Array(o)
+              }
+              _=> {
+                Array(Box::new(vec![left, right]))
+              }
+            }
+          }
+          _=> self.err(&format!("非法运算符'{}'", String::from_utf8_lossy(&bin.sym)))
         }
       }
       _=> self.err("算不出来 ")

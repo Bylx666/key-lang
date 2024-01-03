@@ -8,7 +8,7 @@ key A {
 ## 定义方法
 
 key B {
-  a: Type,
+  a  Type(,)
   b: Type
 }
 impl B {
@@ -16,10 +16,11 @@ impl B {
     B {}
   }
   method(self, b:Uint) {
-
+ 
   }
 }
 
+逗号都能省略也太唐了。
 
 
 ## 别名

@@ -2,7 +2,7 @@ use crate::ast::{
   Expr,
   Stmt, Litr
 };
-pub fn print(p: &Vec<Litr>) {
+pub fn print(p: &Litr) {
   println!("{:?}", p);
   // if p.len() > 0 {
   //   match &p[0] {

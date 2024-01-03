@@ -1,3 +1,7 @@
+//! 抽象语法树
+//! 
+//! 是沟通scanner和runtime的桥梁，进行语法结构的定义，本身不做事
+
 use std::collections::HashMap;
 
 pub type Ident = Vec<u8>;
@@ -41,18 +45,9 @@ pub struct Statements {
   pub line: usize,
   /// 类型声明
   pub types: HashMap<Ident, KsType>,
-  /// 类型别名
-  pub type_alias: HashMap<Ident, Ident>,
   /// (语句, 用来报错的行数)
   pub exec: Vec<(usize, Stmt)>
 }
-
-
-// #[derive(Debug, Clone)]
-// pub struct KsAssign {
-//   pub val: Exprp, 
-//   pub typ: Ident
-// }
 
 #[derive(Debug, Clone)]
 pub struct KsLocalFunc {
@@ -65,9 +60,9 @@ pub struct KsLocalFunc {
 pub enum Executable {
   Local(KsLocalFunc),             // 脚本内的定义
   Extern(Ident),                 // 脚本使用extern获取的函数
-  RTVoid(fn(&Vec<Litr>)),        // runtime提供的函数
-  RTStr(fn(&Vec<Litr>)-> String),
-  RTUint(fn(&Vec<Litr>)-> usize)
+  RTVoid(fn(&Litr)),             // runtime提供的函数 (多参数会传入为Array)
+  RTStr(fn(&Litr)-> String),
+  RTUint(fn(&Litr)-> usize)
 }
 
 #[derive(Debug, Clone)]
@@ -100,8 +95,6 @@ pub enum Expr {
   If       (Box<Statements>),                                 // 条件语句
   Else     (Box<Statements>),
   Loop     (Box<Statements>),                                 // 循环
-
-  Args     (Box<Vec<Expr>>)                             // 列表表达式，用于array和args
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +107,7 @@ pub struct Prop {
 pub struct BinCalc {
   pub left: Expr,
   pub right: Expr,
-  pub sym: u8
+  pub sym: Vec<u8>
 }
 
 #[derive(Debug, Clone)]
