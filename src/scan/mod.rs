@@ -89,7 +89,7 @@ impl Scanner {
     let left = if self.cur() == b'(' {
       self.expr_group()
     }else {
-      Expr::Literal(self.literal())
+      self.literal()
     };
     self.expr_with_left(left)
   }
@@ -120,7 +120,7 @@ impl Scanner {
         expr_stack.push(Expr::Binary(Box::new(BinCalc { 
           left: second_last_expr, 
           right: last_expr, 
-          sym: last_op
+          op: last_op
         })));
       }
 
@@ -137,7 +137,7 @@ impl Scanner {
         let group = self.expr_group();
         expr_stack.push(group);
       }else {
-        let litr = Expr::Literal(self.literal());
+        let litr = self.literal();
         let right = self.maybe_index_call(litr);
         expr_stack.push(right);
       }
@@ -161,28 +161,6 @@ impl Scanner {
     }
     self.i += 1;
     expr
-  }
-
-  /// 检索一段操作符
-  fn operator(&mut self)-> Vec<u8> {
-    let mut i = self.i;
-    let len = self.src.len();
-    while i < len {
-      let cur = unsafe { *self.src.get_unchecked(i) };
-      match cur {
-        b'*'..=b'/'|b':'|b'<'|b'>'|b'='|b'^'|b'|'=> {
-          i += 1;
-        }
-        _=> {
-          break;
-        }
-      }
-    }
-
-    if self.i == i {return Vec::new();}
-    let op = self.src[self.i..i].to_vec();
-    self.i = i;
-    return op;
   }
 
   /// 看Expr后面有没有call或index
@@ -209,7 +187,7 @@ impl Scanner {
     if first>=b'0' && first<=b'9' {return None;}
 
     while i < len {
-      let s = unsafe{*self.src.get_unchecked(i)};
+      let s = self.src[i];
       match s {
         b'_' | b'$' | b'~' | b'@' |
         b'A'..=b'Z' | b'a'..=b'z' |
@@ -230,7 +208,9 @@ impl Scanner {
 
 
   /// 解析一段字面量
-  fn literal(&mut self)-> Litr {
+  /// 
+  /// 由于:和.运算符优先级过高，此函数担任这两个表达式的处理
+  fn literal(&mut self)-> Expr {
     let first = self.cur();
     let len = self.src.len();
 
@@ -245,35 +225,82 @@ impl Scanner {
         }
         let s = self.src[(self.i+1)..i].to_vec();
         self.i = i + 1;
-        Litr::Str(Box::new(s))
+        return Expr::Literal(Litr::Str(Box::new(s)));
       }
       // 解析数字字面量
       b'0'..=b'9' => {
         while i < len {
           i += 1;
-          if !(0x30u8..=0x39)
-            .contains(unsafe{&self.src.get_unchecked(i)}) {break;}
+          match self.src[i] {
+            0x30..=0x39 | b'.' | b'e' | b'E' => {}
+            _=> break
+          }
         }
-        let str = unsafe{
-          String::from_utf8_unchecked(self.src[self.i..i].to_vec())
-        };
-        let res = <isize as std::str::FromStr>::from_str(&str);
-        if let Ok(n) = res {
-          self.i = i;
-          return Litr::Int(n);
-        }else {
-          self.err(&format!("数字超出范围:{}。", str))
+
+        let str = String::from_utf8(self.src[self.i..i].to_vec()).unwrap();
+        use std::str::FromStr;
+        use Litr::*;
+        macro_rules! parsed {
+          ($t:ty, $i:ident) => {{
+            let n = <$t>::from_str(&str);
+            match n {
+              Err(e)=> {
+                panic!("无法解析数字:{} 解析错误({})\n  {}",str,self.sttms.line,e)
+              }
+              Ok(n)=> {
+                self.i += 1;
+                return Expr::Literal($i(n));
+              }
+            }
+          }};
         }
+  
+        self.i = i;
+        if i < len {
+          let cur = self.src[i];
+          match cur {
+            b'l' => parsed!(f64, Float),
+            b'u' => parsed!(usize, Uint),
+            b'i'=> parsed!(isize, Int),
+            b'h'=> parsed!(u8, Byte),
+            _=> {}
+          }
+        }
+        self.i -= 1;
+        parsed!(isize, Int)
       },
       _=> {
+        println!("{}",String::from_utf8_lossy(&[self.cur()]));
         let id_res = self.ident();
         if let Some(id) = id_res {
-          Litr::Variant(Box::new(id.to_vec()))
+          Expr::Literal(Litr::Variant(Box::new(id.to_vec())))
         }else {
           self.err("无法解析字面量。");
         }
       }
     }
+  }
+
+
+  /// 检索一段 二元操作符
+  fn operator(&mut self)-> Vec<u8> {
+    let mut i = self.i;
+    let len = self.src.len();
+    while i < len {
+      let cur = self.src[i];
+      match cur {
+        b'%'|b'&'|b'*'..=b'-'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
+          i += 1;
+        }
+        _=> {
+          break;
+        }
+      }
+    }
+
+    let op = self.src[self.i..i].to_vec();
+    self.i = i;
+    return op;
   }
 
 
@@ -334,7 +361,7 @@ impl Scanner {
     unsafe { *self.src.get_unchecked(self.i) }
   }
 
-  /// 报错
+  /// 报错框架
   fn err(&self, s:&str)-> ! {
     panic!("{} 解析错误({})",s,self.sttms.line)
   }

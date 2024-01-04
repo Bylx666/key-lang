@@ -7,9 +7,11 @@ key A {
 
 ## 定义方法
 
+(为什么冒号和逗号都能省略啊喂)
+
 key B {
-  a  Type(,)
-  b: Type
+  a Type
+  b Type
 }
 impl B {
   new(): B {
@@ -19,9 +21,6 @@ impl B {
  
   }
 }
-
-逗号都能省略也太唐了。
-
 
 ## 别名
 

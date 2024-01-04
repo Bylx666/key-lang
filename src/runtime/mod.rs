@@ -112,35 +112,58 @@ impl Scope {
           self.calc(&bin.right)
         };
 
-        use Litr::*;
-        match &*bin.sym {
+        /// 二进制运算中普通数字的戏份
+        macro_rules! impl_num {
+          ($pan:literal $op:tt) => {{
+            match (left, right) {
+              (Int(l),Int(r))=> Int(l $op r),
+              (Uint(l),Uint(r))=> Uint(l $op r),
+              (Float(l),Float(r))=> Float(l $op r),
+              (Byte(l), Byte(r))=> Byte(l $op r),
+              _=> self.err($pan)
+            }
+          }};
+        }
 
-          b"+" => {
+        /// 二进制运算中无符号数的戏份
+        macro_rules! impl_unsigned {
+          ($pan:literal $op:tt) => {{
             match (left, right) {
-              (Int(l),Int(r))=> Int(l+r),
-              (Uint(l),Uint(r))=> Uint(l+r),
-              (Float(l),Float(r))=> Float(l+r),
-              _=> self.err("相加类型不同")
+              (Uint(l), Byte(r))=> Uint(l $op r as usize),
+              (Uint(l), Uint(r))=> Uint(l $op r),
+              (Uint(l), Int(r))=> Uint(l $op r as usize),
+              (Byte(l), Byte(r))=> Byte(l $op r),
+              (Byte(l), Uint(r))=> Byte(l $op r as u8),
+              (Byte(l), Int(r))=> Byte(l $op r as u8),
+              _=> self.err($pan)
             }
-          }
-          b"-" => {
-            match (left, right) {
-              (Int(l),Int(r))=> Int(l-r),
-              _=> self.err("相减类型不同")
-            }
-          }
-          b"*" => {
-            match (left, right) {
-              (Int(l),Int(r))=> Int(l*r),
-              _=> self.err("相乘类型不同")
-            }
-          }
+          }};
+        }
+
+        use Litr::*;
+        match &*bin.op {
+          // 数字
+          b"+" => impl_num!("相加类型不同" +),
+          b"-" => impl_num!("相减类型不同" -),
+          b"*" => impl_num!("相乘类型不同" *),
+          b"%" => impl_num!("求余类型不同" %),
           b"/" => {
-            match (left, right) {
-              (Int(l),Int(r))=> Int(l/r),
-              _=> self.err("相除类型不同")
-            }
+            if match right {
+              Int(r) => r == 0,
+              Uint(r) => r == 0,
+              Float(r) => r == 0.0,
+              _=> false
+            } {self.err("除数必须非0")}
+            impl_num!("相除类型不同" /)
           }
+
+          // usize
+          b"<<" => impl_unsigned!("左移需要左值无符号" <<),
+          b">>" => impl_unsigned!("右移需要左值无符号" >>),
+          b"&" => impl_unsigned!("&需要左值无符号" &),
+          b"^" => impl_unsigned!("^需要左值无符号" ^),
+          b"|" => impl_unsigned!("|需要左值无符号" |),
+          
 
           // 解析,运算符
           b"," => {
@@ -154,7 +177,7 @@ impl Scope {
               }
             }
           }
-          _=> self.err(&format!("非法运算符'{}'", String::from_utf8_lossy(&bin.sym)))
+          _=> self.err(&format!("非法运算符'{}'", String::from_utf8_lossy(&bin.op)))
         }
       }
       _=> self.err("算不出来 ")

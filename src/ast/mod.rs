@@ -81,19 +81,14 @@ pub enum Expr {
   Property (Box<Prop>),                           // .运算符
   Call     (Box<KsCall>),                // 调用函数
 
-  // 真假系列
-  And      (Box<BinCalc>),               // and
-  Or       (Box<BinCalc>),               // or
-
-  Neg      (Box<Expr>),                                 // let i = -x;
-
+  // 一元运算 ! -
+  Unary    (Box<UnaryCalc>),
   // 二元运算
   Binary   (Box<BinCalc>),
 
   // 块系列
   Block    (Box<Statements>),                                 // 一个普通块
   If       (Box<Statements>),                                 // 条件语句
-  Else     (Box<Statements>),
   Loop     (Box<Statements>),                                 // 循环
 }
 
@@ -107,7 +102,13 @@ pub struct Prop {
 pub struct BinCalc {
   pub left: Expr,
   pub right: Expr,
-  pub sym: Vec<u8>
+  pub op: Vec<u8>
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryCalc {
+  pub right: Expr,
+  pub op: u8
 }
 
 #[derive(Debug, Clone)]

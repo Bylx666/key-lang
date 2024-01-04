@@ -6,7 +6,7 @@ let a(): Int {
   b = 2;
   return b;
 }
-let a = Func() {
+let a = || {
   b = 4;
 }
 
