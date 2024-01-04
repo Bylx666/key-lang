@@ -16,10 +16,6 @@ use std::collections::HashMap;
 
 mod io;
 
-struct Var {
-  p: usize, // pointer
-  t: Ident  // type
-}
 
 /// 一个运行时作用域
 /// run函数需要mut因为需要跟踪行数
@@ -44,20 +40,18 @@ impl Scope {
     use Stmt::*;
     match code {
       Expression(e)=> {
-        if let Expr::Call(call)= &**e {
-          self.call(call);
-        }
+        self.calc(e);
       }
       Let(a)=> {
         let v = self.calc(&a.val);
-        self.set_var(a.id.clone(), v);
+        self.let_var(a.id.clone(), v);
       }
       _=> {}
     }
   }
 
   /// 调用一个函数
-  pub fn call(&self, call: &Box<KsCall>) {
+  pub fn call(&mut self, call: &Box<KsCall>) {
     let targ = self.calc(&call.targ);
     let args = self.calc(&call.args);
     if let Litr::Func(exec) = targ {
@@ -71,48 +65,54 @@ impl Scope {
   }
 
   /// 在作用域找一个变量
-  pub fn var(&self, s:&Ident)-> Litr {
+  pub fn var(&self, s:&Ident)-> &Litr {
     if let Some(v) = self.vars.get(s) {
-      return v.clone();
+      return v;
     }
     if let Some(v) = &self.parent {
-      return v.var(s).clone();
-    }else {
-      self.err(&format!("无法找到变量 '{}'", String::from_utf8_lossy(s)));
+      return v.var(s);
     }
+    self.err(&format!("无法找到变量 '{}'", String::from_utf8_lossy(s)));
   }
 
-  pub fn set_var(&mut self, s:Ident, v:Litr) {
-    let old = self.vars.insert(s, v);
-    drop(old);
+  pub fn modify_var(&mut self, s:&Ident, f:impl FnOnce(&mut Litr)) {
+    if let Some(p) = self.vars.get_mut(s) {
+      f(p);
+      return;
+    }
+    if let Some(p) = &mut self.parent {
+      return p.modify_var(s, f);
+    }
+    self.err(&format!("无法找到变量 '{}'", String::from_utf8_lossy(s)));
   }
+
+  pub fn let_var(&mut self, s:Ident, v:Litr) {
+    self.vars.insert(s, v);
+  }
+
 
   /// 在此作用域计算表达式的值
   /// 会将变量计算成实际值
-  pub fn calc(&self, e:&Expr)-> Litr {
+  pub fn calc(&mut self, e:&Expr)-> Litr {
     use Expr::*;
     match e {
+      Call(c)=> {
+        self.call(c);
+        return Litr::Uninit;
+      }
       Literal(litr)=> {
         let ret = if let Litr::Variant(id) = litr {
-          self.var(id)
+          self.var(id).clone()
         }else {
           litr.clone()
         };
         return ret;
       }
       Binary(bin)=> {
-        let left = if let Literal(Litr::Variant(id)) = &bin.left {
-          self.var(id)
-        }else {
-          self.calc(&bin.left)
-        };
-        let right = if let Literal(Litr::Variant(id)) = &bin.right {
-          self.var(id)  
-        }else {
-          self.calc(&bin.right)
-        };
+        let left = self.calc(&bin.left);
+        let right = self.calc(&bin.right);
 
-        /// 二进制运算中普通数字的戏份
+        /// 二元运算中普通数字的戏份
         macro_rules! impl_num {
           ($pan:literal $op:tt) => {{
             match (left, right) {
@@ -125,7 +125,7 @@ impl Scope {
           }};
         }
 
-        /// 二进制运算中无符号数的戏份
+        /// 二元运算中无符号数的戏份
         macro_rules! impl_unsigned {
           ($pan:literal $op:tt) => {{
             match (left, right) {
@@ -137,6 +137,55 @@ impl Scope {
               (Byte(l), Int(r))=> Byte(l $op r as u8),
               _=> self.err($pan)
             }
+          }};
+        }
+
+        /// 数字修改并赋值
+        macro_rules! impl_num_assign {
+          ($o:tt) => {{
+            if let Expr::Literal(Variant(id)) = &bin.left {
+              let line = self.line;
+              let f = |p: &mut Litr|{
+                // 数字默认为Int，所以所有数字类型安置Int自动转换
+                let n = match (left, right.clone()) {
+                  (Uint(l), Uint(r))=> Uint(l $o r),
+                  (Uint(l), Int(r))=> Uint(l $o r as usize),
+                  (Int(l), Int(r))=> Int(l $o r),
+                  (Byte(l), Byte(r))=> Byte(l $o r),
+                  (Byte(l), Int(r))=> Byte(l $o r as u8),
+                  (Float(l), Float(r))=> Float(l $o r),
+                  (Float(l), Int(r))=> Float(l $o r as f64),
+                  _=> panic!("运算并赋值的左右类型不同 运行时({})", line)
+                };
+                *p = n;
+              };
+              self.modify_var(&id, f);
+              return right;
+            }
+            self.err("只能为变量赋值。");
+          }};
+        }
+
+        // 
+        macro_rules! impl_unsigned_assign {
+          ($op:tt) => {{
+            if let Expr::Literal(Variant(id)) = &bin.left {
+              let line = self.line;
+              let f = |p: &mut Litr|{
+                // 数字默认为Int，所以所有数字类型安置Int自动转换
+                let n = match (left, right.clone()) {
+                  (Uint(l), Uint(r))=> Uint(l $op r),
+                  (Uint(l), Int(r))=> Uint(l $op r as usize),
+                  (Byte(l), Byte(r))=> Byte(l $op r),
+                  (Byte(l), Int(r))=> Byte(l $op r as u8),
+                  _=> panic!("按位运算并赋值的左值有符号，或左右类型不同 运行时({})", line)
+                };
+                *p = n;
+              };
+              self.modify_var(&id, f);
+              return right;
+            }
+            self.err("只能为变量赋值。");
           }};
         }
 
@@ -163,7 +212,26 @@ impl Scope {
           b"&" => impl_unsigned!("&需要左值无符号" &),
           b"^" => impl_unsigned!("^需要左值无符号" ^),
           b"|" => impl_unsigned!("|需要左值无符号" |),
-          
+
+          // 赋值
+          b"=" => {
+            if let Expr::Literal(Variant(id)) = &bin.left {
+              self.modify_var(&id, |p|*p = right.clone());
+              return right;
+            }
+            self.err("只能为变量赋值。");
+          }
+          b"+=" => impl_num_assign!(+),
+          b"-=" => impl_num_assign!(-),
+          b"*=" => impl_num_assign!(*),
+          b"/=" => impl_num_assign!(/),
+          b"%=" => impl_num_assign!(%),
+
+          b"&=" => impl_unsigned_assign!(&),
+          b"^=" => impl_unsigned_assign!(^),
+          b"|=" => impl_unsigned_assign!(|),
+          b"<<=" => impl_unsigned_assign!(<<),
+          b">>=" => impl_unsigned_assign!(>>),
 
           // 解析,运算符
           b"," => {
@@ -177,7 +245,7 @@ impl Scope {
               }
             }
           }
-          _=> self.err(&format!("非法运算符'{}'", String::from_utf8_lossy(&bin.op)))
+          _=> self.err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
         }
       }
       _=> self.err("算不出来 ")

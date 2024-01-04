@@ -1,3 +1,4 @@
-let a = 266u
-let b = (20u & 5) * a
+let a = 24u
+let b = 50u
+b <<= a;
 print(b)

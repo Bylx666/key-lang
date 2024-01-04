@@ -1,9 +1,7 @@
 //! 将源码扫描为 AST的过程
 
-use std::{
-  collections::{HashMap, HashSet},
-  sync::RwLock, mem::MaybeUninit
-};
+use std::collections::HashMap;
+
 
 use crate::ast::{
   Expr, 
@@ -229,20 +227,21 @@ impl Scanner {
       }
       // 解析数字字面量
       b'0'..=b'9' => {
+        let mut is_float = false;
         while i < len {
           i += 1;
           match self.src[i] {
-            0x30..=0x39 | b'.' | b'e' | b'E' => {}
+            b'.'=> is_float = true,
+            0x30..=0x39 | b'e' | b'E' => {}
             _=> break
           }
         }
 
         let str = String::from_utf8(self.src[self.i..i].to_vec()).unwrap();
-        use std::str::FromStr;
         use Litr::*;
         macro_rules! parsed {
           ($t:ty, $i:ident) => {{
-            let n = <$t>::from_str(&str);
+            let n: Result<$t,_> = str.parse();
             match n {
               Err(e)=> {
                 panic!("无法解析数字:{} 解析错误({})\n  {}",str,self.sttms.line,e)
@@ -267,10 +266,12 @@ impl Scanner {
           }
         }
         self.i -= 1;
-        parsed!(isize, Int)
+        if is_float {
+          parsed!(f64, Float);
+        }
+        parsed!(isize, Int);
       },
       _=> {
-        println!("{}",String::from_utf8_lossy(&[self.cur()]));
         let id_res = self.ident();
         if let Some(id) = id_res {
           Expr::Literal(Litr::Variant(Box::new(id.to_vec())))

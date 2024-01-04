@@ -18,7 +18,7 @@ fn main() {
 
   let mut scope = runtime::top_scope();
   let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  // println!("{:?}", scanned);
+  println!("{:?}", scanned);
   scope.run(&scanned);
 
   // 别忘了做注释解析
