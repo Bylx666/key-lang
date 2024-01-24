@@ -1,4 +1,8 @@
-let a = 24u
-let b = 50u
-b <<= a;
-print(b)
+
+extern kernel32> {
+  std: GetStdHandle(n:Int)
+  write: WriteConsoleA(a,b,c,d,e)
+}
+
+let h = std(-11)
+write(h, "word", 4)
