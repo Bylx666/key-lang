@@ -17,9 +17,6 @@ jobs:
       - run: cargo build --release --verbose
       - uses: actions/upload-artifact@v4
         with: 
-          name: releasing
           path: target/release/*.(exe|dll)
       - uses: actions/download-artifact@v4
-        with:
-          name: releasing
 
