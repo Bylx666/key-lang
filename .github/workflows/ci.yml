@@ -9,15 +9,17 @@ env:
 
 jobs:
   build_and_test:
-    name: Rust project - latest
+    name: build
     runs-on: windows-latest
-    strategy:
-      matrix:
-        toolchain:
-          - nightly
     steps:
       - uses: actions/checkout@v3
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo build --verbose
-      - run: cargo test --verbose
-  
+      - run: rustup update nightly && rustup default nightly
+      - run: cargo build --release --verbose
+      - uses: actions/upload-artifact@v4
+        with: 
+          name: releasing
+          path: target/release/*.(exe|dll)
+      - uses: actions/download-artifact@v4
+        with:
+          name: downloading releases
+
