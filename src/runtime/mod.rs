@@ -7,9 +7,18 @@ use crate::allocated::leak;
 use std::collections::HashMap;
 use std::f32::consts::E;
 use std::mem::transmute;
+use std::sync::Mutex;
 
 mod io;
 
+
+/// 运行期追踪行号
+/// 
+/// 只有主线程会访问，不存在多线程同步问题
+static mut LINE:usize = 0;
+pub fn err(s:&str)-> ! {
+  panic!("{} 运行时({})", s, unsafe{LINE})
+}
 
 /// 一个运行时作用域
 /// 
@@ -18,18 +27,24 @@ mod io;
 /// return_to是用来标志一个函数是否返回过了。
 /// 如果没返回，Some()里就是返回值要写入的指针
 #[derive(Debug)]
-pub struct Scope { 
+pub struct Scope {
+  /// 父作用域
   parent: Option<*mut Scope>,
+  /// 返回值指针
   return_to: *mut Option<*mut Litr>,
-  types: Vec<(Interned, KsType)>,
+  /// (类型名,值)
+  structs: Vec<(Interned, KsType)>,
+  /// (变量名,值)
   vars: Vec<(Interned, Litr)>,
-  line: usize
+  mods: *mut Vec<ModDef>
 }
 
 impl Scope {
   /// 在此作用域运行ast代码
   pub fn run(&mut self, codes:&Statements) {
-    for (l, sm) in &codes.exec {
+    for (l, sm) in &codes.0 {
+      unsafe{LINE = *l;}
+
       // 如果子作用域返回过了，这里就会是Returned状态
       let return_to = unsafe{&*self.return_to};
       if let None = return_to {
@@ -47,7 +62,6 @@ impl Scope {
         return;
       }
 
-      self.line = *l;
       self.evil(sm);
     }
   }
@@ -60,83 +74,87 @@ impl Scope {
         self.calc(e);
       }
       Let(a)=> {
-        let v = self.calc(&a.val);
-        self.let_var(a.id, v);
+        let mut v = self.calc(&a.val);
+        // 为函数声明绑定作用域
+        if let Litr::Func(f) = &mut v {
+          if let Executable::Local(local) = &mut **f {
+            local.scope = self as *mut Scope;
+          }
+        }
+        // 不检查变量是否存在是因为寻找变量的行为是反向的
+        self.vars.push((a.id, v));
       }
       Block(s)=> {
         let mut scope = Scope {
           parent:Some(self),
-          line:0,
           return_to: self.return_to,
-          types:Vec::new(),
-          vars: Vec::new()
+          structs:Vec::new(),
+          vars: Vec::with_capacity(16),
+          mods: self.mods
         };
         scope.run(s);
       }
+      Mod(m)=> {
+        unsafe {
+          (*self.mods).push((**m).clone());
+        }
+      }
+      Return(_)=> err("return语句不应被直接evil"),
       _=> {}
     }
   }
 
   /// 调用一个函数
-  pub fn call(&mut self, call: &Box<Call>)-> Litr {
+  pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
     let targ = self.calc(&call.targ);
 
     // 将参数解析为参数列表
     let arg = self.calc(&call.args);
     let mut args = Vec::new();
-    if let Litr::Array(l) = arg {
-      args.append(unsafe{&mut *l});
+    if let Litr::Array(mut l) = arg {
+      args.append(&mut *l);
     }else {
       args.push(arg);
     }
     if let Litr::Func(exec) = targ {
       use Executable::*;
-      let exec = unsafe {&*exec};
-      match exec {
-        Runtime(f)=> f(args),
-        Local(f)=> self.call_local(f, args),
-        Extern(f)=> self.call_extern(f, args)
+      match *exec {
+        Native(f)=> f(args.len(), args.as_ptr()),
+        Local(f)=> self.call_local(&f, args),
+        Extern(f)=> self.call_extern(&f, args)
       }
     }
-    else {self.err(&format!("'{:?}' 不是一个函数", targ))}
+    else {err(&format!("'{:?}' 不是一个函数", targ))}
   }
 
   /// 调用本地定义的函数
   pub fn call_local(&mut self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
     // 将传入参数按定义参数数量放入作用域
-    let mut vars = Vec::with_capacity(f.args.len());
-    let slots = vars.spare_capacity_mut();
-    for (i,(name,_)) in f.args.iter().enumerate() {
-      let arg = *args.get(i).unwrap_or(&Litr::Uninit);
-      slots[i].write((*name, arg));
+    let mut vars = Vec::with_capacity(16);
+    for (i, (name,ty)) in f.argdecl.iter().enumerate() {
+      let arg = args.get(i).unwrap_or(&Litr::Uninit).clone();
+      vars.push((*name,arg))
     }
-    unsafe {vars.set_len(f.args.len());}
 
     let mut ret = Litr::Uninit;
     let mut return_to = Some(&mut ret as *mut Litr);
     let mut scope = Scope {
-      parent:Some(self),
-      line:0,
+      parent:Some(f.scope),
       return_to:&mut return_to,
-      types:Vec::new(),
-      vars
+      structs:Vec::new(),
+      vars,
+      mods: self.mods
     };
-    scope.evil(&f.exec);
+    scope.run(&f.exec);
     ret
   }
 
   /// 调用extern函数
   pub fn call_extern(&mut self, f:&ExternFunc, args:Vec<Litr>)-> Litr {
-    use crate::extern_agent::{
-      set_scope, translate
-    };
-    let len = f.args.len();
-    let args:Vec<usize> = args.into_iter().map(|v| match translate(v) {
-      Ok(v)=> v,
-      Err(e)=> self.err(&e)
-    }).collect();
-    
-    set_scope(self);
+    use crate::extern_agent::translate;
+    let len = f.argdecl.len();
+    let mut args = args.into_iter();
+
     macro_rules! impl_arg {
       {$(
         $n:literal $($arg:ident)*
@@ -145,18 +163,19 @@ impl Scope {
           $(
             $n => {
               let callable:extern fn($($arg:usize,)*)-> usize = unsafe {transmute(f.ptr)};
-              let mut v = [0usize;$n];
-              v.iter_mut().enumerate().for_each(|(i,p)| {
-                if let Some(v) = args.get(i) {
-                  *p = *v
+              let mut eargs = [0usize;$n];
+              eargs.iter_mut().enumerate().for_each(|(i,p)| {
+                if let Some(v) = args.next() {
+                  let transed = translate(v).unwrap_or_else(|e|err(&e));
+                  *p = transed
                 }
               });
-              let [$($arg,)*] = v;
+              let [$($arg,)*] = eargs;
               let ret = callable($($arg,)*);
               Litr::Uint(ret)
             }
           )*
-          _=> {self.err(&format!("extern函数不支持{}位参数", len))}
+          _=> {err(&format!("extern函数不支持{}位参数", len))}
         }
       }
     }
@@ -181,42 +200,17 @@ impl Scope {
   }
 
   /// 在作用域找一个变量
-  pub fn var(&self, s:Interned)-> &Litr {
-    for (p, v) in self.vars.iter() {
+  pub fn var(&mut self, s:Interned)-> &mut Litr {
+    for (p, v) in self.vars.iter_mut().rev() {
       if *p == s {
         return v;
       }
     }
     if let Some(parent) = self.parent {
-      let d = unsafe {&*parent};
+      let d = unsafe {&mut *parent};
       return d.var(s);
     }
-    self.err(&format!("无法找到变量 '{}'", s.str()));
-  }
-
-  /// 寻找并修改一个变量
-  pub fn modify_var(&mut self, s:Interned, f:impl FnOnce(&mut Litr)) {
-    for (id,v) in &mut self.vars {
-      if *id == s {
-        f(v);
-        return;
-      }
-    }
-    if let Some(parent) = self.parent {
-      let d = unsafe {&mut *parent};
-      d.modify_var(s, f);
-    }
-    self.err(&format!("无法找到变量 '{}'", s.str()));
-  }
-
-  pub fn let_var(&mut self, s:Interned, v:Litr) {
-    for (id, exist_v) in &mut self.vars {
-      if *id == s {
-        *exist_v = v;
-        return;
-      }
-    };
-    self.vars.push((s, v));
+    err(&format!("无法找到变量 '{}'", s.str()));
   }
 
 
@@ -252,7 +246,7 @@ impl Scope {
               Uint(r) => r == 0,
               Float(r) => r == 0.0,
               _=> false
-            } {self.err("除数必须非0")}
+            } {err("除数必须非0")}
             impl_num!($pan,left,right $op)
           }};
           ($pan:literal,$l:ident,$r:ident $op:tt) => {{
@@ -262,7 +256,7 @@ impl Scope {
               (Uint(l),Int(r))=> Uint(l $op r as usize),
               (Float(l),Float(r))=> Float(l $op r),
               (Float(l),Int(r))=> Float(l $op r as f64),
-              _=> self.err($pan)
+              _=> err($pan)
             }
           }};
         }
@@ -275,7 +269,7 @@ impl Scope {
             match (left, right) {
               (Uint(l), Uint(r))=> Uint(l $op r),
               (Uint(l), Int(r))=> Uint(l $op r as usize),
-              _=> self.err($pan)
+              _=> err($pan)
             }
           }};
         }
@@ -286,23 +280,19 @@ impl Scope {
             let left = self.calc(&bin.left);
             let right = self.calc(&bin.right);
             if let Expr::Literal(Variant(id)) = bin.left {
-              let line = self.line;
-              let f = |p: &mut Litr|{
-                // 数字默认为Int，所以所有数字类型安置Int自动转换
-                let n = match (left, right) {
-                  (Uint(l), Uint(r))=> Uint(l $o r),
-                  (Uint(l), Int(r))=> Uint(l $o r as usize),
-                  (Int(l), Int(r))=> Int(l $o r),
-                  (Float(l), Float(r))=> Float(l $o r),
-                  (Float(l), Int(r))=> Float(l $o r as f64),
-                  _=> panic!("运算并赋值的左右类型不同 运行时({})", line)
-                };
-                *p = n;
+              // 将Int自动转为对应类型
+              let n = match (left, right) {
+                (Uint(l), Uint(r))=> Uint(l $o r),
+                (Uint(l), Int(r))=> Uint(l $o r as usize),
+                (Int(l), Int(r))=> Int(l $o r),
+                (Float(l), Float(r))=> Float(l $o r),
+                (Float(l), Int(r))=> Float(l $o r as f64),
+                _=> panic!("运算并赋值的左右类型不同 运行时({})", unsafe{LINE})
               };
-              self.modify_var(id, f);
-              return right;
+              *self.var(id) = n;
+              return Uninit;
             }
-            self.err("只能为变量赋值。");
+            err("只能为变量赋值。");
           }};
         }
 
@@ -312,20 +302,17 @@ impl Scope {
             let left = self.calc(&bin.left);
             let right = self.calc(&bin.right);
             if let Expr::Literal(Variant(id)) = bin.left {
-              let line = self.line;
-              let f = |p: &mut Litr|{
-                // 数字默认为Int，所以所有数字类型安置Int自动转换
-                let n = match (left, right) {
-                  (Uint(l), Uint(r))=> Uint(l $op r),
-                  (Uint(l), Int(r))=> Uint(l $op r as usize),
-                  _=> panic!("按位运算并赋值 左右类型不同 运行时({})", line)
-                };
-                *p = n;
+              let line = unsafe{LINE};
+              // 数字默认为Int，所以所有数字类型安置Int自动转换
+              let n = match (left, right) {
+                (Uint(l), Uint(r))=> Uint(l $op r),
+                (Uint(l), Int(r))=> Uint(l $op r as usize),
+                _=> panic!("按位运算并赋值只允许无符号数 运行时({})", line)
               };
-              self.modify_var(id, f);
-              return right;
+              *self.var(id) = n;
+              return Uninit;
             }
-            self.err("只能为变量赋值。");
+            err("只能为变量赋值。");
           }};
         }
 
@@ -334,22 +321,20 @@ impl Scope {
         /// 故意要求传入left和right是为了列表比较时能拿到更新后的left right
         macro_rules! impl_ord {
           ($o:tt) => {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
+            let mut left = self.calc(&bin.left);
+            let mut right = self.calc(&bin.right);
             impl_ord!($o,left,right)
           }};
-          ($o:tt,$l:ident,$r:ident) => {{
+          ($o:tt,$l:expr,$r:expr) => {{
             // 将整数同化为Int
-            let left = match $l {
-              Uint(n)=> Int((n) as isize),
-              _=> $l
-            };
-            let right = match $r {
-              Uint(n)=> Int((n) as isize),
-              _=> $r
-            };
+            if let Uint(n) = $l {
+              $l = Int(n as isize)
+            }
+            if let Uint(n) = $r {
+              $r = Int(n as isize)
+            }
 
-            let b = match (left, right) {
+            let b = match ($l, $r) {
               (Uint(l),Uint(r))=> l $o r,
               (Int(l), Int(r))=> l $o r,
               (Float(l), Float(r))=> l $o r,
@@ -359,8 +344,7 @@ impl Scope {
               (Bool(l), Bool(r))=> l $o r,
               (Buffer(l), Buffer(r))=> {
                 use Buf::*;
-                let (l,r) = unsafe {(&*l,&*r)};
-                match ( l,r ) {
+                match ( *l,*r ) {
                   (U8(l),U8(r))=> l $o r,
                   (U16(l),U16(r))=> l $o r,
                   (U32(l),U32(r))=> l $o r,
@@ -395,7 +379,7 @@ impl Scope {
 
             match (left, right) {
               (Bool(l), Bool(r))=> Bool(l $o r),
-              _=> self.err("逻辑运算符两边必须都为Bool")
+              _=> err("逻辑运算符两边必须都为Bool")
             }
           }};
         }
@@ -406,9 +390,9 @@ impl Scope {
             // 字符加法
             let left = self.calc(&bin.left);
             let right = self.calc(&bin.right);
-            if let Str(s) = left {
+            if let Str(mut s) = left {
               let r = right.str();
-              unsafe{(*s).push_str(&r);}
+              s.push_str(&r);
               return Str(s);
             }
             impl_num!("相加类型不同",left,right +)
@@ -429,9 +413,9 @@ impl Scope {
           b"=" => {
             let right = self.calc(&bin.right);
             if let Expr::Literal(Variant(id)) = bin.left {
-              self.modify_var(id, |p|*p = right.clone());
+              *self.var(id) = right;
             }
-            return right;
+            return Uninit;
           }
           b"+=" => impl_num_assign!(+),
           b"-=" => impl_num_assign!(-),
@@ -447,18 +431,21 @@ impl Scope {
 
           // 比较
           b"==" => {
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
+            let mut left = self.calc(&bin.left);
+            let mut right = self.calc(&bin.right);
             // 列表类型只能用==比较
-            match (left,right) {
-              (Array(l),Array(r))=> {
-                let (l,r) = unsafe{((*l).clone(),(*r).clone())};
-                let b = l.iter().copied().zip(r.iter().copied()).all(|(left,right)| {
-                  impl_ord!(==,left,right)
+            if let Array(l) = left {
+              if let Array(r) = right {
+                let b = l.into_iter().zip(r.into_iter()).all(|(mut l,mut r)| {
+                  impl_ord!(==,l,r)
                 });
                 Bool(b)
+              }else {
+                Bool(false)
               }
-              _=> Bool(impl_ord!(==,left,right))
+            }
+            else {
+              Bool(impl_ord!(==,left,right))
             }
           }
           b"!=" => Bool(impl_ord!(!=)),
@@ -479,19 +466,19 @@ impl Scope {
               if let Array(_) = left {
                 return left;
               }else {
-                return Array(leak(vec![left]));
+                return Array(Box::new(vec![left]));
               }
             }
             // 有右值的情况
             let right = self.calc(&bin.right);
-            if let Array(o) = left {
-              unsafe { (*o).push(right); }
+            if let Array(mut o) = left {
+              o.push(right);
               Array(o)
             }else {
-              Array(leak(vec![left, right]))
+              Array(Box::new(vec![left, right]))
             }
           }
-          _=> self.err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
+          _=> err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
         }
       }
 
@@ -502,7 +489,7 @@ impl Scope {
             match right {
               Int(n)=> Int(-n),
               Float(n)=> Float(-n),
-              _=> self.err("负号只能用在有符号数")
+              _=> err("负号只能用在有符号数")
             }
           }
           b'!'=> {
@@ -511,7 +498,7 @@ impl Scope {
               Int(n)=> Int(!n),
               Uint(n)=> Uint(!n),
               Uninit => Bool(true),
-              _=> self.err("!运算符只能用于整数和Bool")
+              _=> err("!运算符只能用于整数和Bool")
             }
           }_=>Uninit
         }
@@ -526,7 +513,7 @@ impl Scope {
           }else {
             let l = self.calc(expr);
             if let Array(vptr) = l {
-              unsafe {(*vptr).clone()}
+              *vptr
             }else {
               vec![l]
             }
@@ -545,7 +532,7 @@ impl Scope {
               _=> v.push(0.0 as $t)
             }
           }
-          return Buffer(leak($e(v)));
+          return Buffer(Box::new($e(v)));
         }}}
 
         let ty = &*decl.ty;
@@ -560,17 +547,32 @@ impl Scope {
           b"i64"=> impl_num!(i64,I64),
           b"f32"=> impl_num!(f32,F32),
           b"f64"=> impl_num!(f64,F64),
-          _=> self.err("未知的Buffer类型")
+          _=> err("未知的Buffer类型")
         }
       }
-      Expr::Empty => self.err("得到空表达式"),
-      _=> self.err("算不出来 ")
+
+      Expr::ModFuncAcc(acc)=> {
+        let modname = acc.left;
+        let funcname = acc.right;
+        unsafe {
+          for def in (*self.mods).iter() {
+            if def.name == modname {
+              for (id, func) in def.funcs.iter() {
+                if *id == funcname {
+                  return Litr::Func(Box::new(func.clone()));
+                }
+              }
+            }
+          }
+        }
+        err(&format!("模块'{}'中没有'{}'函数",modname,funcname))
+      }
+
+      Expr::Empty => err("得到空表达式"),
+      _=> err("算不出来 ")
     }
   }
 
-  pub fn err(&self, s:&str)-> ! {
-    panic!("{} 运行时({})", s, self.line)
-  }
 }
 
 
@@ -579,19 +581,19 @@ impl Scope {
 pub fn run(s:&Statements)-> Litr {
   let mut top_ret = Litr::Uint(0);
   let mut return_to = Some(&mut top_ret as *mut Litr);
-  top_scope(&mut return_to).run(s);
+  let mut mods = Vec::new();
+  top_scope(&mut return_to, &mut mods).run(s);
   top_ret
 }
 
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>)-> Scope {
-  let types = Vec::<(Interned, KsType)>::new();
-  let mut vars = Vec::<(Interned, Litr)>::new();
+pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Vec<ModDef>)-> Scope {
+  let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"print"), 
-    Litr::Func(leak(Executable::Runtime(io::print))))
+    Litr::Func(Box::new(Executable::Native(io::print))))
   );
-  Scope {parent: None, return_to, types, vars, line:0}
+  Scope {parent: None, return_to, structs:Vec::new(), vars, mods}
 }
 

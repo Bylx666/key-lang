@@ -4,6 +4,14 @@
 
 use std::collections::HashMap;
 use crate::intern::Interned;
+use crate::runtime::Scope;
+
+/// 语句列表
+#[derive(Debug, Clone, Default)]
+pub struct Statements (
+  pub Vec<(usize, Stmt)>
+);
+
 
 /// 分号分隔的，statement语句
 #[derive(Debug, Clone)]
@@ -11,8 +19,11 @@ pub enum Stmt {
   Empty,                               // 空语句
 
   // 赋值
-  Let       (Box<Assign>),               // 变量语句
-  Const     (Box<Assign>),               // 常量语句
+  Let       (Box<AssignDef>),
+  // 定义结构
+  Struct    (Box<StructDef>),
+
+  Mod       (Box<ModDef>),
 
   // Key
   // Key       (HashMap<Ident, KsType>),                // 类型声明语句
@@ -33,37 +44,94 @@ pub enum Stmt {
   Expression(Box<Expr>),
 }
 
-/// 变量提升后的Ast作用域
-#[derive(Debug, Clone, Default)]
-pub struct Statements {
-  /// 总行数
-  pub line: usize,
-  /// 类型声明
-  pub types: Vec<(Interned, KsType)>,
-  /// (语句, 用来报错的行数)
-  pub exec: Vec<(usize, Stmt)>
+#[derive(Debug, Clone)]
+pub struct AssignDef {
+  pub id: Interned,
+  pub val: Expr
 }
+
+#[derive(Debug, Clone)]
+pub struct StructDef (
+  pub Vec<(Interned,KsType)>
+);
+
+#[derive(Debug, Clone)]
+pub struct ModDef {
+  pub name: Interned,
+  pub funcs: Vec<(Interned, Executable)>
+}
+
 
 /// 可以出现在任何右值的，expression表达式
 #[derive(Debug, Clone)]
 pub enum Expr {
-  Literal(Litr),                // 直接值，跳脱expr递归的终点
+  // 直接值，跳脱expr递归的终点
+  Literal(Litr),
   Empty,
 
-  Property (Box<Prop>),         // .运算符
-  Call     (Box<Call>),       // 调用函数
+  // .运算符
+  Property  (Box<PropDecl>),
+  // -.运算符
+  ModFuncAcc(Box<AccessDecl>),
+  // -:运算符
+  ModStruAcc(Box<AccessDecl>),
+  // ::运算符
+  ImplAccess(Box<AccessDecl>),
+  // 调用函数
+  Call      (Box<CallDecl>),
 
-  Buffer   (Box<BufDecl>),      // 未处理的Buffer表达式
-  Obj      (Box<ObjDecl>),      // Obj
+  // 未处理的Buffer表达式
+  Buffer    (Box<BufDecl>),
+  Obj       (Box<ObjDecl>),
 
   // 一元运算 ! -
-  Unary    (Box<UnaryCalc>),
+  Unary     (Box<UnaryDecl>),
   // 二元运算
-  Binary   (Box<BinCalc>),
+  Binary    (Box<BinDecl>),
 }
 
+#[derive(Debug, Clone)]
+pub struct PropDecl {
+  pub left: Expr,
+  pub right: Interned
+}
+
+#[derive(Debug, Clone)]
+pub struct BinDecl {
+  pub left: Expr,
+  pub right: Expr,
+  pub op: Vec<u8>
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryDecl {
+  pub right: Expr,
+  pub op: u8
+}
+
+#[derive(Debug, Clone)]
+pub struct AccessDecl {
+  pub left: Interned,
+  pub right: Interned
+}
+
+#[derive(Debug, Clone)]
+pub struct CallDecl {
+  pub args: Expr,
+  pub targ: Expr
+}
+
+/// Buffer declaration
+#[derive(Debug, Clone)]
+pub struct BufDecl {
+  pub expr: Expr,
+  pub ty: Vec<u8>
+}
+
+
 /// 变量或字面量
-#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,
   Variant(Interned),
@@ -73,15 +141,15 @@ pub enum Litr {
   Float  (f64),
   Bool   (bool),
 
-  Func   (*mut Executable), // extern和Func(){} 都属于Func直接表达式
-  Str    (*mut String),
-  Buffer (*mut Buf),
-  Array  (*mut Vec<Litr>),
+  Func   (Box<Executable>), // extern和Func(){} 都属于Func直接表达式
+  Str    (Box<String>),
+  Buffer (Box<Buf>),
+  Array  (Box<Vec<Litr>>),
   // Struct   {targ:Ident, cont:HashMap<Ident, Exprp>},    // 直接构建结构体
 }
 impl Litr {
   /// 由Key编译器提供的转字符
-  pub fn str(self)-> String {
+  pub fn str(&self)-> String {
     use Litr::*;
     match self {
       Uninit => String::default(),
@@ -90,16 +158,15 @@ impl Litr {
       Float(n)=> n.to_string(),
       Bool(n)=> n.to_string(),
       Func(f)=> {
-        let f = unsafe {&*f};
-        match f {
+        match **f {
           Executable::Local(_)=> "<Local Function>".to_owned(),
           Executable::Extern(_)=> "<Extern Function>".to_owned(),
           _=> "<Builtin Function>".to_owned()
         }
       }
-      Str(s)=> (unsafe{&*s}).to_owned(),
+      Str(s)=> (**s).clone(),
       Array(a) => {
-        let mut iter = unsafe{(&*a).iter()};
+        let mut iter = a.iter();
         let mut str = String::new();
         str.push_str("[");
         if let Some(v) = iter.next() {
@@ -112,38 +179,41 @@ impl Litr {
         str.push_str("]");
         str
       },
-      Buffer(b)=> format!("{:?}",(unsafe{&*b})),
+      Buffer(b)=> format!("{:?}",b),
       Variant(s)=> s.str().to_owned()
     }
   }
 }
 
 
-#[derive(Debug, Clone)]
-pub struct Assign {
-  pub id: Interned,
-  pub val: Expr
-}
-
-
+/// 针对函数的枚举
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Executable {
-  Local(LocalFunc),             // 脚本内的定义
-  Extern(ExternFunc),           // 脚本使用extern获取的函数
-  Runtime(fn(Vec<Litr>)-> Litr) // runtime提供的函数 
+  Local(Box<LocalFunc>),             // 脚本内的定义
+  Extern(Box<ExternFunc>),           // 脚本使用extern获取的函数
+  Native(extern fn(usize, *const Litr)-> Litr) // runtime提供的函数 
 }
+
+/// 插件是没有Statements和Scope的，不需要对此repr(C)
 #[derive(Debug, Clone)]
 pub struct LocalFunc {
-  pub args: Vec<(Interned, KsType)>, 
-  pub exec: Stmt,
+  pub argdecl: Vec<(Interned, KsType)>, 
+  pub exec: Statements,
+  pub scope: *mut Scope
 }
+
+/// 插件只有一个Native类型
 #[derive(Debug, Clone)]
 pub struct ExternFunc {
-  pub args: Vec<(Interned, KsType)>, 
+  pub argdecl: Vec<(Interned, KsType)>, 
   pub ptr: usize,
 }
 
 
+/// Key语言内的类型声明
+/// 
+/// 插件不能获取程序上下文，因此KsType对插件无意义
 #[derive(Debug, Clone)]
 pub enum KsType {
   Any,
@@ -151,38 +221,8 @@ pub enum KsType {
   Custom(Interned)
 }
 
-#[derive(Debug, Clone)]
-pub struct Prop {
-  pub left: Expr,
-  pub right: Interned
-}
 
-#[derive(Debug, Clone)]
-pub struct BinCalc {
-  pub left: Expr,
-  pub right: Expr,
-  pub op: Vec<u8>
-}
-
-#[derive(Debug, Clone)]
-pub struct UnaryCalc {
-  pub right: Expr,
-  pub op: u8
-}
-
-#[derive(Debug, Clone)]
-pub struct Call {
-  pub args: Expr,
-  pub targ: Expr
-}
-
-/// Buffer declaration
-#[derive(Debug, Clone)]
-pub struct BufDecl {
-  pub expr: Expr,
-  pub ty: Vec<u8>
-}
-
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Buf {
   U8(Vec<u8>),
@@ -201,3 +241,27 @@ pub enum Buf {
 pub struct ObjDecl (
   Vec<(Interned,Expr)>
 );
+
+
+pub struct StructElem {
+  
+}
+
+pub enum StructElemType {
+  Uint8,
+  Uint16,
+  Uint32,
+  Uint,
+  Int8,
+  Int16,
+  Int32,
+  Int,
+  Float32,
+  Float,
+  Bool,
+  Strp,
+  Funcp,
+  Bufferp,
+  Arrayp,
+  Structp
+}

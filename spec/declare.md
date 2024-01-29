@@ -77,8 +77,8 @@ let a = !{
 
 ## 定义类型
 
-let a = Type:new();
-let a = Type:new();
+let a = Type::new();
+let a = Type::new();
 
 ## 未初始化
 
@@ -97,9 +97,6 @@ Any不是关键词，但你不能在let表达式中使用Any。同时定义Any�
 
 你可以使用key关键词为Any指定别名，用来告诉编程者Any所期望的类型。我建议使用@前缀作为Any泛型的别名。
 
-## 常量
-每次使用都会复制一份出去
-const a = Type:new();
 
 ## keys
 key关键词将一个标识符替换到另一标识符(变量或者类型都可以)

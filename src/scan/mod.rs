@@ -1,6 +1,7 @@
 //! 将源码扫描为 AST的过程
 
 use std::collections::HashMap;
+use std::f32::consts::E;
 
 use crate::ast::*;
 use crate::intern::{
@@ -15,13 +16,13 @@ mod charts;
 pub fn scan(src: Vec<u8>)-> Statements {
   // 已知此处所有变量未泄露
   // 为了规避&mut所有权检查，将引用改为指针
-  let mut i = &mut 0usize as *mut usize;
+  let mut i = 0;
+  let mut line = 1;
   let mut sttms = Statements::default();
   let mut scanner = Scanner {
-    src:&*src, i, 
+    src:&*src, i:&mut i, line:&mut line,
     sttms:&mut sttms as *mut Statements
   };
-  sttms.line += 1;
   scanner.scan();
   sttms
 }
@@ -29,6 +30,7 @@ pub fn scan(src: Vec<u8>)-> Statements {
 struct Scanner<'a> {
   src: &'a [u8],
   i: *mut usize,
+  line: *mut usize,
   sttms: *mut Statements,
 }
 
@@ -50,11 +52,7 @@ impl Scanner<'_> {
 
   #[inline]
   fn push(&self, s:Stmt) {
-    unsafe{(*self.sttms).exec.push((self.line(), s));}
-  }
-  #[inline]
-  fn line(&self)->usize {
-    unsafe{(*self.sttms).line}
+    unsafe{(*self.sttms).0.push((self.line(), s));}
   }
 
   /// 跳过一段空格和换行符
@@ -63,7 +61,7 @@ impl Scanner<'_> {
     while self.i() < len {
       let c = self.cur();
       if c == 0x0A {
-        unsafe{(*self.sttms).line += 1;}
+        unsafe{*self.line += 1;}
       }
       match c {
         0x20 | 0x0D | 0x0A => {
@@ -95,8 +93,12 @@ impl Scanner<'_> {
   fn set_i(&self,n:usize) {
     unsafe{*self.i = n;}
   }
+  #[inline]
+  fn line(&self)->usize {
+    unsafe{*self.line}
+  }
 
-  /// 报错框架
+  /// 报错模板
   fn err(&self, s:&str)-> ! {
     panic!("{} 解析错误({})",s,self.line())
   }
@@ -172,9 +174,15 @@ impl Scanner<'_> {
           if let Stmt::Empty = s {
             continue;
           }
-          stmts.exec.push((self.line(), s));
+          stmts.0.push((self.line(), s));
         }
-      }_=>{}
+      }
+      // 返回语句语法糖
+      b':' => {
+        self.next();
+        return self.returning();
+      }
+      _=>{}
     }
 
     let ident = self.ident();
@@ -184,6 +192,8 @@ impl Scanner<'_> {
         b"let"=> self.letting(),
         b"extern"=> self.externing(),
         b"return"=> self.returning(),
+        b"struct"=> self.structing(),
+        b"mod"=> self.moding(),
         _=> {
           let interned = intern(id);
           let id = Expr::Literal(Litr::Variant(interned));
@@ -203,8 +213,7 @@ impl Scanner<'_> {
   /// 解析let关键词
   fn letting(&self)-> Stmt {
     self.spaces();
-    let id = self.ident()
-      .expect(&format!("let后需要标识符 解析错误({})",self.line()));
+    let id = self.ident().unwrap_or_else(||self.err("let后需要标识符"));
     let id = intern(id);
 
     // 检查标识符后的符号
@@ -217,28 +226,33 @@ impl Scanner<'_> {
         if let Expr::Empty = val {
           self.err("无法为空气赋值")
         }
-        return Stmt::Let(Box::new(Assign {
+        return Stmt::Let(Box::new(AssignDef {
           id, val
         }));
       }
       b'(' => {
         self.next();
         let args = self.arguments();
-        self.spaces();
         if self.cur() != b')' {
           self.err("函数声明右括号缺失");
         }
         self.next();
 
-        let exec = self.stmt();
-        let func = leak(Executable::Local(LocalFunc { args, exec }));
-        return Stmt::Let(Box::new(Assign { 
+        let stmt = self.stmt();
+        let mut exec = if let Stmt::Block(b) = stmt {
+          *b
+        }else {
+          Statements(vec![(self.line(), stmt)])
+        };
+        let scope = std::ptr::null_mut();
+        let func = Box::new(Executable::Local(Box::new(LocalFunc { argdecl: args, exec, scope })));
+        return Stmt::Let(Box::new(AssignDef { 
           id, 
           val: Expr::Literal(Litr::Func(func))
         }));
       }
       _ => {
-        return Stmt::Let(Box::new(Assign {
+        return Stmt::Let(Box::new(AssignDef {
           id, val:Expr::Literal(Litr::Uninit)
         }));
       }
@@ -249,7 +263,7 @@ impl Scanner<'_> {
   /// 
   /// 会固定返回空语句
   fn externing(&self)-> Stmt {
-    use crate::extern_agent::Dll;
+    use crate::c::Clib;
 
     // 截取路径
     self.spaces();
@@ -263,7 +277,7 @@ impl Scanner<'_> {
     }
 
     let path = &self.src[self.i()..i];
-    let lib = Dll::load(path);
+    let lib = Clib::load(path).unwrap_or_else(|e|self.err(&e));
     self.set_i(i + 1);
     self.spaces();
 
@@ -288,10 +302,10 @@ impl Scanner<'_> {
         self.err("extern函数后应有括号");
       }
       self.next();
-      let args = self.arguments();
+      let argdecl = self.arguments();
       self.spaces();
       if self.cur() != b')' {
-        self.err("函数声明右括号缺失");
+        self.err("extern函数声明右括号缺失");
       }
       self.next();
       
@@ -300,17 +314,16 @@ impl Scanner<'_> {
       }
 
       // 将函数名(id)和指针(ptr)作为赋值语句推到语句列表里
-      let ptr = unsafe {lib.get_func(sym)};
-      if ptr == 0 {
-        self.err(&format!("动态库'{}'中不存在'{}'函数", String::from_utf8_lossy(path), 
-          String::from_utf8_lossy(sym)));
-      }
-      self.push(Stmt::Let(Box::new(Assign { 
+      let ptr = lib.get(sym).unwrap_or_else(||self.err(
+        &format!("动态库'{}'中不存在'{}'函数", 
+        String::from_utf8_lossy(path), 
+        String::from_utf8_lossy(sym))));
+      self.push(Stmt::Let(Box::new(AssignDef { 
         id:intern($id), 
-        val: Expr::Literal(Litr::Func(leak(Executable::Extern(ExternFunc { 
-          args, 
+        val: Expr::Literal(Litr::Func(Box::new(Executable::Extern(Box::new(ExternFunc { 
+          argdecl, 
           ptr
-        })))) 
+        })))))
       })));
     }}}
 
@@ -332,11 +345,8 @@ impl Scanner<'_> {
       
     }else {
       // 省略大括号语法
-      if let Some(id) = self.ident() {
-        parse_decl!(id);
-      }else {
-        self.err("extern后应有函数名");
-      }
+      let id = self.ident().unwrap_or_else(||self.err("extern后应有函数名"));
+      parse_decl!(id);
     }
 
     Stmt::Empty
@@ -350,6 +360,103 @@ impl Scanner<'_> {
       Stmt::Return(Box::new(Expr::Literal(Litr::Uninit)))
     }else {
       Stmt::Return(Box::new(expr))
+    }
+  }
+
+  /// 解析结构体声明
+  fn structing(&self)-> Stmt {
+    self.spaces();
+    let id = self.ident().unwrap_or_else(||self.err("struct后需要标识符"));
+    self.spaces();
+    if self.cur() != b'{' {
+      self.err("struct需要大括号");
+    }
+    self.next();
+
+    let def = self.arguments();
+    
+    todo!();
+    self.spaces();
+    let mut layout = Vec::<(Interned,)>::new();
+    while let Some(n) = self.ident() {
+      let arg = intern(n);
+      if self.cur() != b':' {
+        self.err("必须使用类型声明");
+      }
+      self.next();
+      let typ = self.ident().unwrap_or_else(||self.err("类型声明不能为空"));
+      let typ = {
+        use StructElemType::*;
+        match typ {
+          b"Uint8"=> Uint8,
+          b"Uint16"=> Uint16,
+          b"Uint32"=> Uint32,
+          b"Uint"=> Uint,
+          _=> Structp
+        }
+      };
+
+      self.spaces();
+      if self.cur() == b',' {
+        self.next();
+      }
+      self.spaces();
+    }
+
+    self.spaces();
+    if self.cur() != b'}' {
+      self.err("struct大括号未闭合");
+    }
+    self.next();
+    Stmt::Struct(Box::new(StructDef (def)))
+  }
+
+  /// 解析模块声明
+  fn moding(&self)-> Stmt {
+    // 截取路径
+    self.spaces();
+    let mut i = self.i();
+    let len = self.src.len();
+    let mut dot = 0;
+    loop {
+      let cur = self.src[i];
+      if cur == b'>' {
+        break;
+      }
+      if cur == b'.' {
+        dot = i;
+      }
+      if i >= len {
+        self.err("extern后需要 > 符号");
+      }
+      i += 1;
+    }
+  
+    let path = &self.src[self.i()..i];
+    self.set_i(i + 1);
+
+    self.spaces();
+    let name = self.ident().unwrap_or_else(||self.err("需要为模块命名"));
+    self.spaces();
+
+    if dot == 0 {
+      self.err("未知模块类型")
+    }
+    let suffix = &self.src[dot..i];
+    match suffix {
+      b".ksm"|b".dll"=> {
+        let module = crate::module::parse(name, path).unwrap_or_else(|e|
+          self.err(&format!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path))));
+        Stmt::Mod(Box::new(module))
+      }
+      b".ks"=> {
+        // let file = std::fs::read(path).unwrap_or_else(|e|self.err(&format!(
+        //   "无法找到模块'{}'", path
+        // )));
+        // scan(file)
+        Stmt::Empty
+      }
+      _ => self.err("未知模块类型")
     }
   }
 }
@@ -374,7 +481,7 @@ impl Scanner<'_> {
   fn expr_with_left(&self, left:Expr)-> Expr {
     use charts::prec;
 
-    let mut expr_stack = vec![self.maybe_index_call(left)];
+    let mut expr_stack = vec![left];
     let mut op_stack = Vec::<&[u8]>::new();
 
     let len = self.src.len();
@@ -393,12 +500,30 @@ impl Scanner<'_> {
           break;
         }
 
-        let last_expr = unsafe{ expr_stack.pop().unwrap_unchecked() };
-        let second_last_expr = unsafe{ expr_stack.pop().unwrap_unchecked() };
+        let last_expr = expr_stack.pop().unwrap();
+        let second_last_expr = expr_stack.pop().unwrap();
         if let Expr::Empty = second_last_expr {
           self.err("二元运算符未填写左值")
         }
-        expr_stack.push(Expr::Binary(Box::new(BinCalc { 
+
+        // 如果是模块或类的调用就不用Binary
+        macro_rules! impl_access {($op:literal, $ty:ident)=>{{
+          if last_op == $op {
+            if let Expr::Literal(Litr::Variant(left)) = second_last_expr {
+              if let Expr::Literal(Litr::Variant(right)) = last_expr {
+                expr_stack.push(Expr::$ty(Box::new(AccessDecl { left, right })));
+                continue;
+              }
+              self.err("运算符右侧需要一个标识符")
+            }
+            self.err("运算符左侧需要一个标识符")
+          }
+        }}}
+        impl_access!(b"-.",ModFuncAcc);
+        impl_access!(b"-:",ModStruAcc);
+        impl_access!(b"::",ImplAccess);
+
+        expr_stack.push(Expr::Binary(Box::new(BinDecl { 
           left: second_last_expr, 
           right: last_expr, 
           op: last_op.to_vec()
@@ -407,9 +532,18 @@ impl Scanner<'_> {
 
       // 运算符没有优先级则说明匹配结束
       if precedence == 0 {
-        assert_eq!(expr_stack.len(), 1);
         return expr_stack.pop().unwrap();
       }
+
+      // 如果此运算符是括号就代表call
+      if op == b"(" {
+        let callee = expr_stack.pop().unwrap();
+        let args = self.expr_group();
+        expr_stack.push(Expr::Call(Box::new(CallDecl{
+          args, targ:callee
+        })));
+        continue;
+      };
 
       // 将新运算符和它右边的值推进栈
       self.spaces();
@@ -419,8 +553,7 @@ impl Scanner<'_> {
         expr_stack.push(group);
       }else {
         let litr = self.literal();
-        let right = self.maybe_index_call(litr);
-        expr_stack.push(right);
+        expr_stack.push(litr);
       }
       op_stack.push(op);
 
@@ -438,7 +571,7 @@ impl Scanner<'_> {
     // 空括号作为空列表处理
     if self.cur() == b')' {
       self.next();
-      return Expr::Literal(Litr::Array(leak(Vec::new())));
+      return Expr::Literal(Litr::Array(Box::new(Vec::new())));
     }
 
     let expr = self.expr();
@@ -455,7 +588,7 @@ impl Scanner<'_> {
   fn maybe_index_call(&self, e:Expr)-> Expr {
     if self.cur() == b'(' {
       let args = self.expr_group();
-      return  Expr::Call(Box::new(Call{
+      return  Expr::Call(Box::new(CallDecl{
         args, targ:e
       }))
     }
@@ -470,12 +603,12 @@ impl Scanner<'_> {
     while i < len {
       let cur = self.src[i];
       match cur {
-        b'%'|b'&'|b'*'..=b'-'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
+        b'%'|b'&'|b'*'|b'+'|b','|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
           i += 1;
         }
-        _=> {
-          break;
-        }
+        b'(' => return b"(",
+        b'[' => return b"[",
+        _=> break
       }
     }
 
@@ -500,7 +633,7 @@ impl Scanner<'_> {
     macro_rules! match_unary {($o:expr) => {{
       self.next();
       let right = self.literal();
-      return Expr::Unary(Box::new(UnaryCalc {right,op:$o}));
+      return Expr::Unary(Box::new(UnaryDecl {right,op:$o}));
     }}}
 
     match first {
@@ -517,7 +650,7 @@ impl Scanner<'_> {
         }
         let s = String::from_utf8_lossy(&self.src[(self.i()+1)..i]);
         self.set_i(i+1);
-        return Expr::Literal(Litr::Str(leak(s.to_string())));
+        return Expr::Literal(Litr::Str(Box::new(s.to_string())));
       }
 
       // 解析带转义的字符串
@@ -576,7 +709,7 @@ impl Scanner<'_> {
           .expect(&format!("字符串含非法字符 解析错误({})",self.line()));
 
         self.set_i(i + 1);
-        return Expr::Literal(Litr::Str(leak(str)));
+        return Expr::Literal(Litr::Str(Box::new(str)));
       }
 
       // 解析'buffer'
@@ -622,7 +755,6 @@ impl Scanner<'_> {
             let res:Result<u8,_>;
             let a = self.src[braced];
             if braced >= i {break;}
-            println!("{}",a);
 
             braced += 1;
             if braced < i {
@@ -655,7 +787,7 @@ impl Scanner<'_> {
         vec.extend_from_slice(&self.src[start..i]);
 
         self.set_i(i+1);
-        return Expr::Literal(Litr::Buffer(leak(Buf::U8(vec))));
+        return Expr::Literal(Litr::Buffer(Box::new(Buf::U8(vec))));
       }
 
       // 解析数字字面量
@@ -729,7 +861,7 @@ impl Scanner<'_> {
             self.next();
             if t == b"any" {
               if let Expr::Empty = expr {
-                return Expr::Literal(Litr::Array(leak(Vec::new())));
+                return Expr::Literal(Litr::Array(Box::new(Vec::new())));
               }
               return expr;
             }
@@ -764,15 +896,13 @@ impl Scanner<'_> {
 
   /// 解析函数声明的参数
   fn arguments(&self)-> Vec::<(Interned,KsType)> {
+    self.spaces();
     let mut args = Vec::<(Interned,KsType)>::new();
     while let Some(n) = self.ident() {
-      self.spaces();
-
       let arg = intern(n);
       let typ:KsType = if self.cur() == b':' {
         self.next();
-        let t = self.ident()
-          .expect(&format!("类型声明不能为空 解析错误({})",self.line()));
+        let t = self.ident().unwrap_or_else(||self.err("类型声明不能为空"));
         charts::kstype(t)
       }else {
         KsType::Any
@@ -783,6 +913,7 @@ impl Scanner<'_> {
       if self.cur() == b',' {
         self.next();
       }
+      self.spaces();
     };
     args
   }
