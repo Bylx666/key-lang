@@ -1,14 +1,8 @@
-mod D:\code\rs\key-native\target\debug\key_native.dll> mymod;
+mod D:\code\rs\key-lang\samples\testmod.ks> mymod;
 
-mymod-.test();
+mymod-.test("testeeee");
 
-"
-extern kernel32> {
-  CreateThread(a,b,c,d,e,f)
-  WaitForSingleObject(a,b)
-}
-let f(a) {
+mod.f(a) {
   print(a)
 }
-WaitForSingleObject(CreateThread(0,0,f,22,0,0),99999)
-"
+f(114)

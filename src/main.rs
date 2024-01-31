@@ -9,12 +9,11 @@ use intern::intern;
 mod ast;
 mod scan;
 mod runtime;
-mod allocated;
 mod utils;
 
 mod c;
 mod extern_agent;
-mod module;
+mod native;
 
 fn main()-> ExitCode {
   // 自定义panic
@@ -27,25 +26,27 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // let & some = 20 显式指定指针变量
+
   // cstruct
+  // 基本的语句好像还没实现完呢
+  // let & some = 20 显式指定指针变量
+  // buffer的from_raw实现记得区分rust和clone版
   // 模块：用户模块user mod和底层模块native mod
-  // 设计针对作用域的gc
   // Str之类的表达式会被clone，指针估计对不上了吧(runtime::calc)
   // mem::swap
   // extern to_raw_args
-  // 别忘了做注释解析
   // is
   // ?var
   // evil
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
+  // LocalFunc的gc还没进行测试
 
   intern::init();
   let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  // println!("{scanned:?}");
+  println!("{scanned:?}");
   let exit = runtime::run(&scanned);
-  if let ast::Litr::Int(code) = exit {
+  if let ast::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);
   }
   ExitCode::SUCCESS

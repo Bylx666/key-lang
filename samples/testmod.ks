@@ -1,0 +1,3 @@
+mod.test() {
+  print("ksm");
+}

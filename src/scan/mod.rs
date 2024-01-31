@@ -1,14 +1,13 @@
 //! 将源码扫描为 AST的过程
 
 use std::collections::HashMap;
-use std::f32::consts::E;
 
 use crate::ast::*;
 use crate::intern::{
   intern,
   Interned
 };
-use crate::allocated::leak;
+use crate::runtime::Scope;
 
 mod charts;
 
@@ -60,13 +59,53 @@ impl Scanner<'_> {
     let len = self.src.len();
     while self.i() < len {
       let c = self.cur();
-      if c == 0x0A {
+      if c == b'\n' {
         unsafe{*self.line += 1;}
       }
       match c {
-        0x20 | 0x0D | 0x0A => {
+        b'\n' | b'\r' | b' ' => {
           self.next();
         },
+        // 解析注释
+        b'/' => {
+          let next = self.i() + 1;
+          if next < len {
+            let nc = self.src[next];
+            // 单行
+            if nc == b'/' {
+              self.set_i(next + 1);
+              while self.cur() != b'\n' {
+                self.next();
+                if self.i() >= len {
+                  return;
+                }
+              }
+              unsafe{*self.line += 1;}
+              self.next();
+            }
+            // 多行
+            if nc == b'`' {
+              self.set_i(next + 1);
+              loop {
+                self.next();
+                if self.cur() == b'\n' {
+                  unsafe{*self.line += 1;}
+                }
+                if self.cur() == b'`' {
+                  let next = self.i() + 1;
+                  if next >= len {
+                    self.set_i(len);
+                    return;
+                  }
+                  if self.src[next] == b'/' {
+                    self.set_i(next + 1);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
         _=> {
           break;
         }
@@ -187,7 +226,7 @@ impl Scanner<'_> {
 
     let ident = self.ident();
     if let Some(id) = ident {
-      match id {
+      return match id {
         // 如果是关键词，就会让对应函数处理关键词之后的信息
         b"let"=> self.letting(),
         b"extern"=> self.externing(),
@@ -244,11 +283,15 @@ impl Scanner<'_> {
         }else {
           Statements(vec![(self.line(), stmt)])
         };
-        let scope = std::ptr::null_mut();
-        let func = Box::new(Executable::Local(Box::new(LocalFunc { argdecl: args, exec, scope })));
-        return Stmt::Let(Box::new(AssignDef { 
+
+        // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
+        // 其生命周期应当和Statements相同，绑定作用域时将被复制
+        // 绑定作用域行为发生在runtime::Scope::calc
+        let scope = Scope::uninit();
+        let func = Box::new(LocalFuncInner { argdecl: args, exec, scope });
+        return Stmt::Let(Box::new(AssignDef {
           id, 
-          val: Expr::Literal(Litr::Func(func))
+          val: Expr::LocalDecl(func)
         }));
       }
       _ => {
@@ -413,12 +456,33 @@ impl Scanner<'_> {
 
   /// 解析模块声明
   fn moding(&self)-> Stmt {
+    // 先判断是否是导出语句
+    match self.cur() {
+      b'.' => {
+        self.next();
+        // 套用let声明模板
+        let stmt = self.letting();
+        if let Stmt::Let(assign) = stmt {
+          let AssignDef { id, val } = *assign;
+          if let Expr::LocalDecl(f) = val {
+            return Stmt::Export(Box::new(ExportDef::Func((id, (*f).clone()))));
+          }
+          self.err("模块只能导出函数类型")
+        }
+        unreachable!();
+      },
+      b':' => todo!(),
+      _=>{}
+    };
     // 截取路径
     self.spaces();
     let mut i = self.i();
     let len = self.src.len();
     let mut dot = 0;
     loop {
+      if i >= len {
+        self.err("extern后需要 > 符号");
+      }
       let cur = self.src[i];
       if cur == b'>' {
         break;
@@ -426,17 +490,14 @@ impl Scanner<'_> {
       if cur == b'.' {
         dot = i;
       }
-      if i >= len {
-        self.err("extern后需要 > 符号");
-      }
       i += 1;
     }
-  
+
     let path = &self.src[self.i()..i];
     self.set_i(i + 1);
 
     self.spaces();
-    let name = self.ident().unwrap_or_else(||self.err("需要为模块命名"));
+    let name = intern(&self.ident().unwrap_or_else(||self.err("需要为模块命名")));
     self.spaces();
 
     if dot == 0 {
@@ -445,16 +506,18 @@ impl Scanner<'_> {
     let suffix = &self.src[dot..i];
     match suffix {
       b".ksm"|b".dll"=> {
-        let module = crate::module::parse(name, path).unwrap_or_else(|e|
+        let module = crate::native::parse(name, path).unwrap_or_else(|e|
           self.err(&format!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path))));
         Stmt::Mod(Box::new(module))
       }
       b".ks"=> {
-        // let file = std::fs::read(path).unwrap_or_else(|e|self.err(&format!(
-        //   "无法找到模块'{}'", path
-        // )));
-        // scan(file)
-        Stmt::Empty
+        let path = &*String::from_utf8_lossy(path);
+        let file = std::fs::read(path).unwrap_or_else(|e|self.err(&format!(
+          "无法找到模块'{}'", path
+        )));
+        let mut module = crate::runtime::run(&scan(file)).exported;
+        module.name = name;
+        Stmt::Mod(Box::new(module))
       }
       _ => self.err("未知模块类型")
     }

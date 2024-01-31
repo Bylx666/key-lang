@@ -1,3 +1,4 @@
+//! 提供Ks数据和C交互的转换
 
 use std::mem::transmute as trans;
 use std::slice::from_raw_parts as raw;
@@ -8,7 +9,7 @@ use crate::c::{dlopen,dlsym};
 use crate::ast::{
   Litr, LocalFunc
 };
-use crate::runtime::Scope;
+use crate::runtime::ScopeInner;
 
 static mut EXEC:Option<LocalFunc> = None;
 
@@ -21,8 +22,8 @@ macro_rules! translate_local_impl {{
   let len = $local.argdecl.len();
   $(
     extern fn $fname($($arg:usize,)*)-> usize {
-      let exec = unsafe {EXEC.as_ref().expect("未找到extern函数，这是bug")};
-      let scope = unsafe {&mut *exec.scope};
+      let exec = unsafe {EXEC.as_mut().expect("未找到extern函数，这是bug")};
+      let mut scope = exec.scope;
       let args = [$($arg,)*];
       let args = exec.argdecl.iter().enumerate()
         .map(|(i,_)| Litr::Uint(*args.get(i).unwrap_or(&0))).collect();
@@ -36,7 +37,7 @@ macro_rules! translate_local_impl {{
   match len {
     $(
       $n => {
-        unsafe {EXEC = Some((**$local).clone());}
+        unsafe {EXEC = Some($local.clone());}
         Ok($fname as usize)
       },
     )*

@@ -1,10 +1,14 @@
 //! 抽象语法树
 //! 
 //! 是沟通scanner和runtime的桥梁，进行语法结构的定义，本身不做事
+//! 
+//! Native模块只支持了Rust，所以不需要repr(C)
+
+pub use crate::runtime::LocalFunc;
 
 use std::collections::HashMap;
 use crate::intern::Interned;
-use crate::runtime::Scope;
+use crate::runtime::{Scope, ScopeInner};
 
 /// 语句列表
 #[derive(Debug, Clone, Default)]
@@ -16,14 +20,16 @@ pub struct Statements (
 /// 分号分隔的，statement语句
 #[derive(Debug, Clone)]
 pub enum Stmt {
-  Empty,                               // 空语句
+  Empty,
 
   // 赋值
   Let       (Box<AssignDef>),
+
   // 定义结构
   Struct    (Box<StructDef>),
 
   Mod       (Box<ModDef>),
+  Export    (Box<ExportDef>),
 
   // Key
   // Key       (HashMap<Ident, KsType>),                // 类型声明语句
@@ -61,6 +67,11 @@ pub struct ModDef {
   pub funcs: Vec<(Interned, Executable)>
 }
 
+#[derive(Debug, Clone)]
+pub enum ExportDef {
+  Func((Interned, LocalFuncInner))
+}
+
 
 /// 可以出现在任何右值的，expression表达式
 #[derive(Debug, Clone)]
@@ -68,6 +79,9 @@ pub enum Expr {
   // 直接值，跳脱expr递归的终点
   Literal(Litr),
   Empty,
+
+  // 未绑定作用域的本地函数
+  LocalDecl (Box<LocalFuncInner>),
 
   // .运算符
   Property  (Box<PropDecl>),
@@ -130,7 +144,6 @@ pub struct BufDecl {
 
 
 /// 变量或字面量
-#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,
@@ -187,20 +200,20 @@ impl Litr {
 
 
 /// 针对函数的枚举
-#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Executable {
-  Local(Box<LocalFunc>),             // 脚本内的定义
+  Local(LocalFunc),     // 脚本内的定义
   Extern(Box<ExternFunc>),           // 脚本使用extern获取的函数
-  Native(extern fn(usize, *const Litr)-> Litr) // runtime提供的函数 
+  Native(fn(Vec<Litr>)-> Litr) // runtime提供的函数 
 }
 
-/// 插件是没有Statements和Scope的，不需要对此repr(C)
+
+/// 本地定义函数
 #[derive(Debug, Clone)]
-pub struct LocalFunc {
+pub struct LocalFuncInner {
   pub argdecl: Vec<(Interned, KsType)>, 
   pub exec: Statements,
-  pub scope: *mut Scope
+  pub scope: Scope
 }
 
 /// 插件只有一个Native类型
@@ -222,7 +235,6 @@ pub enum KsType {
 }
 
 
-#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Buf {
   U8(Vec<u8>),

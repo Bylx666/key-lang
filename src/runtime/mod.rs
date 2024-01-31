@@ -3,12 +3,14 @@
 
 use crate::ast::*;
 use crate::intern::{intern, Interned};
-use crate::allocated::leak;
 use std::collections::HashMap;
-use std::f32::consts::E;
 use std::mem::transmute;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize,self};
+use std::ptr::NonNull;
+use std::ops::{Deref,DerefMut};
 
+mod gc;
+pub use gc::LocalFunc;
 mod io;
 
 
@@ -20,6 +22,13 @@ pub fn err(s:&str)-> ! {
   panic!("{} 运行时({})", s, unsafe{LINE})
 }
 
+#[derive(Debug)]
+pub struct Module {
+  pub imports: Vec<ModDef>,
+  pub export: ModDef
+}
+
+
 /// 一个运行时作用域
 /// 
 /// run函数需要mut因为需要跟踪行数
@@ -27,16 +36,47 @@ pub fn err(s:&str)-> ! {
 /// return_to是用来标志一个函数是否返回过了。
 /// 如果没返回，Some()里就是返回值要写入的指针
 #[derive(Debug)]
-pub struct Scope {
+pub struct ScopeInner {
   /// 父作用域
-  parent: Option<*mut Scope>,
+  parent: Option<Scope>,
   /// 返回值指针
   return_to: *mut Option<*mut Litr>,
   /// (类型名,值)
   structs: Vec<(Interned, KsType)>,
   /// (变量名,值)
   vars: Vec<(Interned, Litr)>,
-  mods: *mut Vec<ModDef>
+  /// 导入和导出的模块指针
+  mods: *mut Module,
+  /// 引用计数
+  count: AtomicUsize
+}
+
+
+/// 作用域指针
+#[derive(Debug, Clone, Copy)]
+pub struct Scope {
+  pub p:NonNull<ScopeInner>
+}
+impl Scope {
+  pub fn new(s:ScopeInner)-> Self {
+    Scope {
+      p: NonNull::new(Box::into_raw(Box::new(s))).unwrap()
+    }
+  }
+  pub fn uninit()-> Self {
+    Scope {p: NonNull::dangling()}
+  }
+}
+impl Deref for Scope {
+  type Target = ScopeInner;
+  fn deref(&self) -> &Self::Target {
+    unsafe {self.p.as_ref()}
+  }
+}
+impl DerefMut for Scope {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    unsafe {self.p.as_mut()}
+  }
 }
 
 impl Scope {
@@ -75,28 +115,37 @@ impl Scope {
       }
       Let(a)=> {
         let mut v = self.calc(&a.val);
-        // 为函数声明绑定作用域
-        if let Litr::Func(f) = &mut v {
-          if let Executable::Local(local) = &mut **f {
-            local.scope = self as *mut Scope;
-          }
-        }
         // 不检查变量是否存在是因为寻找变量的行为是反向的
         self.vars.push((a.id, v));
       }
       Block(s)=> {
-        let mut scope = Scope {
-          parent:Some(self),
+        let mut scope = Scope::new(ScopeInner {
+          parent:Some(*self),
           return_to: self.return_to,
           structs:Vec::new(),
           vars: Vec::with_capacity(16),
-          mods: self.mods
-        };
+          mods: self.mods,
+          count: AtomicUsize::new(0)
+        });
         scope.run(s);
       }
       Mod(m)=> {
         unsafe {
-          (*self.mods).push((**m).clone());
+          (*self.mods).imports.push((**m).clone());
+        }
+      }
+      Export(e)=> {
+        match &**e {
+          ExportDef::Func((id, f)) => {
+            let mut f = f.clone();
+            f.scope = *self;
+            let fp = LocalFunc::new(f);
+            // 导出函数则必须多增加一层引用计数，保证整个程序期间都不会被释放
+            fp.count_enc();
+            let exec = Executable::Local(fp);
+            self.vars.push((*id, Litr::Func(Box::new(exec.clone()))));
+            unsafe{(*self.mods).export.funcs.push((*id,exec))}
+          }
         }
       }
       Return(_)=> err("return语句不应被直接evil"),
@@ -111,15 +160,15 @@ impl Scope {
     // 将参数解析为参数列表
     let arg = self.calc(&call.args);
     let mut args = Vec::new();
-    if let Litr::Array(mut l) = arg {
-      args.append(&mut *l);
+    if let Litr::Array(l) = arg {
+      args = *l;
     }else {
       args.push(arg);
     }
     if let Litr::Func(exec) = targ {
       use Executable::*;
       match *exec {
-        Native(f)=> f(args.len(), args.as_ptr()),
+        Native(f)=> f(args),
         Local(f)=> self.call_local(&f, args),
         Extern(f)=> self.call_extern(&f, args)
       }
@@ -131,20 +180,22 @@ impl Scope {
   pub fn call_local(&mut self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
     // 将传入参数按定义参数数量放入作用域
     let mut vars = Vec::with_capacity(16);
-    for (i, (name,ty)) in f.argdecl.iter().enumerate() {
-      let arg = args.get(i).unwrap_or(&Litr::Uninit).clone();
+    let mut args = args.into_iter();
+    for  (name,ty) in f.argdecl.iter() {
+      let arg = args.next().unwrap_or(Litr::Uninit);
       vars.push((*name,arg))
     }
 
     let mut ret = Litr::Uninit;
     let mut return_to = Some(&mut ret as *mut Litr);
-    let mut scope = Scope {
+    let mut scope = Scope::new(ScopeInner {
       parent:Some(f.scope),
       return_to:&mut return_to,
       structs:Vec::new(),
       vars,
-      mods: self.mods
-    };
+      mods: self.mods,
+      count: AtomicUsize::new(0)
+    });
     scope.run(&f.exec);
     ret
   }
@@ -201,14 +252,15 @@ impl Scope {
 
   /// 在作用域找一个变量
   pub fn var(&mut self, s:Interned)-> &mut Litr {
-    for (p, v) in self.vars.iter_mut().rev() {
+    let inner = &mut (**self);
+    for (p, v) in inner.vars.iter_mut().rev() {
       if *p == s {
         return v;
       }
     }
-    if let Some(parent) = self.parent {
-      let d = unsafe {&mut *parent};
-      return d.var(s);
+
+    if let Some(parent) = &mut inner.parent {
+      return parent.var(s);
     }
     err(&format!("无法找到变量 '{}'", s.str()));
   }
@@ -228,6 +280,13 @@ impl Scope {
           litr.clone()
         };
         return ret;
+      }
+
+      Expr::LocalDecl(local)=> {
+        let mut f = (**local).clone();
+        f.scope = *self;
+        let exec = Executable::Local(LocalFunc::new(f));
+        Litr::Func(Box::new(exec))
       }
 
       Expr::Binary(bin)=> {
@@ -555,17 +614,20 @@ impl Scope {
         let modname = acc.left;
         let funcname = acc.right;
         unsafe {
-          for def in (*self.mods).iter() {
+          for def in (*self.mods).imports.iter() {
             if def.name == modname {
               for (id, func) in def.funcs.iter() {
                 if *id == funcname {
+                  // 模块导出的函数必定不能回收
+                  // 因此使用模块函数不需要考虑其回收
                   return Litr::Func(Box::new(func.clone()));
                 }
               }
+              err(&format!("模块'{}'中没有'{}'函数",modname,funcname))
             }
           }
+          err(&format!("当前作用域没有'{}'模块",modname))
         }
-        err(&format!("模块'{}'中没有'{}'函数",modname,funcname))
       }
 
       Expr::Empty => err("得到空表达式"),
@@ -576,24 +638,38 @@ impl Scope {
 }
 
 
+#[derive(Debug)]
+pub struct RunResult {
+  pub returned: Litr,
+  pub exported: ModDef
+}
 
 /// 创建顶级作用域并运行一段程序
-pub fn run(s:&Statements)-> Litr {
+pub fn run(s:&Statements)-> RunResult {
   let mut top_ret = Litr::Uint(0);
-  let mut return_to = Some(&mut top_ret as *mut Litr);
-  let mut mods = Vec::new();
-  top_scope(&mut return_to, &mut mods).run(s);
-  top_ret
+  let mut return_to = &mut Some(&mut top_ret as *mut Litr);
+  let mut mods = Module { 
+    imports: Vec::new(), 
+    export: ModDef { name: intern(b"mod"), funcs: Vec::new() } 
+  };
+  top_scope(return_to, &mut mods).run(s);
+  RunResult { returned: top_ret, exported: mods.export }
 }
 
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Vec<ModDef>)-> Scope {
+pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Module)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"print"), 
     Litr::Func(Box::new(Executable::Native(io::print))))
   );
-  Scope {parent: None, return_to, structs:Vec::new(), vars, mods}
+  Scope::new(ScopeInner {
+    parent: None, 
+    return_to, 
+    structs:Vec::new(), 
+    vars, mods, 
+    count: AtomicUsize::new(0)
+  })
 }
 

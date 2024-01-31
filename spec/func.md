@@ -55,6 +55,8 @@ extern kernel32> {
 write(std(-11),"ok",2)
 
 // 创建一个线程
+// 警告，以下例子仅供示范，多线程读写同一变量是未定义行为！
+// 而且一个程序最多只能靠这种方式导出一个本地函数
 extern kernel32> {
   CreateThread(a,b,c,d,e,f)
   WaitForSingleObject(a,b)

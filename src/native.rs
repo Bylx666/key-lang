@@ -1,22 +1,22 @@
+//! 提供Native Module的接口
 
 use crate::{
   ast::{
     Executable, ModDef
   }, 
   c::Clib,
-  intern
+  intern::{intern, Interned}
 };
 use std::ptr::null_mut;
-use std::ffi::CString;
+use std::ffi::CStr;
 
 
-#[repr(C)]
 struct ExportedFuncs {
   len:usize,
   vec:*mut (*mut i8, Executable)
 }
 
-pub fn parse(name:&[u8],path:&[u8])-> Result<ModDef, String> {
+pub fn parse(name:Interned,path:&[u8])-> Result<ModDef, String> {
   let lib = Clib::load(path)?;
   let mut funcs = Vec::new();
   unsafe {
@@ -30,14 +30,14 @@ pub fn parse(name:&[u8],path:&[u8])-> Result<ModDef, String> {
       };
       let f:extern fn(*mut ExportedFuncs) = std::mem::transmute(f);
       f(&mut expfns);
-      funcs = Vec::from_raw_parts(expfns.vec, expfns.len, expfns.len).into_iter().map(|(cstr, exec)|{
-        let ident = intern(CString::from_raw(cstr).to_bytes());
+      funcs = std::slice::from_raw_parts(expfns.vec, expfns.len).iter().cloned().map(|(cstr, exec)|{
+        let ident = intern(CStr::from_ptr(cstr).to_bytes());
         (ident, exec)
       }).collect();
     }
   }
   Ok(ModDef{
-    name:intern(name),
+    name,
     funcs
   })
 }
