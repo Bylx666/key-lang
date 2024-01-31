@@ -1,3 +1,6 @@
-mod.test() {
-  print("ksm");
+{
+  let tt = "hhhh"
+  mod.test() {
+    log(tt);
+  }
 }

@@ -26,7 +26,6 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-
   // cstruct
   // 基本的语句好像还没实现完呢
   // let & some = 20 显式指定指针变量
@@ -40,7 +39,6 @@ fn main()-> ExitCode {
   // evil
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
-  // LocalFunc的gc还没进行测试
 
   intern::init();
   let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());

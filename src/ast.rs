@@ -4,11 +4,10 @@
 //! 
 //! Native模块只支持了Rust，所以不需要repr(C)
 
-pub use crate::runtime::LocalFunc;
+pub use crate::runtime::{LocalFunc,Scope,ScopeInner};
 
 use std::collections::HashMap;
 use crate::intern::Interned;
-use crate::runtime::{Scope, ScopeInner};
 
 /// 语句列表
 #[derive(Debug, Clone, Default)]

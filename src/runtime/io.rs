@@ -3,7 +3,7 @@ use crate::ast::{
   Stmt, Litr
 };
 
-pub fn print(args:Vec<Litr>)-> Litr {
+pub fn log(args:Vec<Litr>)-> Litr {
   println!("{:?}", args);
   Litr::Uninit
   // if let Litr::Str(p) = p {

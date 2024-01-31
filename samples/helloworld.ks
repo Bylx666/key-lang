@@ -1,8 +1,7 @@
-mod D:\code\rs\key-lang\samples\testmod.ks> mymod;
 
-mymod-.test("testeeee");
 
-mod.f(a) {
-  print(a)
+{
+  mod D:\code\rs\key-lang\samples\testmod.ks> mymod;
 }
-f(114)
+mymod-.test();
+

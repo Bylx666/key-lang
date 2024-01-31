@@ -1,3 +1,6 @@
+//! Gc的实现依赖于本地函数对作用域的引用计数
+//! 
+//! 因此为本地函数实现引用计数控制就是Gc行为本身
 
 use std::{ops::{Deref, DerefMut}, ptr::NonNull};
 use crate::ast::LocalFuncInner;
@@ -7,8 +10,10 @@ use std::sync::atomic::Ordering;
 
 /// 针对垃圾回收实现的本地函数指针
 /// 
-/// 需要在其drop前手动增加和减少其对应作用域的引用计数
-#[derive(Debug)]
+/// 需要手动增加和减少其对应作用域的引用计数
+/// 
+/// 作用域后于函数释放，因此你不可能依靠其自动析构来帮你检测和释放
+#[derive(Debug, Clone)]
 pub struct LocalFunc {
   /// pointer，
   /// 不要pub这玩意，外部用起来会感觉很乱
@@ -16,6 +21,8 @@ pub struct LocalFunc {
 }
 impl LocalFunc {
   /// 将绑定过作用域的本地函数包装到指针里
+  /// 
+  /// 此行为会自动增加一层引用计数
   pub fn new(f:LocalFuncInner)-> Self {
     let p = LocalFunc{
       p: NonNull::new(Box::into_raw(Box::new(f))).unwrap()
@@ -24,6 +31,8 @@ impl LocalFunc {
     p
   }
   /// 增加一层引用计数
+  /// 
+  /// 只有在定义函数和复制(赋值，传参，传列表之类的)行为时会调用一次
   pub fn count_enc(&self) {
     unsafe{
       let f = self.p.as_ref();
@@ -39,6 +48,8 @@ impl LocalFunc {
     }
   }
   /// 减少一层引用计数
+  /// 
+  /// 在作用域结束时会为其所有定义的函数调用一次
   pub fn count_dec(&self) {
     unsafe{
       let f = self.p.as_ref();
@@ -51,6 +62,13 @@ impl LocalFunc {
           break;
         }
       }
+    }
+  }
+  /// 作用域后于函数释放，因此你不可能依靠其自动析构来帮你检测和释放，
+  /// 只能手动啦
+  pub fn drop(&mut self) {
+    unsafe{
+      std::ptr::drop_in_place(self.p.as_ptr());
     }
   }
 }
@@ -66,41 +84,3 @@ impl DerefMut for LocalFunc {
     unsafe {self.p.as_mut()}
   }
 }
-
-impl Clone for LocalFunc {
-  fn clone(&self) -> Self {
-    self.count_enc();
-    LocalFunc {
-      p: self.p.clone()
-    }
-  }
-}
-
-// impl Drop for LocalFunc {
-//   fn drop(&mut self) {
-//     // 减少一层引用计数
-//     self.count_dec();
-//     use std::ptr::drop_in_place;
-//     unsafe{
-//       let mut scope = self.scope;
-//       // 当前作用域无引用时直接回收函数定义的内存
-//       if scope.count.load(Ordering::Relaxed) == 0 {
-//         drop_in_place(self.p.as_ptr());
-//       }
-//       loop {
-//         if scope.count.load(Ordering::Relaxed) == 0 {
-//           drop_in_place(scope.p.as_ptr());
-//           if let Some(prt) = scope.parent {
-//             scope = prt;
-//           }else {
-//             break;
-//           }
-//         }else {
-//           // 子作用域计数非零，则父作用域计数必定非0
-//           break;
-//         }
-//       }
-//     }
-//   }
-// }
-

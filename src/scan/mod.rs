@@ -467,7 +467,7 @@ impl Scanner<'_> {
           if let Expr::LocalDecl(f) = val {
             return Stmt::Export(Box::new(ExportDef::Func((id, (*f).clone()))));
           }
-          self.err("模块只能导出函数类型")
+          self.err("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
         }
         unreachable!();
       },
