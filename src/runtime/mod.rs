@@ -8,11 +8,12 @@ use std::collections::HashMap;
 use std::mem::transmute;
 use std::sync::atomic::{AtomicUsize,self};
 use std::ptr::NonNull;
-use std::ops::{Deref,DerefMut};
 
 mod gc;
 pub use gc::LocalFunc;
 mod io;
+mod calc;
+mod externer;
 
 
 /// 运行期追踪行号
@@ -72,13 +73,13 @@ impl Scope {
     Scope {ptr: NonNull::dangling()}
   }
 }
-impl Deref for Scope {
+impl std::ops::Deref for Scope {
   type Target = ScopeInner;
   fn deref(&self) -> &Self::Target {
     unsafe {self.ptr.as_ref()}
   }
 }
-impl DerefMut for Scope {
+impl std::ops::DerefMut for Scope {
   fn deref_mut(&mut self) -> &mut Self::Target {
     unsafe {self.ptr.as_mut()}
   }
@@ -134,6 +135,10 @@ impl Scope {
     use Stmt::*;
     match code {
       Expression(e)=> {
+        // 如果你只是在一行里空放了一个变量就不会做任何事
+        if let Expr::Variant(_)=&**e {
+          return;
+        }
         self.calc(e);
       }
       Let(a)=> {
@@ -178,29 +183,42 @@ impl Scope {
 
   /// 调用一个函数
   pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
-    let targ = self.calc(&call.targ);
-
     // 将参数解析为参数列表
     let arg = self.calc(&call.args);
     let mut args = Vec::new();
-    if let Litr::Array(l) = arg {
+    if let Litr::List(l) = arg {
       args = *l;
     }else {
       args.push(arg);
     }
+
+    // 如果是直接对变量调用则不需要使用calc函数
+    let mut targ_mayclone = Litr::Uninit;
+    let targ = match &call.targ {
+      Expr::Variant(id)=> {
+        unsafe{&*(self.var(*id) as *mut Litr)}
+      }
+      Expr::Literal(l)=> {
+        l
+      }
+      _=> {
+        targ_mayclone = self.calc(&call.targ);
+        &targ_mayclone
+      }
+    };
     if let Litr::Func(exec) = targ {
       use Executable::*;
-      match *exec {
+      return match &**exec {
         Native(f)=> f(args),
         Local(f)=> self.call_local(&f, args),
         Extern(f)=> self.call_extern(&f, args)
       }
     }
-    else {err(&format!("'{:?}' 不是一个函数", targ))}
+    err(&format!("'{:?}' 不是一个函数", targ))
   }
 
   /// 调用本地定义的函数
-  pub fn call_local(&mut self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
+  pub fn call_local(&self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
     // 将传入参数按定义参数数量放入作用域
     let mut vars = Vec::with_capacity(16);
     let mut args = args.into_iter();
@@ -224,53 +242,8 @@ impl Scope {
   }
 
   /// 调用extern函数
-  pub fn call_extern(&mut self, f:&ExternFunc, args:Vec<Litr>)-> Litr {
-    use crate::extern_agent::translate;
-    let len = f.argdecl.len();
-    let mut args = args.into_iter();
-
-    macro_rules! impl_arg {
-      {$(
-        $n:literal $($arg:ident)*
-      )*} => {
-        match len {
-          $(
-            $n => {
-              let callable:extern fn($($arg:usize,)*)-> usize = unsafe {transmute(f.ptr)};
-              let mut eargs = [0usize;$n];
-              eargs.iter_mut().enumerate().for_each(|(i,p)| {
-                if let Some(v) = args.next() {
-                  let transed = translate(v).unwrap_or_else(|e|err(&e));
-                  *p = transed
-                }
-              });
-              let [$($arg,)*] = eargs;
-              let ret = callable($($arg,)*);
-              Litr::Uint(ret)
-            }
-          )*
-          _=> {err(&format!("extern函数不支持{}位参数", len))}
-        }
-      }
-    }
-    impl_arg!{
-      0
-      1  a
-      2  a b
-      3  a b c
-      4  a b c d
-      5  a b c d e 
-      6  a b c d e f 
-      7  a b c d e f g
-      8  a b c d e f g h
-      9  a b c d e f g h i 
-      10 a b c d e f g h i j
-      11 a b c d e f g h i j k
-      12 a b c d e f g h i j k l
-      13 a b c d e f g h i j k l m
-      14 a b c d e f g h i j k l m n
-      15 a b c d e f g h i j k l m n o
-    }
+  pub fn call_extern(&self, f:&ExternFunc, args:Vec<Litr>)-> Litr {
+    externer::call_extern(self,f,args)
   }
 
   /// 在作用域找一个变量
@@ -291,383 +264,12 @@ impl Scope {
 
   /// 在此作用域计算表达式的值
   /// 
-  /// 会将变量计算成实际值
-  /// 
   /// 调用此函数必定会复制原内容
+  /// 
+  /// 因此在calc前手动判断表达式是否为变量就能少复制一次了
   pub fn calc(&mut self, e:&Expr)-> Litr {
-    use Litr::*;
-    match e {
-      Expr::Call(c)=> self.call(c),
-
-      Expr::Literal(litr)=> {
-        let mut ret = if let Variant(id) = litr {
-          self.var(*id).clone()
-        }else {
-          litr.clone()
-        };
-        // 对于本地函数的复制行为，需要增加其引用计数
-        if let Litr::Func(p) = &ret {
-          if let Executable::Local(f) = &**p {
-            f.count_enc();
-          }
-        }
-        return ret;
-      }
-
-      Expr::LocalDecl(local)=> {
-        let mut f = (**local).clone();
-        f.scope = *self;
-        // LocalFunc::new会自己增加一层引用计数
-        let exec = Executable::Local(LocalFunc::new(f));
-        Litr::Func(Box::new(exec))
-      }
-
-      Expr::Binary(bin)=> {
-        /// 二元运算中普通数字的戏份
-        macro_rules! impl_num {
-          ($pan:literal $op:tt) => {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            impl_num!($pan,left,right $op)
-          }};
-          ($pan:literal $op:tt $n:tt)=> {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            if match right {
-              Int(r) => r == 0,
-              Uint(r) => r == 0,
-              Float(r) => r == 0.0,
-              _=> false
-            } {err("除数必须非0")}
-            impl_num!($pan,left,right $op)
-          }};
-          ($pan:literal,$l:ident,$r:ident $op:tt) => {{
-            match ($l, $r) {
-              (Int(l),Int(r))=> Int(l $op r),
-              (Uint(l),Uint(r))=> Uint(l $op r),
-              (Uint(l),Int(r))=> Uint(l $op r as usize),
-              (Float(l),Float(r))=> Float(l $op r),
-              (Float(l),Int(r))=> Float(l $op r as f64),
-              _=> err($pan)
-            }
-          }};
-        }
-
-        /// 二元运算中无符号数的戏份
-        macro_rules! impl_unsigned {
-          ($pan:literal $op:tt) => {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            match (left, right) {
-              (Uint(l), Uint(r))=> Uint(l $op r),
-              (Uint(l), Int(r))=> Uint(l $op r as usize),
-              _=> err($pan)
-            }
-          }};
-        }
-
-        /// 数字修改并赋值
-        macro_rules! impl_num_assign {
-          ($o:tt) => {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            if let Expr::Literal(Variant(id)) = bin.left {
-              // 将Int自动转为对应类型
-              let n = match (left, right) {
-                (Uint(l), Uint(r))=> Uint(l $o r),
-                (Uint(l), Int(r))=> Uint(l $o r as usize),
-                (Int(l), Int(r))=> Int(l $o r),
-                (Float(l), Float(r))=> Float(l $o r),
-                (Float(l), Int(r))=> Float(l $o r as f64),
-                _=> panic!("运算并赋值的左右类型不同 运行时({})", unsafe{LINE})
-              };
-              *self.var(id) = n;
-              return Uninit;
-            }
-            err("只能为变量赋值。");
-          }};
-        }
-
-        // 无符号数修改并赋值
-        macro_rules! impl_unsigned_assign {
-          ($op:tt) => {{
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            if let Expr::Literal(Variant(id)) = bin.left {
-              let line = unsafe{LINE};
-              // 数字默认为Int，所以所有数字类型安置Int自动转换
-              let n = match (left, right) {
-                (Uint(l), Uint(r))=> Uint(l $op r),
-                (Uint(l), Int(r))=> Uint(l $op r as usize),
-                _=> panic!("按位运算并赋值只允许无符号数 运行时({})", line)
-              };
-              *self.var(id) = n;
-              return Uninit;
-            }
-            err("只能为变量赋值。");
-          }};
-        }
-
-        /// 比大小宏
-        /// 
-        /// 故意要求传入left和right是为了列表比较时能拿到更新后的left right
-        macro_rules! impl_ord {
-          ($o:tt) => {{
-            let mut left = self.calc(&bin.left);
-            let mut right = self.calc(&bin.right);
-            impl_ord!($o,left,right)
-          }};
-          ($o:tt,$l:expr,$r:expr) => {{
-            // 将整数同化为Int
-            if let Uint(n) = $l {
-              $l = Int(n as isize)
-            }
-            if let Uint(n) = $r {
-              $r = Int(n as isize)
-            }
-
-            let b = match ($l, $r) {
-              (Uint(l),Uint(r))=> l $o r,
-              (Int(l), Int(r))=> l $o r,
-              (Float(l), Float(r))=> l $o r,
-              (Int(l), Float(r))=> (l as f64) $o r,
-              (Float(l), Int(r))=> l $o r as f64,
-              (Str(l), Str(r))=> l $o r,
-              (Bool(l), Bool(r))=> l $o r,
-              (Buffer(l), Buffer(r))=> {
-                use Buf::*;
-                match ( *l,*r ) {
-                  (U8(l),U8(r))=> l $o r,
-                  (U16(l),U16(r))=> l $o r,
-                  (U32(l),U32(r))=> l $o r,
-                  (U64(l),U64(r))=> l $o r,
-                  (I8(l),I8(r))=> l $o r,
-                  (I16(l),I16(r))=> l $o r,
-                  (I32(l),I32(r))=> l $o r,
-                  (I64(l),I64(r))=> l $o r,
-                  (F32(l),F32(r))=> l $o r,
-                  (F64(l),F64(r))=> l $o r,
-                  _=> false
-                }
-              },
-              _=> false
-            };
-            b
-          }};
-        }
-
-        /// 逻辑符
-        macro_rules! impl_logic {
-          ($o:tt) => {{
-            let mut left = self.calc(&bin.left);
-            let mut right = self.calc(&bin.right);
-            // 先把uninit同化成false
-            if let Uninit = left {
-              left = Bool(false)
-            }
-            if let Uninit = right {
-              right = Bool(false)
-            }
-
-            match (left, right) {
-              (Bool(l), Bool(r))=> Bool(l $o r),
-              _=> err("逻辑运算符两边必须都为Bool")
-            }
-          }};
-        }
-
-        match &*bin.op {
-          // 数字
-          b"+" => {
-            // 字符加法
-            let left = self.calc(&bin.left);
-            let right = self.calc(&bin.right);
-            if let Str(mut s) = left {
-              let r = right.str();
-              s.push_str(&r);
-              return Str(s);
-            }
-            impl_num!("相加类型不同",left,right +)
-          },
-          b"-" => impl_num!("相减类型不同" -),
-          b"*" => impl_num!("相乘类型不同" *),
-          b"%" => impl_num!("求余类型不同" %),
-          b"/" => impl_num!("相除类型不同" / 0),
-
-          // unsigned
-          b"<<" => impl_unsigned!("左移需要左值无符号" <<),
-          b">>" => impl_unsigned!("右移需要左值无符号" >>),
-          b"&" => impl_unsigned!("&需要左值无符号" &),
-          b"^" => impl_unsigned!("^需要左值无符号" ^),
-          b"|" => impl_unsigned!("|需要左值无符号" |),
-
-          // 赋值
-          b"=" => {
-            let right = self.calc(&bin.right);
-            if let Expr::Literal(Variant(id)) = bin.left {
-              *self.var(id) = right;
-            }
-            return Uninit;
-          }
-          b"+=" => impl_num_assign!(+),
-          b"-=" => impl_num_assign!(-),
-          b"*=" => impl_num_assign!(*),
-          b"/=" => impl_num_assign!(/),
-          b"%=" => impl_num_assign!(%),
-
-          b"&=" => impl_unsigned_assign!(&),
-          b"^=" => impl_unsigned_assign!(^),
-          b"|=" => impl_unsigned_assign!(|),
-          b"<<=" => impl_unsigned_assign!(<<),
-          b">>=" => impl_unsigned_assign!(>>),
-
-          // 比较
-          b"==" => {
-            let mut left = self.calc(&bin.left);
-            let mut right = self.calc(&bin.right);
-            // 列表类型只能用==比较
-            if let Array(l) = left {
-              if let Array(r) = right {
-                let b = l.into_iter().zip(r.into_iter()).all(|(mut l,mut r)| {
-                  impl_ord!(==,l,r)
-                });
-                Bool(b)
-              }else {
-                Bool(false)
-              }
-            }
-            else {
-              Bool(impl_ord!(==,left,right))
-            }
-          }
-          b"!=" => Bool(impl_ord!(!=)),
-          b">=" => Bool(impl_ord!(>=)),
-          b"<=" => Bool(impl_ord!(<=)),
-          b">" => Bool(impl_ord!(>)),
-          b"<" => Bool(impl_ord!(<)),
-
-          // 逻辑
-          b"&&" => impl_logic!(&&),
-          b"||" => impl_logic!(||),
-
-          // 解析,运算符
-          b"," => {
-            let left = self.calc(&bin.left);
-            // 允许空右值
-            if let Expr::Empty = bin.right {
-              if let Array(_) = left {
-                return left;
-              }else {
-                return Array(Box::new(vec![left]));
-              }
-            }
-            // 有右值的情况
-            let right = self.calc(&bin.right);
-            if let Array(mut o) = left {
-              o.push(right);
-              Array(o)
-            }else {
-              Array(Box::new(vec![left, right]))
-            }
-          }
-          _=> err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
-        }
-      }
-
-      Expr::Unary(una)=> {
-        let right = self.calc(&una.right);
-        match una.op {
-          b'-'=> {
-            match right {
-              Int(n)=> Int(-n),
-              Float(n)=> Float(-n),
-              _=> err("负号只能用在有符号数")
-            }
-          }
-          b'!'=> {
-            match right {
-              Bool(b)=> Bool(!b),
-              Int(n)=> Int(!n),
-              Uint(n)=> Uint(!n),
-              Uninit => Bool(true),
-              _=> err("!运算符只能用于整数和Bool")
-            }
-          }_=>Uninit
-        }
-      }
-
-      Expr::Buffer(decl)=> {
-        let expr = &decl.expr;
-        // Buffer是由Array构造的
-        let vec = {
-          if let Expr::Empty = expr {
-            Vec::new()
-          }else {
-            let l = self.calc(expr);
-            if let Array(vptr) = l {
-              *vptr
-            }else {
-              vec![l]
-            }
-          }
-        };
-
-        use Buf::*;
-        /// 匹配Buffer类型
-        macro_rules! impl_num {($t:ty,$e:expr) => {{
-          let mut v = Vec::<$t>::new();
-          for l in vec.into_iter() {
-            match l {
-              Int(n)=> v.push(n as $t),
-              Uint(n)=> v.push(n as $t),
-              Float(n)=> v.push(n as $t),
-              _=> v.push(0.0 as $t)
-            }
-          }
-          return Buffer(Box::new($e(v)));
-        }}}
-
-        let ty = &*decl.ty;
-        match ty {
-          b"u8"=> impl_num!(u8,U8),
-          b"u16"=> impl_num!(u16,U16),
-          b"u32"=> impl_num!(u32,U32),
-          b"u64"=> impl_num!(u64,U64),
-          b"i8"=> impl_num!(i8,I8),
-          b"i16"=> impl_num!(i16,I16),
-          b"i32"=> impl_num!(i32,I32),
-          b"i64"=> impl_num!(i64,I64),
-          b"f32"=> impl_num!(f32,F32),
-          b"f64"=> impl_num!(f64,F64),
-          _=> err("未知的Buffer类型")
-        }
-      }
-
-      Expr::ModFuncAcc(acc)=> {
-        let modname = acc.left;
-        let funcname = acc.right;
-        unsafe {
-          for def in (*self.mods).imports.iter() {
-            if def.name == modname {
-              for (id, func) in def.funcs.iter() {
-                if *id == funcname {
-                  // 模块导出的函数必定不能回收
-                  // 因此使用模块函数不需要考虑其回收
-                  return Litr::Func(Box::new(func.clone()));
-                }
-              }
-              err(&format!("模块'{}'中没有'{}'函数",modname,funcname))
-            }
-          }
-          err(&format!("当前作用域没有'{}'模块",modname))
-        }
-      }
-
-      Expr::Empty => err("得到空表达式"),
-      _=> err("算不出来 ")
-    }
+    calc::calc(self, e)
   }
-
 }
 
 

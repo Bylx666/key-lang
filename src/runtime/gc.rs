@@ -37,8 +37,10 @@ impl LocalFunc {
     unsafe{
       let f = self.p.as_ref();
       let mut scope = f.scope;
+      println!("enc:");
       loop {
         scope.count.fetch_add(1, Ordering::Relaxed);
+        println!("{}",scope.count.load(Ordering::Relaxed));
         if let Some(prt) = scope.parent {
           scope = prt;
         }else {
@@ -54,8 +56,10 @@ impl LocalFunc {
     unsafe{
       let f = self.p.as_ref();
       let mut scope = f.scope;
+      println!("dec:");
       loop {
         scope.count.fetch_sub(1, Ordering::Relaxed);
+        println!("{}",scope.count.load(Ordering::Relaxed));
         if let Some(prt) = scope.parent {
           scope = prt;
         }else {

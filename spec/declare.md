@@ -12,22 +12,22 @@ let f = 0l;                 // Float (不加"."时不可省略l)
 let b = true;               // Bool  (true false)
 let str = "test";           // Str   (字符串字面量, 所见即所得)
 let str = `\n\rtest"`       // Str   (带转义的字符串, 字面量中有双引号就用这个)
-let vec = 2, 5, 6, 8;       // Array (叫作列表，任意类型)
-let vec = (2, 4, 6);        // Array (当个语法糖好了)
-let vec = (),(1,3),(2,4)    // Array (二维列表)
-let vec = 29, 8u, true, 26; // Array
-let vec = ["wq",0,"!"](a)   // Array
-let vec = [](a)             // Array (空列表)
-let vec = ();               // Array (空列表)
+let vec = 2, 5, 6, 8;       // List  (叫作列表，任意类型)
+let vec = (2, 4, 6);        // List  (当个语法糖好了)
+let vec = (),(1,3),(2,4)    // List  (二维列表)
+let vec = 29, 8u, true, 26; // List 
+let vec = ["wq",0,"!"](a)   // List 
+let vec = [](a)             // List  (空列表)
+let vec = ();               // List  (空列表)
 let buf = [2,5,8,0];        // Buffer(默认u8，叫作数组)
 let buf = 'Genshin{0F20}';  // Buffer(u8 {}内允许空格换行)
 let buf = [2, 3.4, 8.0](f64)// Buffer(f64)
 
 ```
 
-## array 问题
+## list 问题
 
-由于array是由,运算符生成的，如果你传参或列表第一个值是列表的话会被当作初始array，后续的值将推进第一个列表而不是创建列表。
+由于list是由,运算符生成的，如果你传参或列表第一个值是列表的话会被当作初始list，后续的值将推进第一个列表而不是创建列表。
 
 最简单的例子：以下行为是等价的。
 

@@ -75,9 +75,9 @@ pub enum ExportDef {
 /// 可以出现在任何右值的，expression表达式
 #[derive(Debug, Clone)]
 pub enum Expr {
-  // 直接值，跳脱expr递归的终点
-  Literal(Litr),
   Empty,
+  Literal(Litr),
+  Variant(Interned),
 
   // 未绑定作用域的本地函数
   LocalDecl (Box<LocalFuncInner>),
@@ -146,7 +146,7 @@ pub struct BufDecl {
 #[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,
-  Variant(Interned),
+  Ref    (*mut Litr),
 
   Int    (isize),
   Uint   (usize),
@@ -156,7 +156,7 @@ pub enum Litr {
   Func   (Box<Executable>), // extern和Func(){} 都属于Func直接表达式
   Str    (Box<String>),
   Buffer (Box<Buf>),
-  Array  (Box<Vec<Litr>>),
+  List  (Box<Vec<Litr>>),
   // Struct   {targ:Ident, cont:HashMap<Ident, Exprp>},    // 直接构建结构体
 }
 impl Litr {
@@ -165,6 +165,7 @@ impl Litr {
     use Litr::*;
     match self {
       Uninit => String::default(),
+      Ref(_)=> "<Reference>".to_string(),
       Int(n)=> n.to_string(),
       Uint(n)=> n.to_string(),
       Float(n)=> n.to_string(),
@@ -177,7 +178,7 @@ impl Litr {
         }
       }
       Str(s)=> (**s).clone(),
-      Array(a) => {
+      List(a) => {
         let mut iter = a.iter();
         let mut str = String::new();
         str.push_str("[");
@@ -191,8 +192,7 @@ impl Litr {
         str.push_str("]");
         str
       },
-      Buffer(b)=> format!("{:?}",b),
-      Variant(s)=> s.str().to_owned()
+      Buffer(b)=> format!("{:?}",b)
     }
   }
 }

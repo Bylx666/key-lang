@@ -48,7 +48,7 @@ pub fn kstype(s:&[u8])-> crate::ast::KsType {
     b"Float"=> Float(0.0),
     b"Bool"=> Bool(false),
     b"Str"=> Str(Box::default()),
-    b"Array"=> Array(Box::default()),
+    b"Array"=> List(Box::default()),
     b"Buffer"=> Buffer(Box::new(Buf::U8(Vec::new()))),
     b"Func"=> Func(Box::new(Executable::Extern(Box::new(ExternFunc { argdecl: Vec::new(), ptr: 0 })))),
     _=> {
