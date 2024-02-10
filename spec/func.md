@@ -64,7 +64,7 @@ extern kernel32> {
 let f(a) {
   print(a)
 }
-WaitForSingleObject(CreateThread(0,0,f,22,0,0),99999)
+WaitForSingleObject(CreateThread(,,f,22,,),99999)
 
 // 自定义dll
 extern C:\a\b.dll> {
@@ -126,3 +126,25 @@ let sth()
   return 20;
 ```
 可以使用冒号开头的语句代替return
+
+## 未绑定函数
+
+函数声明只有在运行时才会绑定作用域，未访问到的函数声明被称作"未绑定函数"。未绑定函数只有在第一次被运行到才会动态的绑定到当前作用域，而不会直接的绑定到定义处。
+
+```
+let out;
+let tmp = 666
+{
+  let tmp = 555
+  let a() {
+    log("a",tmp)
+    let b() log("b",tmp);
+    :b
+  }
+  out = a
+}
+let binded = out(); // b函数的声明在这里才被绑定
+binded(); // a 555 b 666
+```
+
+以上行为中，b函数

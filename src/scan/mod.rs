@@ -190,7 +190,7 @@ impl Scanner<'_> {
     while i < len {
       let cur = self.src[i];
       match cur {
-        b'%'|b'&'|b'*'|b'+'|b','|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
+        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
           i += 1;
         }
         _=> break
@@ -246,8 +246,6 @@ impl Scanner<'_> {
   }
 
   /// 匹配带括号的表达式(提升优先级和函数调用)
-  /// 
-  /// 参数这东西不管你传了几个，到最后都是一个Expr，神奇吧
   fn expr_group(&self)-> Expr {
     expr::group(self)
   }

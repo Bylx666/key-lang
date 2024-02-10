@@ -2,89 +2,99 @@
 //! 
 //! 因此为本地函数实现引用计数控制就是Gc行为本身
 
-use std::{ops::{Deref, DerefMut}, ptr::NonNull};
-use crate::ast::LocalFuncInner;
+use crate::ast::{LocalFuncRaw, LocalFunc};
 use super::ScopeInner;
 use std::sync::atomic::Ordering;
 
 
-/// 针对垃圾回收实现的本地函数指针
-/// 
-/// 需要手动增加和减少其对应作用域的引用计数
-/// 
-/// 作用域后于函数释放，因此你不可能依靠其自动析构来帮你检测和释放
-#[derive(Debug, Clone)]
-pub struct LocalFunc {
-  /// pointer，
-  /// 不要pub这玩意，外部用起来会感觉很乱
-  p:NonNull<LocalFuncInner>
+use std::sync::atomic::AtomicUsize;
+use super::Scope;
+
+/// 作用域的outlive引用计数系统
+#[derive(Debug, Default)]
+pub struct Outlives {
+  /// 该作用域定义函数生命周期被延长(被outlive)的次数
+  /// 
+  /// 若作用域结束时该值大于0就会等被延长函数生命周期结束后再回收
+  count: AtomicUsize,
+  /// 该作用域得到的延长了生命周期的函数列表
+  /// 
+  /// 在该作用域结束时会为列表中所有函数减少一层`count`
+  to_drop: Vec<LocalFunc>
 }
-impl LocalFunc {
-  /// 将绑定过作用域的本地函数包装到指针里
-  /// 
-  /// 此行为会自动增加一层引用计数
-  pub fn new(f:LocalFuncInner)-> Self {
-    let p = LocalFunc{
-      p: NonNull::new(Box::into_raw(Box::new(f))).unwrap()
-    };
-    p.count_enc();
-    p
-  }
-  /// 增加一层引用计数
-  /// 
-  /// 只有在定义函数和复制(赋值，传参，传列表之类的)行为时会调用一次
-  pub fn count_enc(&self) {
-    unsafe{
-      let f = self.p.as_ref();
-      let mut scope = f.scope;
-      println!("enc:");
-      loop {
-        scope.count.fetch_add(1, Ordering::Relaxed);
-        println!("{}",scope.count.load(Ordering::Relaxed));
-        if let Some(prt) = scope.parent {
-          scope = prt;
-        }else {
-          break;
-        }
-      }
-    }
-  }
-  /// 减少一层引用计数
-  /// 
-  /// 在作用域结束时会为其所有定义的函数调用一次
-  pub fn count_dec(&self) {
-    unsafe{
-      let f = self.p.as_ref();
-      let mut scope = f.scope;
-      println!("dec:");
-      loop {
-        scope.count.fetch_sub(1, Ordering::Relaxed);
-        println!("{}",scope.count.load(Ordering::Relaxed));
-        if let Some(prt) = scope.parent {
-          scope = prt;
-        }else {
-          break;
-        }
-      }
-    }
-  }
-  /// 作用域后于函数释放，因此你不可能依靠其自动析构来帮你检测和释放，
-  /// 只能手动啦
-  pub fn drop(&mut self) {
-    unsafe{
-      std::ptr::drop_in_place(self.p.as_ptr());
+impl Outlives {
+  pub fn new()-> Self {
+    Outlives {
+      count:AtomicUsize::new(0),
+      to_drop:Vec::new()
     }
   }
 }
 
-impl Deref for LocalFunc {
-  type Target = LocalFuncInner;
-  fn deref(&self) -> &Self::Target {
-    unsafe {self.p.as_ref()}
+/// 将函数生命周期延长至目标作用域结束
+/// 
+/// 目标作用域如果在函数定义处的作用域内就无效果(因为生命周期根本不会变长)
+/// 
+/// 为此函数定义处的作用域和其所有父作用域增加一次引用计数
+/// 
+/// 并为outlive的目标作用域托付管理一层该函数的引用计数
+pub fn outlive_to(f:LocalFunc, mut to:Scope) {
+  if to.subscope_of(f.scope) {
+    return;
+  };
+  println!("enc:");
+  outlive_static(f.scope);
+  to.outlives.to_drop.push(f);
+}
+
+/// 将作用域生命周期延长至永久
+/// 
+/// 只会增加一层作用域的引用计数，但不会托付to_drop
+/// 
+/// 程序期间不会回收此作用域，目前只用于ks模块导出函数
+pub fn outlive_static(mut scope:Scope) {
+  loop {
+    scope.outlives.count.fetch_add(1, Ordering::Relaxed);
+    println!("{}",scope.outlives.count.load(Ordering::Relaxed));
+    if let Some(prt) = scope.parent {
+      scope = prt;
+    }else {
+      break;
+    }
   }
 }
-impl DerefMut for LocalFunc {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    unsafe {self.p.as_mut()}
+
+
+/// 作用域结束时使用此函数来回收作用域中引用到的所有函数
+/// 
+/// 若引用计数为0就回收作用域
+pub fn scope_end(mut scope:Scope) {
+  /// 作用域减少一层引用计数
+  #[inline]
+  fn sub_count(mut scope: Scope) {
+    println!("sub:");
+    loop {
+      let prev = scope.outlives.count.fetch_sub(1, Ordering::Relaxed);
+      if prev == 1 {
+        unsafe{ std::ptr::drop_in_place(scope.ptr) }
+      }
+      println!("{}",scope.outlives.count.load(Ordering::Relaxed));
+      if let Some(prt) = scope.parent {
+        scope = prt;
+      }else {
+        break;
+      }
+    }
+  }
+
+  let mut to_drop = std::mem::take(&mut scope.outlives.to_drop);
+  for f in to_drop.into_iter() {
+    let scope = f.scope;
+    sub_count(scope);
+  }
+  // 回收作用域本身
+  // 此作用域必定比被outlive的函数生命周期短，因此不会和outlive的函数回收冲突
+  if scope.outlives.count.load(Ordering::Relaxed) == 0 {
+    unsafe { std::ptr::drop_in_place(scope.ptr) }
   }
 }

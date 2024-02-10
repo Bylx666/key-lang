@@ -2,7 +2,7 @@ use super::{
   Scanner, charts, intern
 };
 use crate::ast::{
-  Expr, Litr, UnaryDecl, Buf, BufDecl
+  Expr, Litr, UnaryDecl
 };
 pub fn literal(this:&Scanner)-> Expr {
   let first = this.cur();
@@ -166,7 +166,7 @@ pub fn literal(this:&Scanner)-> Expr {
       vec.extend_from_slice(&this.src[start..i]);
 
       this.set_i(i+1);
-      return Expr::Literal(Litr::Buffer(Box::new(Buf::U8(vec))));
+      return Expr::Literal(Litr::Buffer(Box::new(vec)));
     }
 
     // 解析数字字面量
@@ -216,44 +216,32 @@ pub fn literal(this:&Scanner)-> Expr {
       parsed!(isize, Int);
     },
 
-    // 解析Buffer
+    // 解析List
     b'['=> {
       this.next();
       this.spaces();
 
-      let expr = this.expr();
-
-      this.spaces();
+      let mut ls = Vec::new();
+      loop {
+        let e = this.expr();
+        if let Expr::Empty = e {
+          break;
+        }
+        ls.push(e);
+        this.spaces();
+        if this.cur() != b',' {
+          break;
+        }
+        this.next();
+      }
       if this.i() >= this.src.len() || this.cur() != b']' {
+        if this.cur() == b',' {
+          this.err("列表不允许空元素");
+        }
         this.err("未闭合的右括号']'。");
       }
       this.next();
-
-      // 判断类型
-      let ty = if this.cur() == b'(' {
-        this.next();
-        let id = this.ident();
-        if let Some(t) = id {
-          if this.cur() != b')' {
-            this.err("Buffer类型声明右括号缺失")
-          }
-          this.next();
-          if t == b"any" {
-            if let Expr::Empty = expr {
-              return Expr::Literal(Litr::List(Box::new(Vec::new())));
-            }
-            return expr;
-          }
-          t
-        }else {
-          this.err("Buffer的类型声明为空")
-        }
-      }else {
-        b"u8"
-      };
-      // Empty有机会被传进运行时，将被解析为空数组
-      // 不在这里返回空数组是因为类型需要在运行时解析
-      Expr::Buffer(Box::new(BufDecl{expr,ty:ty.to_vec()}))
+      Expr::List(Box::new(ls))
     }
 
     // 解析字面量或变量

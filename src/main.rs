@@ -25,24 +25,28 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // todo 重做逗号，在scan期就分干净
-  // todo LocalFunc in Array and obj
-  // 引用计数烂完了目前，复制行为分干净再处理吧
+  // todo LocalFunc add_count
+  // LocalFunc in Array and obj
+  // 传参,return,=,array,obj,struct,
+  // for i {func(){i}}内部的i是否正确
 
-  // cstruct
+  // struct obj
+  // ^ 内的函数引用计数
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式
-  // 通过变量构造buffer
   // 连等似乎可以直接runtime里if let
   // 基本的语句好像还没实现完呢
-  // let & some = 20 显式指定指针变量
+  // let & some = 20 -> usize 显式指定指针变量
+  // let * some = 20 -> *some == 20 常量const
+  // ..[参数展开]
   // buffer的from_raw实现记得区分rust和clone版
   // 模块：用户模块user mod和底层模块native mod
   // mem::swap
   // extern to_raw_args
   // is
-  // ?var
   // evil
+  // throw catch
+  // todo()
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
 

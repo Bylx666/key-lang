@@ -1,11 +1,12 @@
 //! 注释都在mod.rs里，这没有注解
 
 use crate::ast::{
-  Litr, Expr, Executable, Buf
+  Litr, Expr, Executable
 };
 use super::{
-  Scope, err, LocalFunc
+  Scope, err, LocalFunc, gc
 };
+
 
 pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
   use Litr::*;
@@ -26,10 +27,9 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
     Expr::Variant(id)=> return this.var(*id).clone(),
 
     Expr::LocalDecl(local)=> {
-      let mut f = (**local).clone();
-      f.scope = *this;
+      let mut f = &**local;
       // LocalFunc::new会自己增加一层引用计数
-      let exec = Executable::Local(LocalFunc::new(f));
+      let exec = Executable::Local(Box::new(LocalFunc::new(f, *this)));
       Litr::Func(Box::new(exec))
     }
 
@@ -135,7 +135,7 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
             (Float(l), Int(r))=> l $o r as f64,
             (Float(l), Float(r))=> l $o r,
             (Bool(l), Bool(r))=> l $o r,
-            _=> false
+            _=> err("比较两侧类型不同。")
           }
         }
 
@@ -154,32 +154,28 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
           Expr::Variant(id)=> unsafe{&*(this.var(*id) as *mut Litr)}
           Expr::Literal(l)=> l,
           _=> {
-            r_mayclone = this.calc(&bin.left);
+            r_mayclone = this.calc(&bin.right);
             &r_mayclone
           }
         };
         Bool(match (l, r) {
           (Str(l), Str(r))=> l $o r,
-          (List(l), List(r))=> todo!(),
-          (Buffer(l), Buffer(r))=> {
-            use Buf::*;
-            match ( &**l,&**r ) {
-              (U8(l),U8(r))=> l $o r,
-              (U16(l),U16(r))=> l $o r,
-              (U32(l),U32(r))=> l $o r,
-              (U64(l),U64(r))=> l $o r,
-              (I8(l),I8(r))=> l $o r,
-              (I16(l),I16(r))=> l $o r,
-              (I32(l),I32(r))=> l $o r,
-              (I64(l),I64(r))=> l $o r,
-              (F32(l),F32(r))=> l $o r,
-              (F64(l),F64(r))=> l $o r,
-              _=> err("Buffer类型不同无法比较")
+          (List(l), List(r))=> {
+            let len = l.len();
+            if len != r.len() {
+              err("列表长度不同，无法比较");
             }
+            let mut b = true;
+            for i in 0..len {
+              if !match_basic(&l[i],&r[i]) {
+                b = false;
+                break;
+              };
+            }
+            b
           },
-          _=> {
-            match_basic(l,r)
-          }
+          (Buffer(l), Buffer(r))=> l $o r,
+          _=> match_basic(l,r)
         })
       }}}
 
@@ -206,7 +202,7 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       match &*bin.op {
         // 数字
         b"+" => {
-          // 字符加法
+          // 尽可能使用字符引用，避免复制字符(calc函数必定复制)
           let mut left_mayclone = Litr::Uninit;
           let left = match &bin.left {
             Expr::Variant(id)=> unsafe{&*(this.var(*id) as *mut Litr)},
@@ -252,10 +248,33 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
 
         // 赋值
         b"=" => {
+          let left = match bin.left {
+            Expr::Variant(id)=> {
+              let l = this.var(id);
+              (unsafe{&mut *(l as *mut Litr)})
+            },
+            _=> return Uninit
+          };
           let right = this.calc(&bin.right);
-          if let Expr::Variant(id) = bin.left {
-            *this.var(id) = right;
-          }
+          // 为函数定义处增加一层引用计数
+          // match &right {
+          //   Litr::Func(f)=> {
+          //     if let Executable::Local(f) = &**f {
+          //       gc::outlive_to((**f).clone(),target_scope);
+          //     }
+          //   }
+          //   Litr::List(l)=> {
+          //     l.iter().for_each(|f|if let Litr::Func(f) = f {
+          //       if let Executable::Local(f) = &**f {
+          //         gc::outlive_to((**f).clone(),target_scope);
+          //       }
+          //     })
+          //   }
+          //   _=> {
+          //     todo!("Obj和Struct仍未实装");
+          //   }
+          // }
+          *left = right;
           return Uninit;
         }
         b"+=" => impl_num_assign!(+),
@@ -282,32 +301,6 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
         b"&&" => impl_logic!(&&),
         b"||" => impl_logic!(||),
 
-        // 解析,运算符
-        b"," => {todo!()
-          // // 允许空右值
-          // if let Expr::Empty = bin.right {
-          //   if let List(l) = bin.left {
-          //     return bin.left;
-          //   }else {
-          //     return List(Box::new(vec![left]));
-          //   }
-          // }
-          // if let Expr::Literal(l) = &mut bin.left {
-          //   if let Litr::List(ls) = l {
-          //     let p = unsafe{Box::from_raw(ls)};
-          //     p.push(value)
-          //   }
-          // }
-
-          // // 有右值的情况
-          // let right = this.calc(&bin.right);
-          // if let List(mut o) = left {
-          //   o.push(right);
-          //   List(o)
-          // }else {
-          //   List(Box::new(vec![left, right]))
-          // }
-        }
         _=> err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
       }
     }
@@ -334,51 +327,10 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       }
     }
 
-    Expr::Buffer(decl)=> {
-      let expr = &decl.expr;
-      // Buffer是由Array构造的
-      let vec = {
-        if let Expr::Empty = expr {
-          Vec::new()
-        }else {
-          let l = this.calc(expr);
-          if let List(vptr) = l {
-            *vptr
-          }else {
-            vec![l]
-          }
-        }
-      };
-
-      use Buf::*;
-      /// 匹配Buffer类型
-      macro_rules! impl_num {($t:ty,$e:expr) => {{
-        let mut v = Vec::<$t>::new();
-        for l in vec.into_iter() {
-          match l {
-            Int(n)=> v.push(n as $t),
-            Uint(n)=> v.push(n as $t),
-            Float(n)=> v.push(n as $t),
-            _=> v.push(0.0 as $t)
-          }
-        }
-        return Buffer(Box::new($e(v)));
-      }}}
-
-      let ty = &*decl.ty;
-      match ty {
-        b"u8"=> impl_num!(u8,U8),
-        b"u16"=> impl_num!(u16,U16),
-        b"u32"=> impl_num!(u32,U32),
-        b"u64"=> impl_num!(u64,U64),
-        b"i8"=> impl_num!(i8,I8),
-        b"i16"=> impl_num!(i16,I16),
-        b"i32"=> impl_num!(i32,I32),
-        b"i64"=> impl_num!(i64,I64),
-        b"f32"=> impl_num!(f32,F32),
-        b"f64"=> impl_num!(f64,F64),
-        _=> err("未知的Buffer类型")
-      }
+    Expr::List(v)=> {
+      Litr::List(Box::new(
+        v.iter().map(|e| this.calc(e)).collect()
+      ))
     }
 
     Expr::ModFuncAcc(acc)=> {

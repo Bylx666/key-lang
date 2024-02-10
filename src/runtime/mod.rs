@@ -5,12 +5,11 @@
 use crate::ast::*;
 use crate::intern::{intern, Interned};
 use std::collections::HashMap;
-use std::mem::transmute;
 use std::sync::atomic::{AtomicUsize,self};
 use std::ptr::NonNull;
 
 mod gc;
-pub use gc::LocalFunc;
+pub use gc::Outlives;
 mod io;
 mod calc;
 mod externer;
@@ -49,8 +48,8 @@ pub struct ScopeInner {
   vars: Vec<(Interned, Litr)>,
   /// 导入和导出的模块指针
   mods: *mut Module,
-  /// 引用计数
-  count: AtomicUsize
+  /// 该作用域生命周期会被outlive的函数延长
+  outlives: gc::Outlives
 }
 
 
@@ -61,27 +60,39 @@ pub struct ScopeInner {
 /// 在结构体里写自己的指针应该是未定义行为
 #[derive(Debug, Clone, Copy)]
 pub struct Scope {
-  ptr:NonNull<ScopeInner>
+  pub ptr:*mut ScopeInner
 }
 impl Scope {
   pub fn new(s:ScopeInner)-> Self {
     Scope {
-      ptr: NonNull::new(Box::into_raw(Box::new(s))).unwrap()
+      ptr: Box::into_raw(Box::new(s))
     }
   }
-  pub fn uninit()-> Self {
-    Scope {ptr: NonNull::dangling()}
+  /// 确认此作用域是否为一个作用域的子作用域
+  pub fn subscope_of(&self,upper:Scope)-> bool {
+    let mut scope = *self;
+    let upper = upper.ptr;
+    if scope.ptr == upper {
+      return true;
+    }
+    while let Some(parent) = scope.parent {
+      if parent.ptr == upper {
+        return true;
+      }
+      scope = parent;
+    }
+    false
   }
 }
 impl std::ops::Deref for Scope {
   type Target = ScopeInner;
   fn deref(&self) -> &Self::Target {
-    unsafe {self.ptr.as_ref()}
+    unsafe {&*self.ptr}
   }
 }
 impl std::ops::DerefMut for Scope {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    unsafe {self.ptr.as_mut()}
+    unsafe {&mut *self.ptr}
   }
 }
 
@@ -107,27 +118,13 @@ impl Scope {
           }
           *self.return_to = None;
         }
+        gc::scope_end(self);
         return;
       }
 
       self.evil(sm);
     }
-    // 到这里作用域已经结束了，开始计算引用计数并释放无用函数声明和作用域
-    for (_,litr) in &mut self.vars {
-      if let Litr::Func(f) = litr {
-        if let Executable::Local(local) = &mut **f {
-          local.count_dec();
-          if local.scope.count.load(atomic::Ordering::Relaxed) == 0 {
-            local.drop();
-            // 在块作用域中的块作用域中递归运行时，上层作用域仍未结束，
-            // 不能在此此处直接把上层作用域释放
-          }
-        }
-      }
-    }
-    if self.count.load(atomic::Ordering::Relaxed) == 0 {
-      unsafe {std::ptr::drop_in_place(self.ptr.as_ptr())}
-    }
+    gc::scope_end(self);
   }
 
   /// 在作用域解析一个语句
@@ -153,7 +150,7 @@ impl Scope {
           structs:Vec::new(),
           vars: Vec::with_capacity(16),
           mods: self.mods,
-          count: AtomicUsize::new(0)
+          outlives: Outlives::new()
         });
         scope.run(s);
       }
@@ -165,12 +162,10 @@ impl Scope {
       Export(e)=> {
         match &**e {
           ExportDef::Func((id, f)) => {
-            let mut f = f.clone();
-            f.scope = *self;
-            let fp = LocalFunc::new(f);
-            // 导出函数则必须多增加一层引用计数，保证整个程序期间都不会被释放
-            fp.count_enc();
-            let exec = Executable::Local(fp);
+            let f = LocalFunc::new(f,*self);
+            // 将函数定义处的作用域生命周期永久延长
+            gc::outlive_static(f.scope);
+            let exec = Executable::Local(Box::new(f));
             self.vars.push((*id, Litr::Func(Box::new(exec.clone()))));
             unsafe{(*self.mods).export.funcs.push((*id,exec))}
           }
@@ -184,23 +179,13 @@ impl Scope {
   /// 调用一个函数
   pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
     // 将参数解析为参数列表
-    let arg = self.calc(&call.args);
-    let mut args = Vec::new();
-    if let Litr::List(l) = arg {
-      args = *l;
-    }else {
-      args.push(arg);
-    }
+    let args = call.args.iter().map(|e|self.calc(e)).collect();
 
     // 如果是直接对变量调用则不需要使用calc函数
     let mut targ_mayclone = Litr::Uninit;
     let targ = match &call.targ {
-      Expr::Variant(id)=> {
-        unsafe{&*(self.var(*id) as *mut Litr)}
-      }
-      Expr::Literal(l)=> {
-        l
-      }
+      Expr::Variant(id)=> unsafe{&*(self.var(*id) as *mut Litr)}
+      Expr::Literal(l)=> l,
       _=> {
         targ_mayclone = self.calc(&call.targ);
         &targ_mayclone
@@ -235,7 +220,7 @@ impl Scope {
       structs:Vec::new(),
       vars,
       mods: self.mods,
-      count: AtomicUsize::new(0)
+      outlives: Outlives::new()
     });
     scope.run(&f.exec);
     ret
@@ -257,6 +242,22 @@ impl Scope {
 
     if let Some(parent) = &mut inner.parent {
       return parent.var(s);
+    }
+    err(&format!("无法找到变量 '{}'", s.str()));
+  }
+
+  /// 在作用域找一个变量并返回其所在作用域
+  pub fn var_with_scope(&mut self, s:Interned)-> (&mut Litr, Scope) {
+    let scope = self.clone();
+    let inner = &mut (**self);
+    for (p, v) in inner.vars.iter_mut().rev() {
+      if *p == s {
+        return (v,scope);
+      }
+    }
+
+    if let Some(parent) = &mut inner.parent {
+      return parent.var_with_scope(s);
     }
     err(&format!("无法找到变量 '{}'", s.str()));
   }
@@ -304,7 +305,7 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Module)-> Scope {
     return_to, 
     structs:Vec::new(), 
     vars, mods, 
-    count: AtomicUsize::new(0)
+    outlives: Outlives::new()
   })
 }
 

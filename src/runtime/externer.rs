@@ -37,7 +37,7 @@ macro_rules! translate_local_impl {{
   match len {
     $(
       $n => {
-        unsafe {EXEC = Some($local.clone());}
+        unsafe {EXEC = Some(*$local.clone());}
         Ok($fname as usize)
       },
     )*
@@ -50,24 +50,12 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
   use Litr::*;
   match arg {
     Uninit=> Ok(0),
-    Ref(p)=> todo!(),
     Bool(n)=> Ok(n as usize),
     Int(n)=> Ok(n as usize),
     Uint(n)=> Ok(n),
     Float(n)=> (unsafe{Ok(transmute(n))}),
     Str(p)=> Ok((*p).as_ptr() as usize),
-    Buffer(v)=> {
-      macro_rules! mat {($($t:ident)*)=>{{
-        use crate::ast::Buf::*;
-        match &*v {
-          $(
-            $t(v)=> Ok(v.as_ptr() as usize),
-          )*
-        }
-      }}}
-
-      mat!(U8 U16 U32 U64 I8 I16 I32 I64 F32 F64)
-    }
+    Buffer(v)=> Ok(v.as_ptr() as usize),
     Func(p)=> {
       let exec = unsafe {&*p};
       use crate::ast::Executable::*;

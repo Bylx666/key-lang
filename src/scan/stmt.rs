@@ -110,8 +110,7 @@ fn letting(this:&Scanner)-> Stmt {
       // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
       // 其生命周期应当和Statements相同，绑定作用域时将被复制
       // 绑定作用域行为发生在runtime::Scope::calc
-      let scope = Scope::uninit();
-      let func = Box::new(LocalFuncInner { argdecl: args, exec, scope });
+      let func = Box::new(LocalFuncRaw { argdecl: args, exec });
       return Stmt::Let(Box::new(AssignDef {
         id, 
         val: Expr::LocalDecl(func)

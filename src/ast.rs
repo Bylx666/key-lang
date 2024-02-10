@@ -4,7 +4,7 @@
 //! 
 //! Native模块只支持了Rust，所以不需要repr(C)
 
-pub use crate::runtime::{LocalFunc,Scope,ScopeInner};
+pub use crate::runtime::Scope;
 
 use std::collections::HashMap;
 use crate::intern::Interned;
@@ -68,7 +68,7 @@ pub struct ModDef {
 
 #[derive(Debug, Clone)]
 pub enum ExportDef {
-  Func((Interned, LocalFuncInner))
+  Func((Interned, LocalFuncRaw))
 }
 
 
@@ -80,7 +80,7 @@ pub enum Expr {
   Variant(Interned),
 
   // 未绑定作用域的本地函数
-  LocalDecl (Box<LocalFuncInner>),
+  LocalDecl (Box<LocalFuncRaw>),
 
   // .运算符
   Property  (Box<PropDecl>),
@@ -93,8 +93,8 @@ pub enum Expr {
   // 调用函数
   Call      (Box<CallDecl>),
 
-  // 未处理的Buffer表达式
-  Buffer    (Box<BufDecl>),
+  // 列表表达式
+  List      (Box<Vec<Expr>>),
   Obj       (Box<ObjDecl>),
 
   // 一元运算 ! -
@@ -130,15 +130,8 @@ pub struct AccessDecl {
 
 #[derive(Debug, Clone)]
 pub struct CallDecl {
-  pub args: Expr,
+  pub args: Vec<Expr>,
   pub targ: Expr
-}
-
-/// Buffer declaration
-#[derive(Debug, Clone)]
-pub struct BufDecl {
-  pub expr: Expr,
-  pub ty: Vec<u8>
 }
 
 
@@ -146,7 +139,6 @@ pub struct BufDecl {
 #[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,
-  Ref    (*mut Litr),
 
   Int    (isize),
   Uint   (usize),
@@ -155,8 +147,8 @@ pub enum Litr {
 
   Func   (Box<Executable>), // extern和Func(){} 都属于Func直接表达式
   Str    (Box<String>),
-  Buffer (Box<Buf>),
-  List  (Box<Vec<Litr>>),
+  Buffer (Box<Vec<u8>>),
+  List   (Box<Vec<Litr>>),
   // Struct   {targ:Ident, cont:HashMap<Ident, Exprp>},    // 直接构建结构体
 }
 impl Litr {
@@ -165,7 +157,6 @@ impl Litr {
     use Litr::*;
     match self {
       Uninit => String::default(),
-      Ref(_)=> "<Reference>".to_string(),
       Int(n)=> n.to_string(),
       Uint(n)=> n.to_string(),
       Float(n)=> n.to_string(),
@@ -201,18 +192,40 @@ impl Litr {
 /// 针对函数的枚举
 #[derive(Debug, Clone)]
 pub enum Executable {
-  Local(LocalFunc),     // 脚本内的定义
-  Extern(Box<ExternFunc>),           // 脚本使用extern获取的函数
+  Local(Box<LocalFunc>),     // 脚本内的定义
+  Extern(Box<ExternFunc>),   // 脚本使用extern获取的函数
   Native(fn(Vec<Litr>)-> Litr) // runtime提供的函数 
 }
 
 
-/// 本地定义函数
+/// 未绑定作用域的本地定义函数
 #[derive(Debug, Clone)]
-pub struct LocalFuncInner {
+pub struct LocalFuncRaw {
   pub argdecl: Vec<(Interned, KsType)>, 
-  pub exec: Statements,
+  pub exec: Statements
+}
+
+/// 本地函数指针
+#[derive(Debug, Clone)]
+pub struct LocalFunc {
+  /// pointer
+  pub ptr:*const LocalFuncRaw,
   pub scope: Scope
+}
+impl LocalFunc {
+  /// 将本地函数定义和作用域绑定
+  pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
+    LocalFunc{
+      ptr,
+      scope
+    }
+  }
+}
+impl std::ops::Deref for LocalFunc {
+  type Target = LocalFuncRaw;
+  fn deref(&self) -> &Self::Target {
+    unsafe {&*self.ptr}
+  }
 }
 
 /// 插件只有一个Native类型
@@ -233,20 +246,6 @@ pub enum KsType {
   Custom(Interned)
 }
 
-
-#[derive(Debug, Clone)]
-pub enum Buf {
-  U8(Vec<u8>),
-  U16(Vec<u16>),
-  U32(Vec<u32>),
-  U64(Vec<u64>),
-  I8(Vec<i8>),
-  I16(Vec<i16>),
-  I32(Vec<i32>),
-  I64(Vec<i64>),
-  F32(Vec<f32>),
-  F64(Vec<f64>)
-}
 
 #[derive(Debug, Clone)]
 pub struct ObjDecl (

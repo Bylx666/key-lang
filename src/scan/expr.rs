@@ -38,9 +38,6 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
 
       let last_expr = expr_stack.pop().unwrap();
       let second_last_expr = expr_stack.pop().unwrap();
-      if let Expr::Empty = second_last_expr {
-        this.err("二元运算符未填写左值")
-      }
 
       // 如果是模块或类的调用就不用Binary
       macro_rules! impl_access {($op:literal, $ty:ident)=>{{
@@ -66,17 +63,35 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
       })));
     }
 
-    // 运算符没有优先级则说明匹配结束
-    if precedence == 0 {
+    // 如果没匹配到运算符就说明匹配结束
+    if op.len() == 0 {
       return expr_stack.pop().unwrap();
     }
 
     // 如果此运算符是括号就代表call
     if op == b"(" {
-      let callee = expr_stack.pop().unwrap();
-      let args = this.expr_group();
+      let targ = expr_stack.pop().unwrap();
+      this.next();
+      this.spaces();
+      let mut args = Vec::new();
+      loop {
+        let e = this.expr();
+        // 调用参数留空就当作uninit
+        args.push(if let Expr::Empty = e {
+          Expr::Literal(Litr::Uninit)
+        }else {e});
+        this.spaces();
+        if this.cur() != b',' {
+          break;
+        }
+        this.next();
+      }
+      if this.i() >= this.src.len() || this.cur() != b')' {
+        this.err("未闭合的右括号')'。");
+      }
+      this.next();
       expr_stack.push(Expr::Call(Box::new(CallDecl{
-        args, targ:callee
+        args, targ
       })));
       continue;
     };
@@ -104,7 +119,7 @@ pub fn group(this:&Scanner)-> Expr {
   // 空括号作为空列表处理
   if this.cur() == b')' {
     this.next();
-    return Expr::Literal(Litr::List(Box::new(Vec::new())));
+    return Expr::Literal(Litr::Uninit);
   }
 
   let expr = this.expr();
