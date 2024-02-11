@@ -30,6 +30,12 @@ let out;
     log(tmp)
   }
   a()
+  {
+    let in = a
+  }
   out = a
 }
 out()
+
+mod D:\code\rs\key-lang\samples\testmod.ks> mym
+mym-.test()

@@ -1,6 +1,6 @@
-//! Gc的实现依赖于本地函数对作用域的引用计数
+//! 垃圾回收使用Outlive算法实现
 //! 
-//! 因此为本地函数实现引用计数控制就是Gc行为本身
+//! 具体思路见Outlives结构
 
 use crate::ast::{LocalFuncRaw, LocalFunc};
 use super::ScopeInner;
@@ -20,13 +20,18 @@ pub struct Outlives {
   /// 该作用域得到的延长了生命周期的函数列表
   /// 
   /// 在该作用域结束时会为列表中所有函数减少一层`count`
-  to_drop: Vec<LocalFunc>
+  to_drop: Vec<LocalFunc>,
+  /// 在回收函数定义处的作用域时有可能会提前回收未结束的作用域
+  /// 
+  /// 此标志用来标识作用域是否执行完成
+  ended: bool
 }
 impl Outlives {
   pub fn new()-> Self {
     Outlives {
       count:AtomicUsize::new(0),
-      to_drop:Vec::new()
+      to_drop:Vec::new(),
+      ended: false
     }
   }
 }
@@ -42,7 +47,6 @@ pub fn outlive_to(f:LocalFunc, mut to:Scope) {
   if to.subscope_of(f.scope) {
     return;
   };
-  println!("enc:");
   outlive_static(f.scope);
   to.outlives.to_drop.push(f);
 }
@@ -55,7 +59,6 @@ pub fn outlive_to(f:LocalFunc, mut to:Scope) {
 pub fn outlive_static(mut scope:Scope) {
   loop {
     scope.outlives.count.fetch_add(1, Ordering::Relaxed);
-    println!("{}",scope.outlives.count.load(Ordering::Relaxed));
     if let Some(prt) = scope.parent {
       scope = prt;
     }else {
@@ -69,16 +72,20 @@ pub fn outlive_static(mut scope:Scope) {
 /// 
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
+  // 回收作用域本身
+  scope.outlives.ended = true;
+  if scope.outlives.count.load(Ordering::Relaxed) == 0 {
+    unsafe { std::ptr::drop_in_place(scope.ptr) }
+  }
+
   /// 作用域减少一层引用计数
   #[inline]
   fn sub_count(mut scope: Scope) {
-    println!("sub:");
     loop {
       let prev = scope.outlives.count.fetch_sub(1, Ordering::Relaxed);
-      if prev == 1 {
+      if prev == 1 && scope.outlives.ended {
         unsafe{ std::ptr::drop_in_place(scope.ptr) }
       }
-      println!("{}",scope.outlives.count.load(Ordering::Relaxed));
       if let Some(prt) = scope.parent {
         scope = prt;
       }else {
@@ -91,10 +98,5 @@ pub fn scope_end(mut scope:Scope) {
   for f in to_drop.into_iter() {
     let scope = f.scope;
     sub_count(scope);
-  }
-  // 回收作用域本身
-  // 此作用域必定比被outlive的函数生命周期短，因此不会和outlive的函数回收冲突
-  if scope.outlives.count.load(Ordering::Relaxed) == 0 {
-    unsafe { std::ptr::drop_in_place(scope.ptr) }
   }
 }

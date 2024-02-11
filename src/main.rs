@@ -25,12 +25,12 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // todo LocalFunc add_count
-  // LocalFunc in Array and obj
-  // 传参,return,=,array,obj,struct,
+  // LocalFunc in Array and obj，要不整个大一统outlive函数
+  // struct obj
+  // 传进Native函数时也要outlive
+  // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
 
-  // struct obj
   // ^ 内的函数引用计数
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式

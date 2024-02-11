@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize,self};
 use std::ptr::NonNull;
 
-mod gc;
-pub use gc::Outlives;
+mod outlive;
+pub use outlive::Outlives;
 mod io;
 mod calc;
 mod externer;
@@ -49,7 +49,7 @@ pub struct ScopeInner {
   /// 导入和导出的模块指针
   mods: *mut Module,
   /// 该作用域生命周期会被outlive的函数延长
-  outlives: gc::Outlives
+  outlives: outlive::Outlives
 }
 
 
@@ -118,13 +118,13 @@ impl Scope {
           }
           *self.return_to = None;
         }
-        gc::scope_end(self);
+        outlive::scope_end(self);
         return;
       }
 
       self.evil(sm);
     }
-    gc::scope_end(self);
+    outlive::scope_end(self);
   }
 
   /// 在作用域解析一个语句
@@ -164,7 +164,7 @@ impl Scope {
           ExportDef::Func((id, f)) => {
             let f = LocalFunc::new(f,*self);
             // 将函数定义处的作用域生命周期永久延长
-            gc::outlive_static(f.scope);
+            outlive::outlive_static(f.scope);
             let exec = Executable::Local(Box::new(f));
             self.vars.push((*id, Litr::Func(Box::new(exec.clone()))));
             unsafe{(*self.mods).export.funcs.push((*id,exec))}

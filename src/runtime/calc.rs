@@ -4,7 +4,7 @@ use crate::ast::{
   Litr, Expr, Executable
 };
 use super::{
-  Scope, err, LocalFunc, gc
+  Scope, err, LocalFunc, outlive
 };
 
 
@@ -248,32 +248,32 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
 
         // 赋值
         b"=" => {
-          let left = match bin.left {
+          let (left,target_scope) = match bin.left {
             Expr::Variant(id)=> {
-              let l = this.var(id);
-              (unsafe{&mut *(l as *mut Litr)})
+              let v = this.var_with_scope(id);
+              (unsafe{&mut *(v.0 as *mut Litr)}, v.1)
             },
             _=> return Uninit
           };
           let right = this.calc(&bin.right);
           // 为函数定义处增加一层引用计数
-          // match &right {
-          //   Litr::Func(f)=> {
-          //     if let Executable::Local(f) = &**f {
-          //       gc::outlive_to((**f).clone(),target_scope);
-          //     }
-          //   }
-          //   Litr::List(l)=> {
-          //     l.iter().for_each(|f|if let Litr::Func(f) = f {
-          //       if let Executable::Local(f) = &**f {
-          //         gc::outlive_to((**f).clone(),target_scope);
-          //       }
-          //     })
-          //   }
-          //   _=> {
-          //     todo!("Obj和Struct仍未实装");
-          //   }
-          // }
+          match &right {
+            Litr::Func(f)=> {
+              if let Executable::Local(f) = &**f {
+                outlive::outlive_to((**f).clone(),target_scope);
+              }
+            }
+            Litr::List(l)=> {
+              l.iter().for_each(|f|if let Litr::Func(f) = f {
+                if let Executable::Local(f) = &**f {
+                  outlive::outlive_to((**f).clone(),target_scope);
+                }
+              })
+            }
+            _=> {
+              // todo!("Obj和Struct仍未实装");
+            }
+          }
           *left = right;
           return Uninit;
         }
@@ -341,8 +341,6 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
           if def.name == modname {
             for (id, func) in def.funcs.iter() {
               if *id == funcname {
-                // 模块导出的函数必定不能回收
-                // 因此使用模块函数不需要考虑其回收
                 return Litr::Func(Box::new(func.clone()));
               }
             }
