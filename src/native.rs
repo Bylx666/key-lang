@@ -2,7 +2,7 @@
 
 use crate::{
   ast::{
-    Executable, ModDef
+    Function, ModDef
   }, 
   c::Clib,
   intern::{intern, Interned}
@@ -24,7 +24,7 @@ pub fn parse(name:Interned,path:&[u8])-> Result<ModDef, String> {
       f(&mut expfns);
       funcs = expfns.into_iter().map(|(id, exec)|{
         let ident = intern(&id);
-        (ident, Executable::Native(exec))
+        (ident, Function::Native(exec))
       }).collect();
     }
   }

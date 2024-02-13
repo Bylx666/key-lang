@@ -58,7 +58,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     Buffer(v)=> Ok(v.as_ptr() as usize),
     Func(p)=> {
       let exec = unsafe {&*p};
-      use crate::ast::Executable::*;
+      use crate::ast::Function::*;
       match exec {
         Local(f)=> translate_local_impl! { f 
           0  agent0 ()
@@ -76,7 +76,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     }
     List(_)=> Err("列表类型不可作为C指针传递".to_string()),
     Obj=> Err("Ks对象不可作为C指针传递".to_string()),
-    Inst(_)=> Err("Ks实例不可作为C指针传递".to_string())
+    Inst(_)=> Err("Ks实例不可作为C指针传递".to_string()),
   }
 }
 

@@ -49,17 +49,17 @@ pub fn stmt(this:&Scanner)-> Stmt {
 
   let ident = this.ident();
   if let Some(id) = ident {
-    return match id {
+    match id {
       // 如果是关键词，就会让对应函数处理关键词之后的信息
-      b"let"=> letting(this),
+      b"let"=> Stmt::Let(letting(this)),
       b"extern"=> {externing(this);Stmt::Empty},
       b"return"=> returning(this),
-      b"class"=> classing(this),
+      b"class"=> Stmt::Class(classing(this)),
       b"mod"=> moding(this),
       _=> {
         let id = Expr::Variant(intern(id));
         let expr = Box::new(this.expr_with_left(id));
-        return Stmt::Expression(expr);
+        Stmt::Expression(expr)
       }
     }
   }else {
@@ -67,13 +67,13 @@ pub fn stmt(this:&Scanner)-> Stmt {
     if let Expr::Empty = expr {
       this.err(&format!("请输入一行正确的语句，'{}'并不合法", String::from_utf8_lossy(&[this.cur()])))
     }
-    return Stmt::Expression(Box::new(expr));
+    Stmt::Expression(Box::new(expr))
   }
 }
 
 
 /// 解析let关键词
-fn letting(this:&Scanner)-> Stmt {
+fn letting(this:&Scanner)-> Box<AssignDef> {
   this.spaces();
   let id = this.ident().unwrap_or_else(||this.err("let后需要标识符"));
   let id = intern(id);
@@ -88,9 +88,9 @@ fn letting(this:&Scanner)-> Stmt {
       if let Expr::Empty = val {
         this.err("无法为空气赋值")
       }
-      return Stmt::Let(Box::new(AssignDef {
+      return Box::new(AssignDef {
         id, val
-      }));
+      });
     }
     b'(' => {
       this.next();
@@ -111,15 +111,15 @@ fn letting(this:&Scanner)-> Stmt {
       // 其生命周期应当和Statements相同，绑定作用域时将被复制
       // 绑定作用域行为发生在runtime::Scope::calc
       let func = Box::new(LocalFuncRaw { argdecl: args, stmts });
-      return Stmt::Let(Box::new(AssignDef {
+      return Box::new(AssignDef {
         id, 
         val: Expr::LocalDecl(func)
-      }));
+      });
     }
     _ => {
-      return Stmt::Let(Box::new(AssignDef {
+      return Box::new(AssignDef {
         id, val:Expr::Literal(Litr::Uninit)
-      }));
+      });
     }
   }
 }
@@ -185,7 +185,7 @@ fn externing(this:&Scanner) {
       String::from_utf8_lossy(sym))));
     this.push(Stmt::Let(Box::new(AssignDef { 
       id:intern($id), 
-      val: Expr::Literal(Litr::Func(Box::new(Executable::Extern(Box::new(ExternFunc { 
+      val: Expr::Literal(Litr::Func(Box::new(Function::Extern(Box::new(ExternFunc { 
         argdecl, 
         ptr
       })))))
@@ -226,7 +226,7 @@ fn returning(this:&Scanner)-> Stmt {
 
 
 /// 解析类声明
-fn classing(this:&Scanner)-> Stmt {
+fn classing(this:&Scanner)-> Box<ClassDefRaw> {
   this.spaces();
   let id = this.ident().unwrap_or_else(||this.err("class后需要标识符"));
   this.spaces();
@@ -236,13 +236,11 @@ fn classing(this:&Scanner)-> Stmt {
   this.next();
 
   let mut props = Vec::new();
-  let mut pub_methods = Vec::new();
-  let mut priv_methods = Vec::new();
-  let mut pub_statics = Vec::new();
-  let mut priv_statics = Vec::new();
+  let mut methods = Vec::new();
+  let mut statics = Vec::new();
   loop {
     this.spaces();
-    let publiced = if this.cur() == b'>' {
+    let public = if this.cur() == b'>' {
       this.next();this.spaces();true
     }else {false};
     
@@ -273,25 +271,17 @@ fn classing(this:&Scanner)-> Stmt {
         Statements(vec![(this.line(), stmt)])
       };
 
-      let v = (intern(id), LocalFuncRaw{argdecl:args,stmts});
-      if publiced {
-        if is_method {
-          pub_methods.push(v)
-        }else {
-          pub_statics.push(v)
-        }
+      let v = ClassFuncRaw {name: intern(id), f:LocalFuncRaw{argdecl:args,stmts}, public};
+      if is_method {
+        methods.push(v);
       }else {
-        if is_method {
-          priv_methods.push(v)
-        }else {
-          priv_statics.push(v)
-        }
+        statics.push(v);
       }
     // 属性
     }else {
       let typ = this.typ();
       let v = ClassProp {
-        name: intern(id), typ, public:publiced
+        name: intern(id), typ, public
       };
       props.push(v);
     }
@@ -308,9 +298,9 @@ fn classing(this:&Scanner)-> Stmt {
     this.err("class大括号未闭合");
   }
   this.next();
-  Stmt::Class(Box::new(ClassDefRaw {
-    name:intern(id), props, pub_methods, pub_statics, priv_methods, priv_statics
-  }))
+  Box::new(ClassDefRaw {
+    name:intern(id), props, methods, statics
+  })
 }
 
 
@@ -321,17 +311,17 @@ fn moding(this:&Scanner)-> Stmt {
     b'.' => {
       this.next();
       // 套用let声明模板
-      let stmt = letting(this);
-      if let Stmt::Let(assign) = stmt {
-        let AssignDef { id, val } = *assign;
-        if let Expr::LocalDecl(f) = val {
-          return Stmt::Export(Box::new(ExportDef::Func((id, (*f).clone()))));
-        }
-        this.err("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
+      let asn = letting(this);
+      if let Expr::LocalDecl(f) = asn.val {
+        return Stmt::ExportFn(Box::new((asn.id, (*f).clone())));
       }
-      unreachable!();
+      this.err("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
     },
-    b':' => todo!(),
+    b':' => {
+      this.next();
+      let cls = classing(this);
+      return Stmt::ExportCls(cls);
+    }
     _=>{}
   };
   // 截取路径
@@ -341,7 +331,7 @@ fn moding(this:&Scanner)-> Stmt {
   let mut dot = 0;
   loop {
     if i >= len {
-      this.err("extern后需要 > 符号");
+      this.err("mod后需要 > 符号");
     }
     let cur = this.src[i];
     if cur == b'>' {

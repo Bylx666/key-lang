@@ -23,17 +23,8 @@
   a // corruption
 }`/
 
-class Test {
-  > a:Func
-  > new():Test {
-    c: 20
-  },
-  > .pubmet();
-  b
-  >c 
-  d
-  .met() {}
-}
-let p = Test::new()
+mod D:\code\rs\key-lang\samples\testmod.ks> mym
+let s = mym-:MyStruct::new();
+log(s)
+mym-:MyStruct::d(s);
 
-log(p)

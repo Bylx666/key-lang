@@ -53,8 +53,7 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
         }
       }}}
       impl_access!(b"-.",ModFuncAcc);
-      impl_access!(b"-:",ModStruAcc);
-      impl_access!(b"::",ImplAccess);
+      impl_access!(b"-:",ModClsAcc);
 
       expr_stack.push(Expr::Binary(Box::new(BinDecl { 
         left: second_last_expr, 

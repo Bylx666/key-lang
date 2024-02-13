@@ -25,8 +25,12 @@ fn main()-> ExitCode {
   //   }
   // }));
 
+  // todo public指针不太对
   // use和class应在scan期间解析完成
   // todo self是Scope中要定义的*mut class
+  // .#prop提示私有
+  // Class::method(self, x)
+  // class A = somemod-:Mod
   // struct obj
   // self calc优化
   // 基本类型的方法
@@ -58,7 +62,7 @@ fn main()-> ExitCode {
 
   intern::init();
   let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  println!("{scanned:?}");
+  // println!("{scanned:?}");
   let exit = runtime::run(&scanned);
   if let ast::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);

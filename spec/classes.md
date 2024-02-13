@@ -47,6 +47,24 @@ class MyClass {
 }
 MyClass::new().get_a() == "a"
 
+## 模块化
+
+mod: MyClass {
+  ...
+}
+
+只有\>前缀的成员才能被模块外访问。使用class而不是mod:时，>前缀无意义。
+```
+mod other.ks> mymod
+
+class A = mymod-:MyClass
+
+my_mod-:MyClass::some()
+
+let some = my_mod-:MyClass::some;
+some();
+```
+
 ## obj
 
 希望能和js的Object玩起来手感差不多

@@ -11,7 +11,9 @@ use std::ptr::NonNull;
 mod outlive;
 pub use outlive::Outlives;
 mod io;
+mod evil;
 mod calc;
+mod call;
 mod externer;
 
 
@@ -23,6 +25,8 @@ pub fn err(s:&str)-> ! {
   panic!("{} 运行时({})", s, unsafe{LINE})
 }
 
+// 是runtime单方面使用的，不需要定义到ast
+/// 当前Ks的模块
 #[derive(Debug)]
 pub struct Module {
   pub imports: Vec<ModDef>,
@@ -31,25 +35,22 @@ pub struct Module {
 
 
 /// 一个运行时作用域
-/// 
-/// run函数需要mut因为需要跟踪行数
-/// 
-/// return_to是用来标志一个函数是否返回过了。
-/// 如果没返回，Some()里就是返回值要写入的指针
 #[derive(Debug)]
 pub struct ScopeInner {
   /// 父作用域
-  parent: Option<Scope>,
+  pub parent: Option<Scope>,
   /// 返回值指针,None代表已返回
-  return_to: *mut Option<*mut Litr>,
+  pub return_to: *mut Option<*mut Litr>,
   /// (变量名,值)
-  vars: Vec<(Interned, Litr)>,
+  pub vars: Vec<(Interned, Litr)>,
   /// 类型声明
-  class_defs: Vec<ClassDef>,
+  pub class_defs: Vec<ClassDef>,
+  /// self指针
+  pub kself: *mut Instance,
   /// 导入和导出的模块指针
-  mods: *mut Module,
+  pub module: *mut Module,
   /// 该作用域生命周期会被outlive的函数延长
-  outlives: outlive::Outlives
+  pub outlives: outlive::Outlives
 }
 
 
@@ -129,117 +130,22 @@ impl Scope {
 
   /// 在作用域解析一个语句
   pub fn evil(&mut self, code:&Stmt) {
-    use Stmt::*;
-    match code {
-      // 只有表达式的语句
-      Expression(e)=> {
-        // 如果你只是在一行里空放了一个变量就不会做任何事
-        if let Expr::Variant(_)=&**e {
-          return;
-        }
-        self.calc(e);
-      }
-      // let语句
-      Let(a)=> {
-        let mut v = self.calc(&a.val);
-        // 不检查变量是否存在是因为寻找变量的行为是反向的
-        self.vars.push((a.id, v));
-      }
-      // 块语句
-      Block(s)=> {
-        let mut scope = Scope::new(ScopeInner {
-          parent:Some(*self),
-          return_to: self.return_to,
-          class_defs:Vec::new(),
-          vars: Vec::with_capacity(16),
-          mods: self.mods,
-          outlives: Outlives::new()
-        });
-        scope.run(s);
-      }
-      // 导入模块
-      Mod(m)=> {
-        unsafe {
-          (*self.mods).imports.push((**m).clone());
-        }
-      }
-      // 导出给自己的模块
-      Export(e)=> {
-        match &**e {
-          ExportDef::Func((id, f)) => {
-            let f = LocalFunc::new(f,*self);
-            // 将函数定义处的作用域生命周期永久延长
-            outlive::outlive_static(f.scope);
-            let exec = Executable::Local(Box::new(f));
-            self.vars.push((*id, Litr::Func(Box::new(exec.clone()))));
-            unsafe{(*self.mods).export.funcs.push((*id,exec))}
-          }
-        }
-      }
-      // 类型声明
-      Class(cls)=> {
-        let methods:Vec<(Interned, LocalFunc)> = cls.pub_methods.iter()
-          .chain(cls.priv_methods.iter())
-          .map(|v|(v.0, LocalFunc::new(&v.1, *self))).collect();
-        let statics:Vec<(Interned, LocalFunc)> = cls.pub_statics.iter()
-          .chain(cls.priv_statics.iter())
-          .map(|v|(v.0, LocalFunc::new(&v.1, *self))).collect();
-        let props = cls.props.clone();
-        self.class_defs.push(ClassDef {name:cls.name,props,statics,methods});
-      }
-      Return(_)=> err("return语句不应被直接evil"),
-      _=> {}
-    }
+    evil::evil(self, code)
   }
 
   /// 调用一个函数
   pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
-    // 将参数解析为参数列表
-    let args = call.args.iter().map(|e|self.calc(e)).collect();
-
-    // 如果是直接对变量调用则不需要使用calc函数
-    let mut targ_mayclone = Litr::Uninit;
-    let targ = match &call.targ {
-      Expr::Variant(id)=> unsafe{&*(self.var(*id) as *mut Litr)}
-      Expr::Literal(l)=> l,
-      _=> {
-        targ_mayclone = self.calc(&call.targ);
-        &targ_mayclone
-      }
-    };
-    if let Litr::Func(exec) = targ {
-      use Executable::*;
-      return match &**exec {
-        Native(f)=> f(args),
-        Local(f)=> self.call_local(&f, args),
-        Extern(f)=> self.call_extern(&f, args)
-      }
-    }
-    err(&format!("'{:?}' 不是一个函数", targ))
+    call::call(self, call)
   }
 
   /// 调用本地定义的函数
   pub fn call_local(&self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
-    // 将传入参数按定义参数数量放入作用域
-    let mut vars = Vec::with_capacity(16);
-    let mut args = args.into_iter();
-    for  (name,ty) in f.argdecl.iter() {
-      let arg = args.next().unwrap_or(Litr::Uninit);
-      vars.push((*name,arg))
-    }
+    call::call_local(self, f, args)
+  }
 
-    let mut ret = Litr::Uninit;
-    let mut return_to = Some(&mut ret as *mut Litr);
-    let mut scope = Scope::new(ScopeInner {
-      parent:Some(f.scope),
-      return_to:&mut return_to,
-      class_defs:Vec::new(),
-      vars,
-      mods: self.mods,
-      outlives: Outlives::new()
-    });
-    scope.run(&f.stmts);
-    ret
+  /// 调用method
+  pub fn call_method(&self, f:&LocalFunc, kself:*mut Instance, args:Vec<Litr>)-> Litr {
+    call::call_method(self, f, kself, args)
   }
 
   /// 调用extern函数
@@ -325,17 +231,20 @@ pub fn run(s:&Statements)-> RunResult {
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Module)-> Scope {
+pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
-    Litr::Func(Box::new(Executable::Native(io::log))))
+    Litr::Func(Box::new(Function::Native(io::log))))
   );
+
+  let cls = ClassDef{methods:Vec::new(),name:intern(b""),props:Vec::new(),statics:Vec::new(),module};
+  let mut kself = Instance {cls:&cls, v:[].into()};
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
     class_defs:Vec::new(), 
-    vars, mods, 
+    kself: &mut kself,
+    vars, module, 
     outlives: Outlives::new()
   })
 }
-
