@@ -1,8 +1,8 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::ast::{
-  Litr, Expr, Executable
-};
+use crate::{ast::{
+  Executable, Expr, Litr
+}, runtime::Instance};
 use super::{
   Scope, err, LocalFunc, outlive
 };
@@ -13,22 +13,12 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
   match e {
     Expr::Call(c)=> this.call(c),
 
-    Expr::Literal(litr)=> {
-      let ret = litr.clone();
-      // 对于本地函数的复制行为，需要增加其引用计数
-      // if let Litr::Func(p) = &ret {
-      //   if let Executable::Local(f) = &**p {
-      //     f.count_enc();
-      //   }
-      // }
-      return ret;
-    }
+    Expr::Literal(litr)=> litr.clone(),
 
     Expr::Variant(id)=> return this.var(*id).clone(),
 
     Expr::LocalDecl(local)=> {
       let mut f = &**local;
-      // LocalFunc::new会自己增加一层引用计数
       let exec = Executable::Local(Box::new(LocalFunc::new(f, *this)));
       Litr::Func(Box::new(exec))
     }
@@ -333,6 +323,22 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       ))
     }
 
+    Expr::NewInst(ins)=> {
+      let cls = this.find_class(ins.cls);
+      let name = cls.name;
+      let mut v = vec![Litr::Uninit;cls.props.len()];
+      'a: for (id, e) in ins.val.0.iter() {
+        for (n, prop) in cls.props.iter().enumerate() {
+          if prop.name == *id {
+            v[n] = this.clone().calc(e);
+            continue 'a;
+          }
+        }
+        err(&format!("'{}'类型中不存在'{}'属性。", name, id.str()))
+      }
+      Litr::Inst(Box::new(Instance {cls, v:v.into()}))
+    }
+
     Expr::ModFuncAcc(acc)=> {
       let modname = acc.left;
       let funcname = acc.right;
@@ -349,6 +355,17 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
         }
         err(&format!("当前作用域没有'{}'模块",modname))
       }
+    }
+
+    Expr::ImplAccess(acc)=> {
+      let cls = this.find_class(acc.left);
+      let find = acc.right;
+      for (id, f) in cls.statics.iter() {
+        if *id == find {
+          return Litr::Func(Box::new(Executable::Local(Box::new(f.clone()))));
+        }
+      }
+      err(&format!("'{}'中没有'{}'函数", cls.name.str(), find.str()));
     }
 
     Expr::Empty => err("得到空表达式"),

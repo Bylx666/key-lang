@@ -33,26 +33,3 @@ pub fn escape(c:u8)-> u8 {
   }
 }
 
-
-/// 将ks声明的类型映射给Rust
-/// 
-/// 只是使用类型对比并不使用数值，因此使用空指针是安全的
-pub fn kstype(s:&[u8])-> crate::ast::KsType {
-  use crate::ast::{
-    KsType,Litr::*,Executable,ExternFunc
-  };
-  let t = match s {
-    b"Uint"=> Uint(0),
-    b"Int"=> Int(0),
-    b"Float"=> Float(0.0),
-    b"Bool"=> Bool(false),
-    b"Str"=> Str(Box::default()),
-    b"Array"=> List(Box::default()),
-    b"Buffer"=> Buffer(Box::new(Vec::new())),
-    b"Func"=> Func(Box::new(Executable::Extern(Box::new(ExternFunc { argdecl: Vec::new(), ptr: 0 })))),
-    _=> {
-      return KsType::Custom(crate::intern(s));
-    }
-  };
-  KsType::Primitive(std::mem::discriminant(&t))
-}

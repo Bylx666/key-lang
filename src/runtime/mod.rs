@@ -42,10 +42,10 @@ pub struct ScopeInner {
   parent: Option<Scope>,
   /// 返回值指针,None代表已返回
   return_to: *mut Option<*mut Litr>,
-  /// (类型名,值)
-  structs: Vec<(Interned, KsType)>,
   /// (变量名,值)
   vars: Vec<(Interned, Litr)>,
+  /// 类型声明
+  class_defs: Vec<ClassDef>,
   /// 导入和导出的模块指针
   mods: *mut Module,
   /// 该作用域生命周期会被outlive的函数延长
@@ -131,6 +131,7 @@ impl Scope {
   pub fn evil(&mut self, code:&Stmt) {
     use Stmt::*;
     match code {
+      // 只有表达式的语句
       Expression(e)=> {
         // 如果你只是在一行里空放了一个变量就不会做任何事
         if let Expr::Variant(_)=&**e {
@@ -138,27 +139,31 @@ impl Scope {
         }
         self.calc(e);
       }
+      // let语句
       Let(a)=> {
         let mut v = self.calc(&a.val);
         // 不检查变量是否存在是因为寻找变量的行为是反向的
         self.vars.push((a.id, v));
       }
+      // 块语句
       Block(s)=> {
         let mut scope = Scope::new(ScopeInner {
           parent:Some(*self),
           return_to: self.return_to,
-          structs:Vec::new(),
+          class_defs:Vec::new(),
           vars: Vec::with_capacity(16),
           mods: self.mods,
           outlives: Outlives::new()
         });
         scope.run(s);
       }
+      // 导入模块
       Mod(m)=> {
         unsafe {
           (*self.mods).imports.push((**m).clone());
         }
       }
+      // 导出给自己的模块
       Export(e)=> {
         match &**e {
           ExportDef::Func((id, f)) => {
@@ -170,6 +175,17 @@ impl Scope {
             unsafe{(*self.mods).export.funcs.push((*id,exec))}
           }
         }
+      }
+      // 类型声明
+      Class(cls)=> {
+        let methods:Vec<(Interned, LocalFunc)> = cls.pub_methods.iter()
+          .chain(cls.priv_methods.iter())
+          .map(|v|(v.0, LocalFunc::new(&v.1, *self))).collect();
+        let statics:Vec<(Interned, LocalFunc)> = cls.pub_statics.iter()
+          .chain(cls.priv_statics.iter())
+          .map(|v|(v.0, LocalFunc::new(&v.1, *self))).collect();
+        let props = cls.props.clone();
+        self.class_defs.push(ClassDef {name:cls.name,props,statics,methods});
       }
       Return(_)=> err("return语句不应被直接evil"),
       _=> {}
@@ -217,12 +233,12 @@ impl Scope {
     let mut scope = Scope::new(ScopeInner {
       parent:Some(f.scope),
       return_to:&mut return_to,
-      structs:Vec::new(),
+      class_defs:Vec::new(),
       vars,
       mods: self.mods,
       outlives: Outlives::new()
     });
-    scope.run(&f.exec);
+    scope.run(&f.stmts);
     ret
   }
 
@@ -263,6 +279,20 @@ impl Scope {
   }
 
 
+  /// 寻找一个类声明
+  pub fn find_class(&self, s:Interned)-> &ClassDef {
+    for cls in self.class_defs.iter().rev() {
+      if cls.name == s {
+        return cls;
+      }
+    }
+    if let Some(parent) = &self.parent {
+      return parent.find_class(s);
+    }
+    err(&format!("未定义类 '{}'", s.str()));
+  }
+
+
   /// 在此作用域计算表达式的值
   /// 
   /// 调用此函数必定会复制原内容
@@ -286,7 +316,7 @@ pub fn run(s:&Statements)-> RunResult {
   let mut return_to = &mut Some(&mut top_ret as *mut Litr);
   let mut mods = Module { 
     imports: Vec::new(), 
-    export: ModDef { name: intern(b"mod"), funcs: Vec::new() } 
+    export: ModDef { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() } 
   };
   top_scope(return_to, &mut mods).run(s);
   RunResult { returned: top_ret, exported: mods.export }
@@ -303,7 +333,7 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, mods:*mut Module)-> Scope {
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
-    structs:Vec::new(), 
+    class_defs:Vec::new(), 
     vars, mods, 
     outlives: Outlives::new()
   })

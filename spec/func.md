@@ -103,14 +103,11 @@ Array-> 未定义行为
 
 ## 可变参数
 
-参数并不是真的一个一个的参数，而是一个列表(Array)，由编译器自动为每个参数名赋值后给程序员用的。你完全可以不声明参数，发挥脚本语言的特长，直接使用原参数列表。
-
-原参数(Raw Arguments): (函数名).args()
-
-let my_func() {
-  let args = my_func.args();
+```
+let my_func([args]) {
   let arg0 = args[0];
 }
+```
 
 ## return
 

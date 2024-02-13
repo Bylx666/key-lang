@@ -74,7 +74,9 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
         _=> Err("将运行时函数传进C函数是未定义行为".to_string())
       }
     }
-    List(_)=> Err("列表类型无法作为C指针传递".to_string())
+    List(_)=> Err("列表类型不可作为C指针传递".to_string()),
+    Obj=> Err("Ks对象不可作为C指针传递".to_string()),
+    Inst(_)=> Err("Ks实例不可作为C指针传递".to_string())
   }
 }
 

@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-static mut POOL:Option<HashSet<Vec<u8>>> = None;
+static mut POOL:Option<HashSet<Box<[u8]>>> = None;
 
 pub fn init() {
   unsafe{POOL = Some(HashSet::with_capacity(64));}
@@ -15,17 +15,17 @@ pub fn init() {
 /// 将字符串缓存为指针
 pub fn intern(s:&[u8])-> Interned {
   let p = unsafe{POOL.as_mut().unwrap()};
-  Interned { p:p.get_or_insert(s.to_vec()) as *const Vec<u8> }
+  Interned { p:p.get_or_insert(s.into()) as *const Box<[u8]> }
 }
 
 /// 字符串缓存
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq)]
 pub struct Interned {
-  p: *const Vec<u8>
+  p: *const Box<[u8]>
 }
 impl Interned {
-  pub fn vec(&self)-> &Vec<u8> {
+  pub fn vec(&self)-> &Box<[u8]> {
     unsafe{&*self.p}
   }
   pub fn str(&self)-> String {

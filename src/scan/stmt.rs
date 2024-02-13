@@ -54,7 +54,7 @@ pub fn stmt(this:&Scanner)-> Stmt {
       b"let"=> letting(this),
       b"extern"=> {externing(this);Stmt::Empty},
       b"return"=> returning(this),
-      b"struct"=> structing(this),
+      b"class"=> classing(this),
       b"mod"=> moding(this),
       _=> {
         let id = Expr::Variant(intern(id));
@@ -101,7 +101,7 @@ fn letting(this:&Scanner)-> Stmt {
       this.next();
 
       let stmt = this.stmt();
-      let mut exec = if let Stmt::Block(b) = stmt {
+      let mut stmts = if let Stmt::Block(b) = stmt {
         *b
       }else {
         Statements(vec![(this.line(), stmt)])
@@ -110,7 +110,7 @@ fn letting(this:&Scanner)-> Stmt {
       // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
       // 其生命周期应当和Statements相同，绑定作用域时将被复制
       // 绑定作用域行为发生在runtime::Scope::calc
-      let func = Box::new(LocalFuncRaw { argdecl: args, exec });
+      let func = Box::new(LocalFuncRaw { argdecl: args, stmts });
       return Stmt::Let(Box::new(AssignDef {
         id, 
         val: Expr::LocalDecl(func)
@@ -213,7 +213,7 @@ fn externing(this:&Scanner) {
   }
 }
 
-/// 解析返回值
+/// 解析返回语句
 fn returning(this:&Scanner)-> Stmt {
   this.spaces();
   let expr = this.expr();
@@ -225,38 +225,76 @@ fn returning(this:&Scanner)-> Stmt {
 }
 
 
-/// 解析结构体声明
-fn structing(this:&Scanner)-> Stmt {
+/// 解析类声明
+fn classing(this:&Scanner)-> Stmt {
   this.spaces();
-  let id = this.ident().unwrap_or_else(||this.err("struct后需要标识符"));
+  let id = this.ident().unwrap_or_else(||this.err("class后需要标识符"));
   this.spaces();
   if this.cur() != b'{' {
-    this.err("struct需要大括号");
+    this.err("class需要大括号");
   }
   this.next();
 
-  let def = this.arguments();
+  let mut props = Vec::new();
+  let mut pub_methods = Vec::new();
+  let mut priv_methods = Vec::new();
+  let mut pub_statics = Vec::new();
+  let mut priv_statics = Vec::new();
+  loop {
+    this.spaces();
+    let publiced = if this.cur() == b'>' {
+      this.next();this.spaces();true
+    }else {false};
     
-  todo!();
-  this.spaces();
-  let mut layout = Vec::<(Interned,)>::new();
-  while let Some(n) = this.ident() {
-    let arg = intern(n);
-    if this.cur() != b':' {
-      this.err("必须使用类型声明");
-    }
-    this.next();
-    let typ = this.ident().unwrap_or_else(||this.err("类型声明不能为空"));
-    let typ = {
-      use StructElemType::*;
-      match typ {
-        b"Uint8"=> Uint8,
-        b"Uint16"=> Uint16,
-        b"Uint32"=> Uint32,
-        b"Uint"=> Uint,
-        _=> Structp
-      }
+    let is_method = if this.cur() == b'.' {
+      this.next();true
+    }else {false};
+
+    let id = match this.ident() {
+      Some(id)=> id,
+      None=> break
     };
+
+    // 方法或者函数
+    if this.cur() == b'(' {
+      this.next();
+      // 参数
+      let args = this.arguments();
+      if this.cur() != b')' {
+        this.err("函数声明右括号缺失??");
+      }
+      this.next();
+
+      // 函数体
+      let stmt = this.stmt();
+      let mut stmts = if let Stmt::Block(b) = stmt {
+        *b
+      }else {
+        Statements(vec![(this.line(), stmt)])
+      };
+
+      let v = (intern(id), LocalFuncRaw{argdecl:args,stmts});
+      if publiced {
+        if is_method {
+          pub_methods.push(v)
+        }else {
+          pub_statics.push(v)
+        }
+      }else {
+        if is_method {
+          priv_methods.push(v)
+        }else {
+          priv_statics.push(v)
+        }
+      }
+    // 属性
+    }else {
+      let typ = this.typ();
+      let v = ClassProp {
+        name: intern(id), typ, public:publiced
+      };
+      props.push(v);
+    }
 
     this.spaces();
     if this.cur() == b',' {
@@ -267,10 +305,12 @@ fn structing(this:&Scanner)-> Stmt {
 
   this.spaces();
   if this.cur() != b'}' {
-    this.err("struct大括号未闭合");
+    this.err("class大括号未闭合");
   }
   this.next();
-  Stmt::Struct(Box::new(StructDef (def)))
+  Stmt::Class(Box::new(ClassDefRaw {
+    name:intern(id), props, pub_methods, pub_statics, priv_methods, priv_statics
+  }))
 }
 
 

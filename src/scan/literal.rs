@@ -1,9 +1,9 @@
 use super::{
-  Scanner, charts, intern
+  charts, intern, ObjDecl, Scanner
 };
-use crate::ast::{
+use crate::{ast::{
   Expr, Litr, UnaryDecl
-};
+}, scan::NewDecl};
 pub fn literal(this:&Scanner)-> Expr {
   let first = this.cur();
   let len = this.src.len();
@@ -12,7 +12,7 @@ pub fn literal(this:&Scanner)-> Expr {
   macro_rules! match_unary {($o:expr) => {{
     this.next();
     let right = this.literal();
-    return Expr::Unary(Box::new(UnaryDecl {right,op:$o}));
+    Expr::Unary(Box::new(UnaryDecl {right,op:$o}))
   }}}
 
   match first {
@@ -29,7 +29,7 @@ pub fn literal(this:&Scanner)-> Expr {
       }
       let s = String::from_utf8_lossy(&this.src[(this.i()+1)..i]);
       this.set_i(i+1);
-      return Expr::Literal(Litr::Str(Box::new(s.to_string())));
+      Expr::Literal(Litr::Str(Box::new(s.to_string())))
     }
 
     // 解析带转义的字符串
@@ -88,7 +88,7 @@ pub fn literal(this:&Scanner)-> Expr {
         .expect(&format!("字符串含非法字符 解析错误({})",this.line()));
 
       this.set_i(i + 1);
-      return Expr::Literal(Litr::Str(Box::new(str)));
+      Expr::Literal(Litr::Str(Box::new(str)))
     }
 
     // 解析'buffer'
@@ -166,7 +166,7 @@ pub fn literal(this:&Scanner)-> Expr {
       vec.extend_from_slice(&this.src[start..i]);
 
       this.set_i(i+1);
-      return Expr::Literal(Litr::Buffer(Box::new(vec)));
+      Expr::Literal(Litr::Buffer(Box::new(vec)))
     }
 
     // 解析数字字面量
@@ -195,7 +195,7 @@ pub fn literal(this:&Scanner)-> Expr {
               return Expr::Literal($i(n));
             }
           }
-        }};
+        }}
       }
 
       this.set_i(i);
@@ -211,9 +211,10 @@ pub fn literal(this:&Scanner)-> Expr {
       this.set_i(i-1);
 
       if is_float {
-        parsed!(f64, Float);
+        parsed!(f64, Float)
+      }else {
+        parsed!(isize, Int)
       }
-      parsed!(isize, Int);
     },
 
     // 解析List
@@ -244,6 +245,9 @@ pub fn literal(this:&Scanner)-> Expr {
       Expr::List(Box::new(ls))
     }
 
+    // 解析对象
+    b'{'=> Expr::Obj(Box::new(obj(this))),
+
     // 解析字面量或变量
     _=> {
       let id_res = this.ident();
@@ -251,12 +255,51 @@ pub fn literal(this:&Scanner)-> Expr {
         match &*id {
           b"true"=> Expr::Literal(Litr::Bool(true)),
           b"false"=> Expr::Literal(Litr::Bool(false)),
+          b"self"=> Expr::Kself,
           b"uninit"=> Expr::Literal(Litr::Uninit),
-          _=> Expr::Variant(intern(id))
+          _=> {
+            this.spaces();
+            if this.cur() == b'{' {
+              if id[0].is_ascii_uppercase() {
+                let decl = obj(this);
+                return Expr::NewInst(Box::new(NewDecl {
+                  cls: intern(id),
+                  val: decl
+                }));
+              }
+            }
+            Expr::Variant(intern(id))
+          }
         }
       }else {
         Expr::Empty
       }
     }
   }
+}
+
+
+/// 解析对象表达式
+fn obj(this:&Scanner)-> ObjDecl {
+  this.next();
+  this.spaces();
+  let mut decl = Vec::new();
+  while let Some(id) = this.ident() {
+    let v = if this.cur() == b':' {
+      this.next();
+      this.expr()
+    }else {Expr::Literal(Litr::Uninit)};
+    decl.push((intern(id),v));
+
+    if this.cur() == b',' {
+      this.next()
+    }
+    this.spaces();
+  }
+
+  if this.cur() != b'}' {
+    this.err("未闭合的大括号")
+  };
+  this.next();
+  ObjDecl (decl)
 }

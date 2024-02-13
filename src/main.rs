@@ -25,19 +25,25 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // LocalFunc in Array and obj，要不整个大一统outlive函数
+  // use和class应在scan期间解析完成
+  // todo self是Scope中要定义的*mut class
   // struct obj
-  // 传进Native函数时也要outlive
+  // self calc优化
+  // 基本类型的方法
+
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
-
-  // ^ 内的函数引用计数
+  // LocalFunc in Array and obj，要不整个大一统outlive函数
+  // Native outlive api
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式
   // 连等似乎可以直接runtime里if let
+  // !{}
   // 基本的语句好像还没实现完呢
+  // 可变参数([args])
   // let & some = 20 -> usize 显式指定指针变量
   // let * some = 20 -> *some == 20 常量const
+  // key关键词到底有什么用啊
   // ..[参数展开]
   // buffer的from_raw实现记得区分rust和clone版
   // 模块：用户模块user mod和底层模块native mod
@@ -46,7 +52,7 @@ fn main()-> ExitCode {
   // is
   // evil
   // throw catch
-  // todo()
+  // 参数类型检查
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
 

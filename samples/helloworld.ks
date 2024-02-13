@@ -23,19 +23,17 @@
   a // corruption
 }`/
 
-let out;
-{
-  let tmp = 555
-  let a() {
-    log(tmp)
-  }
-  a()
-  {
-    let in = a
-  }
-  out = a
+class Test {
+  > a:Func
+  > new():Test {
+    c: 20
+  },
+  > .pubmet();
+  b
+  >c 
+  d
+  .met() {}
 }
-out()
+let p = Test::new()
 
-mod D:\code\rs\key-lang\samples\testmod.ks> mym
-mym-.test()
+log(p)

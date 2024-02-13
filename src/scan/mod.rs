@@ -85,7 +85,7 @@ impl Scanner<'_> {
     panic!("{} 解析错误({})",s,self.line())
   }
 
-  /// 跳过一段空格和换行符
+  /// 跳过一段空格,换行符和注释
   fn spaces(&self) {
     let len = self.src.len();
     while self.i() < len {
@@ -190,7 +190,7 @@ impl Scanner<'_> {
     while i < len {
       let cur = self.src[i];
       match cur {
-        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'=> {
+        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'|b':'=> {
           i += 1;
         }
         _=> break
@@ -201,6 +201,28 @@ impl Scanner<'_> {
     self.set_i(i);
     return op;
   }
+  
+  /// 解析类型声明
+  fn typ(&self)-> KsType {
+    if self.cur() == b':' {
+      self.next();
+      if let Some(decl) = self.ident() {
+        use KsType::*;
+        match decl {
+          b"Int"=>Int,
+          b"Uint"=>Uint,
+          b"Float"=>Float,
+          b"Bool"=>Bool,
+          b"Func"=>Func, 
+          b"Str"=>Str,
+          b"Buffer"=>Buffer,
+          b"List"=>List,
+          b"Obj"=>Obj,
+          _=> Class(intern(decl))
+        }
+      }else {self.err("类型声明不可为空")}
+    }else {KsType::Any}
+  }
 
   /// 解析函数声明的参数
   fn arguments(&self)-> Vec::<(Interned,KsType)> {
@@ -208,13 +230,7 @@ impl Scanner<'_> {
     let mut args = Vec::<(Interned,KsType)>::new();
     while let Some(n) = self.ident() {
       let arg = intern(n);
-      let typ:KsType = if self.cur() == b':' {
-        self.next();
-        let t = self.ident().unwrap_or_else(||self.err("类型声明不能为空"));
-        charts::kstype(t)
-      }else {
-        KsType::Any
-      };
+      let typ = self.typ();
       args.push((arg,typ));
 
       self.spaces();

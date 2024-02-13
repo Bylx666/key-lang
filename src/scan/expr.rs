@@ -41,25 +41,25 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
 
       // 如果是模块或类的调用就不用Binary
       macro_rules! impl_access {($op:literal, $ty:ident)=>{{
-        if last_op == $op.as_bytes() {
+        if last_op == $op {
           if let Expr::Variant(left) = second_last_expr {
             if let Expr::Variant(right) = last_expr {
               expr_stack.push(Expr::$ty(Box::new(AccessDecl { left, right })));
               continue;
             }
-            this.err(&format!("{}右侧需要一个标识符",$op))
+            this.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
           }
-          this.err(&format!("{}左侧需要一个标识符",$op))
+          this.err(&format!("{}左侧需要一个标识符",String::from_utf8_lossy($op)))
         }
       }}}
-      impl_access!("-.",ModFuncAcc);
-      impl_access!("-:",ModStruAcc);
-      impl_access!("::",ImplAccess);
+      impl_access!(b"-.",ModFuncAcc);
+      impl_access!(b"-:",ModStruAcc);
+      impl_access!(b"::",ImplAccess);
 
       expr_stack.push(Expr::Binary(Box::new(BinDecl { 
         left: second_last_expr, 
         right: last_expr, 
-        op: last_op.to_vec()
+        op: last_op.into()
       })));
     }
 
