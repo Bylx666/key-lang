@@ -17,11 +17,14 @@ pub enum Stmt {
   Let       (Box<AssignDef>),
 
   // 定义类
-  Class    (Box<ClassDefRaw>),
+  Class     (Box<ClassDefRaw>),
+  // 类别名
+  Using     (Box<(Interned, Expr)>),
 
   Mod       (Box<ModDef>),
   ExportFn  (Box<(Interned, LocalFuncRaw)>),
   ExportCls (Box<ClassDefRaw>),
+  ExportUse (Box<(Interned, Expr)>),
 
   // Key
   // Key       (HashMap<Ident, KsType>),                // 类型声明语句
@@ -54,5 +57,5 @@ pub struct AssignDef {
 pub struct ModDef {
   pub name: Interned,
   pub funcs: Vec<(Interned, Function)>,
-  pub classes: Vec<*const ClassDef>
+  pub classes: Vec<(Interned, *const ClassDef)>
 }

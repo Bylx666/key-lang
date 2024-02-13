@@ -12,14 +12,17 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
 
     Expr::Variant(id)=> this.var(*id).clone(),
 
+    // 函数表达式
     Expr::LocalDecl(local)=> {
       let mut f = &**local;
       let exec = Function::Local(Box::new(LocalFunc::new(f, *this)));
       Litr::Func(Box::new(exec))
     }
 
+    // 二元运算符
     Expr::Binary(bin)=> binary(this, bin),
 
+    // 一元运算符
     Expr::Unary(una)=> {
       let right = this.calc(&una.right);
       match una.op {
@@ -42,31 +45,37 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       }
     }
 
+    // [列表]
     Expr::List(v)=> {
       Litr::List(Box::new(
         v.iter().map(|e| this.calc(e)).collect()
       ))
     }
 
+    // Class {}创建实例
     Expr::NewInst(ins)=> {
       let cls = this.find_class(ins.cls);
-      let name = cls.name;
       let mut v = vec![Litr::Uninit;cls.props.len()];
+      let module = this.module;
       'a: for (id, e) in ins.val.0.iter() {
         for (n, prop) in cls.props.iter().enumerate() {
           if prop.name == *id {
+            if !prop.public && cls.module != module {
+              err(&format!("成员属性'{}'是私有的。",id))
+            }
             v[n] = this.clone().calc(e);
             continue 'a;
           }
         }
-        err(&format!("'{}'类型中不存在'{}'属性。", name, id.str()))
+        err(&format!("该类型不存在'{}'属性。", id.str()))
       }
       Litr::Inst(Box::new(Instance {cls, v:v.into()}))
     }
 
+    // -.运算符
     Expr::ModFuncAcc(acc)=> {
-      let modname = acc.left;
-      let funcname = acc.right;
+      let modname = acc.0;
+      let funcname = acc.1;
       let mods = unsafe {&(*this.module)};
       for def in mods.imports.iter() {
         if def.name == modname {
@@ -81,8 +90,58 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       err(&format!("没有导入'{}'模块",modname))
     }
 
+    Expr::ModClsAcc(_)=> err("类型声明不是一个值。考虑使用`class A = B`语句代替"),
+
+    // 访问类方法
+    Expr::ImplAccess(acc)=> {
+      /// 在class中找一个函数
+      fn find_fn(cls:&ClassDef, find:Interned, this_module:*mut Module)->Litr {
+        for func in cls.statics.iter() {
+          if func.name == find {
+            if !func.public && cls.module != this_module {
+              err(&format!("静态方法'{}'是私有的。",find))
+            }
+            return Litr::Func(Box::new(Function::Static(Box::new((cls.module, func.f.clone())))));
+          }
+        }
+        for func in cls.methods.iter() {
+          if !func.public && cls.module != this_module {
+            err(&format!("方法'{}'是私有的。",find))
+          }
+          if func.name == find {
+            return Litr::Func(Box::new(Function::Method(Box::new((cls, func.f.clone())))));
+          }
+        }
+        err(&format!("该类型没有'{}'静态方法", find.str()));
+      }
+
+      let find = acc.1;
+      if let Expr::Variant(id) = acc.0 {
+        let cls = this.find_class(id);
+        return find_fn(cls, find, this.module);
+      }
+
+      if let Expr::ModClsAcc(acc) = &acc.0 {
+        let modname = acc.0;
+        let clsname = acc.1;
+        let mods = unsafe {&(*this.module)};
+        for def in mods.imports.iter() {
+          if def.name == modname {
+            for (name, cls) in def.classes.iter() {
+              if *name == clsname {
+                return find_fn(unsafe{&**cls}, find, this.module)
+              }
+            }
+            err(&format!("模块'{}'中没有'{}'类型",modname,clsname))
+          }
+        }
+        err(&format!("没有导入'{}'模块",modname))
+      }
+      err("::左侧必须是个类型")
+    }
+
     Expr::Empty => err("得到空表达式"),
-    _=> err("算不出来 ")
+    _=> err("未实装的表达式 ")
   }
 }
 
@@ -354,55 +413,6 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
     // 逻辑
     b"&&" => impl_logic!(&&),
     b"||" => impl_logic!(||),
-
-    // 访问类成员
-    b"::" => {
-      /// 在class中找一个函数
-      fn find_fn(cls:&ClassDef, find:Interned, this_module:*mut Module)->Litr {
-        for func in cls.statics.iter() {
-          if func.name == find {
-            if !func.public && cls.module != this_module {
-              err(&format!("静态方法'{}'是私有的。",find))
-            }
-            return Litr::Func(Box::new(Function::Local(Box::new(func.f.clone()))));
-          }
-        }
-        for func in cls.methods.iter() {
-          if !func.public && cls.module != this_module {
-            err(&format!("方法'{}'是私有的。",find))
-          }
-          if func.name == find {
-            return Litr::Func(Box::new(Function::Method(Box::new((cls, func.f.clone())))));
-          }
-        }
-        err(&format!("'{}'中没有'{}'函数", cls.name.str(), find.str()));
-      }
-      if let Expr::Variant(find) = bin.right {
-        if let Expr::Variant(id) = bin.left {
-          let cls = this.find_class(id);
-          return find_fn(cls, find, this.module);
-        }
-  
-        if let Expr::ModClsAcc(acc) = &bin.left {
-          let modname = acc.left;
-          let clsname = acc.right;
-          let mods = unsafe {&(*this.module)};
-          for def in mods.imports.iter() {
-            if def.name == modname {
-              for cls in def.classes.iter() {
-                let deref = unsafe{&**cls};
-                if deref.name == clsname {
-                  return find_fn(deref, find, this.module)
-                }
-              }
-              err(&format!("模块'{}'中没有'{}'类型",modname,clsname))
-            }
-          }
-          err(&format!("没有导入'{}'模块",modname))
-        }
-      }
-      err("::右必须是标识符")
-    }
 
     _=> err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
   }

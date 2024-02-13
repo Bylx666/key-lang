@@ -16,7 +16,6 @@ pub struct ClassDefRaw {
 /// 绑定作用域的类声明
 #[derive(Debug, Clone)]
 pub struct ClassDef {
-  pub name: Interned,
   pub props: Vec<ClassProp>,
   pub statics: Vec<ClassFunc>,
   pub methods: Vec<ClassFunc>,

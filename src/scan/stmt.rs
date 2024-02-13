@@ -54,7 +54,7 @@ pub fn stmt(this:&Scanner)-> Stmt {
       b"let"=> Stmt::Let(letting(this)),
       b"extern"=> {externing(this);Stmt::Empty},
       b"return"=> returning(this),
-      b"class"=> Stmt::Class(classing(this)),
+      b"class"=> classing(this),
       b"mod"=> moding(this),
       _=> {
         let id = Expr::Variant(intern(id));
@@ -226,10 +226,15 @@ fn returning(this:&Scanner)-> Stmt {
 
 
 /// 解析类声明
-fn classing(this:&Scanner)-> Box<ClassDefRaw> {
+fn classing(this:&Scanner)-> Stmt {
   this.spaces();
   let id = this.ident().unwrap_or_else(||this.err("class后需要标识符"));
   this.spaces();
+  if this.cur() == b'=' {
+    this.next();
+    let right = this.expr();
+    return Stmt::Using(Box::new((intern(id),right)));
+  }
   if this.cur() != b'{' {
     this.err("class需要大括号");
   }
@@ -298,9 +303,9 @@ fn classing(this:&Scanner)-> Box<ClassDefRaw> {
     this.err("class大括号未闭合");
   }
   this.next();
-  Box::new(ClassDefRaw {
+  Stmt::Class(Box::new(ClassDefRaw {
     name:intern(id), props, methods, statics
-  })
+  }))
 }
 
 
@@ -320,7 +325,11 @@ fn moding(this:&Scanner)-> Stmt {
     b':' => {
       this.next();
       let cls = classing(this);
-      return Stmt::ExportCls(cls);
+      match cls {
+        Stmt::Class(cls)=> return Stmt::ExportCls(cls),
+        Stmt::Using(acc)=> return Stmt::ExportUse(acc),
+        _=> unreachable!()
+      }
     }
     _=>{}
   };

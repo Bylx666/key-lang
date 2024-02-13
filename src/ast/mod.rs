@@ -11,7 +11,7 @@ pub use stmt::*;
 mod expr;
 pub use expr::*;
 
-use crate::runtime::Scope;
+use crate::runtime::{Module, Scope};
 use crate::intern::Interned;
 
 use std::collections::HashMap;
@@ -72,8 +72,7 @@ impl Litr {
         let cls = unsafe{&*i.cls};
         let mut v = i.v.iter();
         let mut str = String::new();
-        str.push_str(&cls.name.str());
-        str.push_str(" { ");
+        str.push_str("Instance { ");
         for p in cls.props.iter() {
           str.push_str(&p.name.str());
           str.push_str(": ");
@@ -91,10 +90,16 @@ impl Litr {
 /// 针对函数的枚举
 #[derive(Debug, Clone)]
 pub enum Function {
-  Native(fn(Vec<Litr>)-> Litr), // runtime提供的函数 
-  Local(Box<LocalFunc>),     // 脚本内的定义
-  Method(Box<(*const ClassDef, LocalFunc)>),    // class内的方法
-  Extern(Box<ExternFunc>)   // 脚本使用extern获取的函数
+  // Native模块或Runtime提供的Rust函数
+  Native(fn(Vec<Litr>)-> Litr),
+  // 脚本定义的本地函数
+  Local(Box<LocalFunc>),
+  // class X {.x()}定义的方法，提供一个ClassDef指针来判断实例是否是该类型
+  Method(Box<(*const ClassDef, LocalFunc)>),
+  // class X {x()}定义的静态方法，提供*mut Module来判断是否能访问私有成员
+  Static(Box<(*mut Module, LocalFunc)>),
+  // 使用extern语句得到的C函数
+  Extern(Box<ExternFunc>)
 }
 
 

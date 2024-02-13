@@ -1,6 +1,6 @@
 use super::{Scanner, charts};
 use crate::ast::{
-  Litr, Expr, AccessDecl, BinDecl, CallDecl
+  Litr, Expr, BinDecl, CallDecl
 };
 
 pub fn expr(this:&Scanner)-> Expr {
@@ -44,7 +44,7 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
         if last_op == $op {
           if let Expr::Variant(left) = second_last_expr {
             if let Expr::Variant(right) = last_expr {
-              expr_stack.push(Expr::$ty(Box::new(AccessDecl { left, right })));
+              expr_stack.push(Expr::$ty(Box::new((left, right))));
               continue;
             }
             this.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
@@ -54,6 +54,19 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
       }}}
       impl_access!(b"-.",ModFuncAcc);
       impl_access!(b"-:",ModClsAcc);
+
+      // .和::都是左边是表达式，右边是标识符
+      macro_rules! impl_prop {($op:literal, $ty:ident) => {
+        if last_op == $op {
+          if let Expr::Variant(right) = last_expr {
+            expr_stack.push(Expr::$ty(Box::new(( second_last_expr, right ))));
+            continue;
+          }
+          this.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
+        }
+      }}
+      impl_prop!(b".", Property);
+      impl_prop!(b"::", ImplAccess);
 
       expr_stack.push(Expr::Binary(Box::new(BinDecl { 
         left: second_last_expr, 

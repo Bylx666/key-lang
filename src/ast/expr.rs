@@ -16,13 +16,13 @@ pub enum Expr {
   LocalDecl (Box<LocalFuncRaw>),
 
   // .运算符
-  Property  (Box<PropDecl>),
+  Property  (Box<(Expr, Interned)>),
   // -.运算符
-  ModFuncAcc(Box<AccessDecl>),
+  ModFuncAcc(Box<(Interned, Interned)>),
   // -:运算符
-  ModClsAcc (Box<AccessDecl>),
+  ModClsAcc (Box<(Interned, Interned)>),
   // ::运算符
-  ImplAccess(Box<AccessDecl>),
+  ImplAccess(Box<(Expr, Interned)>),
   // 调用函数
   Call      (Box<CallDecl>),
   // 创建实例
@@ -42,12 +42,6 @@ pub enum Expr {
 // V 注释见Expr V
 
 #[derive(Debug, Clone)]
-pub struct PropDecl {
-  pub left: Expr,
-  pub right: Interned
-}
-
-#[derive(Debug, Clone)]
 pub struct BinDecl {
   pub left: Expr,
   pub right: Expr,
@@ -60,11 +54,6 @@ pub struct UnaryDecl {
   pub op: u8
 }
 
-#[derive(Debug, Clone)]
-pub struct AccessDecl {
-  pub left: Interned,
-  pub right: Interned
-}
 
 #[derive(Debug, Clone)]
 pub struct CallDecl {

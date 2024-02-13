@@ -47,6 +47,16 @@ class MyClass {
 }
 MyClass::new().get_a() == "a"
 
+## 使用方法
+
+可以直接使用::运算符，并将其实例作为第一个参数作为self。
+
+class MyClass {
+  .a()
+}
+MyClass {}.a()
+MyClass::a(MyCLass {})
+
 ## 模块化
 
 mod: MyClass {
@@ -63,6 +73,10 @@ my_mod-:MyClass::some()
 
 let some = my_mod-:MyClass::some;
 some();
+
+mod: A = B
+B // not found
+A // yes
 ```
 
 ## obj

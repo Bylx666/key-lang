@@ -1,11 +1,10 @@
 {
   let tt = "hhhh"
   mod:MyStruct {
-    >a
-    b
-    .d(){log("ok")}
+    a,>b
+    >.d(){log("ok")}
     >new():MyStruct {
-      b:20
+      a:99
     }
   }
   let s = MyStruct::new()

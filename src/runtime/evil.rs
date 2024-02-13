@@ -24,6 +24,7 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
         parent:Some(*this),
         return_to: this.return_to,
         class_defs:Vec::new(),
+        class_uses:Vec::new(),
         kself: this.kself,
         vars: Vec::with_capacity(16),
         module: this.module,
@@ -42,8 +43,35 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       let statics:Vec<_> = raw.statics.iter().map(binder).collect();
       let props = raw.props.clone();
       let module = this.module;
-      let clsdef = ClassDef {name:raw.name, props, statics, methods, module};
+      let clsdef = ClassDef { props, statics, methods, module};
       this.class_defs.push(clsdef);
+      let using = this.class_defs.last().unwrap() as *const ClassDef;
+      this.class_uses.push((raw.name, using));
+    }
+
+    Using(acc)=> {
+      let alia = acc.0;
+      match &acc.1 {
+        Expr::Variant(id)=> {
+          let cls = this.find_class(*id) as *const ClassDef;
+          this.class_uses.push((acc.0, cls));
+        }
+        Expr::ModClsAcc(acc)=> {
+          let modname = acc.0;
+          let clsname = acc.1;
+          for moddef in unsafe{&*this.module}.imports.iter() {
+            if moddef.name == modname {
+              for (name, cls) in &moddef.classes {
+                if *name == clsname {
+                  this.class_uses.push((alia, *cls));
+                  return;
+                }
+              }
+            }
+          }
+        }
+        _=> err("class = 语句后必须是个类声明")
+      }
     }
     
     // 导入模块
@@ -80,13 +108,19 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       let statics:Vec<_> = raw.statics.iter().map(binder).collect();
       let props = raw.props.clone();
       let module = this.module;
-      let clsdef = ClassDef {name:raw.name, props, statics, methods, module};
+      let clsdef = ClassDef { props, statics, methods, module };
       this.class_defs.push(clsdef);
+      let using = this.class_defs.last().unwrap() as *const ClassDef;
+      this.class_uses.push((raw.name, using));
 
       // 将指针推到export
       let ptr = this.class_defs.last().unwrap();
       let module = this.module;
-      unsafe{(*module).export.classes.push(ptr)}
+      unsafe{(*module).export.classes.push((raw.name,ptr))}
+    }
+
+    ExportUse(us)=> {
+      todo!()
     }
 
     Return(_)=> err("return语句不应被直接evil"),

@@ -28,7 +28,7 @@ fn main()-> ExitCode {
   // todo public指针不太对
   // use和class应在scan期间解析完成
   // todo self是Scope中要定义的*mut class
-  // .#prop提示私有
+  // Top native class
   // Class::method(self, x)
   // class A = somemod-:Mod
   // struct obj
@@ -57,6 +57,7 @@ fn main()-> ExitCode {
   // evil
   // throw catch
   // 参数类型检查
+  // Instance::set_any()
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
 

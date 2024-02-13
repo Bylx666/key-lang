@@ -43,8 +43,10 @@ pub struct ScopeInner {
   pub return_to: *mut Option<*mut Litr>,
   /// (变量名,值)
   pub vars: Vec<(Interned, Litr)>,
-  /// 类型声明
+  /// 类型声明(和作用域生命周期一致)
   pub class_defs: Vec<ClassDef>,
+  /// 类型使用
+  pub class_uses: Vec<(Interned, *const ClassDef)>,
   /// self指针
   pub kself: *mut Instance,
   /// 导入和导出的模块指针
@@ -187,9 +189,9 @@ impl Scope {
 
   /// 寻找一个类声明
   pub fn find_class(&self, s:Interned)-> &ClassDef {
-    for cls in self.class_defs.iter().rev() {
-      if cls.name == s {
-        return cls;
+    for (name, cls) in self.class_uses.iter().rev() {
+      if *name == s {
+        return unsafe { &**cls };
       }
     }
     if let Some(parent) = &self.parent {
@@ -237,12 +239,13 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module)-> Scope {
     Litr::Func(Box::new(Function::Native(io::log))))
   );
 
-  let cls = ClassDef{methods:Vec::new(),name:intern(b""),props:Vec::new(),statics:Vec::new(),module};
+  let cls = ClassDef{methods:Vec::new(),props:Vec::new(),statics:Vec::new(),module};
   let mut kself = Instance {cls:&cls, v:[].into()};
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
     class_defs:Vec::new(), 
+    class_uses:Vec::new(),
     kself: &mut kself,
     vars, module, 
     outlives: Outlives::new()
