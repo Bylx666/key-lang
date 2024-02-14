@@ -140,6 +140,20 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       err("::左侧必须是个类型")
     }
 
+    Expr::Property(acc)=> {
+      let find = acc.1;
+      match acc.0 {
+        Expr::Variant(id)=> {
+          let v = unsafe{&mut *(this.var(id) as *mut Litr)};
+          get_prop(this, v, find)
+        }
+        _=> {
+          let scope = *this;
+          get_prop(&scope, &mut this.calc(&acc.0), find)
+        }
+      }
+    }
+
     Expr::Empty => err("得到空表达式"),
     _=> err("未实装的表达式 ")
   }
@@ -415,5 +429,41 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
     b"||" => impl_logic!(||),
 
     _=> err(&format!("未知运算符'{}'", String::from_utf8_lossy(&bin.op)))
+  }
+}
+
+
+fn get_prop(this:&Scope, v:&mut Litr, find:Interned)-> Litr {
+  match v {
+    Litr::Inst(inst)=> {
+      let cannot_access_private = unsafe {(*inst.cls).module} != this.module;
+
+      // 先找属性
+      let props = unsafe {&(*inst.cls).props};
+      for (n, prop) in props.iter().enumerate() {
+        if prop.name == find {
+          if !prop.public && cannot_access_private {
+            err(&format!("成员属性'{}'是私有的", find))
+          }
+          return inst.v[n].clone();
+        }
+      }
+
+      // 再找方法
+      let methods = unsafe {&(*inst.cls).methods};
+      for mthd in methods.iter() {
+        if mthd.name == find {
+          if !mthd.public && cannot_access_private {
+            err(&format!("成员方法'{}'是私有的", find))
+          }
+          return Litr::Func(Box::new(Function::BindedMethod(Box::new((
+            &mut **inst, mthd.f.clone()
+          )))));
+        }
+      }
+
+      err(&format!("该类型上没有'{}'属性",find))
+    },
+    _=> err("该类型属性还没实装")
   }
 }

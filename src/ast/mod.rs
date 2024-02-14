@@ -96,6 +96,8 @@ pub enum Function {
   Local(Box<LocalFunc>),
   // class X {.x()}定义的方法，提供一个ClassDef指针来判断实例是否是该类型
   Method(Box<(*const ClassDef, LocalFunc)>),
+  // 绑定了self的method
+  BindedMethod(Box<(*mut Instance, LocalFunc)>),
   // class X {x()}定义的静态方法，提供*mut Module来判断是否能访问私有成员
   Static(Box<(*mut Module, LocalFunc)>),
   // 使用extern语句得到的C函数

@@ -119,10 +119,6 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       unsafe{(*module).export.classes.push((raw.name,ptr))}
     }
 
-    ExportUse(us)=> {
-      todo!()
-    }
-
     Return(_)=> err("return语句不应被直接evil"),
     _=> {}
   }

@@ -25,13 +25,9 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // todo public指针不太对
-  // use和class应在scan期间解析完成
-  // todo self是Scope中要定义的*mut class
   // Top native class
-  // Class::method(self, x)
-  // class A = somemod-:Mod
-  // struct obj
+  // self
+  // prop相关的一点还没做
   // self calc优化
   // 基本类型的方法
 

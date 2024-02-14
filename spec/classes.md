@@ -73,10 +73,6 @@ my_mod-:MyClass::some()
 
 let some = my_mod-:MyClass::some;
 some();
-
-mod: A = B
-B // not found
-A // yes
 ```
 
 ## obj

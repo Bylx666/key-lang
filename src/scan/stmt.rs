@@ -327,7 +327,7 @@ fn moding(this:&Scanner)-> Stmt {
       let cls = classing(this);
       match cls {
         Stmt::Class(cls)=> return Stmt::ExportCls(cls),
-        Stmt::Using(acc)=> return Stmt::ExportUse(acc),
+        Stmt::Using(acc)=> this.err("无法导出using"),
         _=> unreachable!()
       }
     }

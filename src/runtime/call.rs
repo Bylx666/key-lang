@@ -24,6 +24,7 @@ pub fn call(this:&mut Scope, call: &Box<CallDecl>)-> Litr {
         }
         err("方法需要提供第一个参数作为self")
       }
+      BindedMethod(f)=> call_method(this, &f.1, f.0, args),
       Static(f)=> call_static(this, &f.1, f.0, args),
       Extern(f)=> this.call_extern(&f, args),
     }

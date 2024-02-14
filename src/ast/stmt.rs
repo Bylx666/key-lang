@@ -24,7 +24,6 @@ pub enum Stmt {
   Mod       (Box<ModDef>),
   ExportFn  (Box<(Interned, LocalFuncRaw)>),
   ExportCls (Box<ClassDefRaw>),
-  ExportUse (Box<(Interned, Expr)>),
 
   // Key
   // Key       (HashMap<Ident, KsType>),                // 类型声明语句

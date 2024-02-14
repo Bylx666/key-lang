@@ -34,9 +34,8 @@ impl Clib {
       let v = dlsym(self.0, s.as_ptr());
       if v == 0 {
         return None;
-      }else {
-        Some(v)
       }
+      Some(v)
     }
   }
 }
