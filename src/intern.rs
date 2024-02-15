@@ -43,7 +43,6 @@ impl std::fmt::Debug for Interned {
 }
 impl std::fmt::Display for Interned {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let s = unsafe {String::from_utf8_lossy(&**self.p)};
-    f.write_str(&s)
+    f.write_str(&self.str())
   }
 }

@@ -10,6 +10,8 @@ use std::ptr::NonNull;
 
 mod outlive;
 pub use outlive::Outlives;
+
+use self::calc::CalcRef;
 mod io;
 mod evil;
 mod calc;
@@ -48,7 +50,7 @@ pub struct ScopeInner {
   /// 类型使用
   pub class_uses: Vec<(Interned, *const ClassDef)>,
   /// self指针
-  pub kself: *mut Instance,
+  pub kself: *mut Litr,
   /// 导入和导出的模块指针
   pub module: *mut Module,
   /// 该作用域生命周期会被outlive的函数延长
@@ -146,7 +148,7 @@ impl Scope {
   }
 
   /// 调用method
-  pub fn call_method(&self, f:&LocalFunc, kself:*mut Instance, args:Vec<Litr>)-> Litr {
+  pub fn call_method(&self, f:&LocalFunc, kself:*mut Litr, args:Vec<Litr>)-> Litr {
     call::call_method(self, f, kself, args)
   }
 
@@ -204,10 +206,13 @@ impl Scope {
   /// 在此作用域计算表达式的值
   /// 
   /// 调用此函数必定会复制原内容
-  /// 
-  /// 因此在calc前手动判断表达式是否为变量就能少复制一次了
   pub fn calc(&mut self, e:&Expr)-> Litr {
     calc::calc(self, e)
+  }
+
+  /// 计算表达式，但会优先得到引用，不会做不必要的复制
+  pub fn calc_ref(&mut self, e:&Expr)-> CalcRef {
+    calc::calc_ref(self, e)
   }
 }
 
@@ -215,7 +220,8 @@ impl Scope {
 #[derive(Debug)]
 pub struct RunResult {
   pub returned: Litr,
-  pub exported: ModDef
+  pub exported: ModDef,
+  pub kself: Litr
 }
 
 /// 创建顶级作用域并运行一段程序
@@ -226,27 +232,26 @@ pub fn run(s:&Statements)-> RunResult {
     imports: Vec::new(), 
     export: ModDef { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() } 
   };
-  top_scope(return_to, &mut mods).run(s);
-  RunResult { returned: top_ret, exported: mods.export }
+  let mut kself = Litr::Uninit;
+  top_scope(return_to, &mut mods, &mut kself).run(s);
+  RunResult { returned: top_ret, exported: mods.export, kself }
 }
 
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module)-> Scope {
+pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
     Litr::Func(Box::new(Function::Native(io::log))))
   );
 
-  let cls = ClassDef{methods:Vec::new(),props:Vec::new(),statics:Vec::new(),module};
-  let mut kself = Instance {cls:&cls, v:[].into()};
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
     class_defs:Vec::new(), 
     class_uses:Vec::new(),
-    kself: &mut kself,
+    kself,
     vars, module, 
     outlives: Outlives::new()
   })

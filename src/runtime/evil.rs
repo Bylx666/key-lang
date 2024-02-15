@@ -10,7 +10,7 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       if let Expr::Variant(_)=&**e {
         return;
       }
-      this.calc(e);
+      this.calc_ref(e);
     }
     // let语句
     Let(a)=> {
@@ -43,7 +43,7 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       let statics:Vec<_> = raw.statics.iter().map(binder).collect();
       let props = raw.props.clone();
       let module = this.module;
-      let clsdef = ClassDef { props, statics, methods, module};
+      let clsdef = ClassDef { name:raw.name, props, statics, methods, module};
       this.class_defs.push(clsdef);
       let using = this.class_defs.last().unwrap() as *const ClassDef;
       this.class_uses.push((raw.name, using));
@@ -108,7 +108,7 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       let statics:Vec<_> = raw.statics.iter().map(binder).collect();
       let props = raw.props.clone();
       let module = this.module;
-      let clsdef = ClassDef { props, statics, methods, module };
+      let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
       this.class_defs.push(clsdef);
       let using = this.class_defs.last().unwrap() as *const ClassDef;
       this.class_uses.push((raw.name, using));

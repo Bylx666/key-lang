@@ -4,9 +4,7 @@
     a,>b
     >.d(){log("ok");:8}
     >new():MyStruct {
-      a:99
-      b:22
+      b:MyStruct {b:20}
     }
   }
-  let s = MyStruct::new()
 }

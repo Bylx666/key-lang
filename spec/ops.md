@@ -23,27 +23,23 @@ uninit的逻辑(&&||)和false行为相同
 比较数字时会将整数统一为Int
 浮点数和整数会统一为浮点数
 
-buffer比较依赖Rust底层实现，源码如下
+buffer比较依赖以下算法，以==为例的源码如下。其他比较运算符可直接原地替换==得到正确的结果。
 ```rust
-fn compare(left: &[u8], right: &[u8]) -> Ordering {
+fn compare(left: &[u8], right: &[u8]) -> bool {
   // 首先将短的buffer长度作为比较对象
-  let l = core::cmp::min(left.len(), right.len());
-  // 使用slice消除编译器的边界检查
-  let lhs = &left[..l];
-  let rhs = &right[..l];
-  // 逐位比较，只要出现一位大于另一位就作为结果返回
+  let l = min(left.len(), right.len());
+  // 逐位比较，只要出现一位比较另一位为false就代表比较失败返回false
   for i in 0..l {
-    match lhs[i].cmp(&rhs[i]) {
-      Ordering::Equal => (),
-      non_eq => return non_eq,
+    if !(left[i] == right[i]) {
+      return false
     }
   }
   // 若每一位都相同就比较长度，长度也相同则代表两个buffer全等
-  left.len().cmp(&right.len())
+  return left.len() == right.len();
 }
 ```
 
-列表比较是不太可靠的，首先列表内只允许数字和bool，其次要保证两列表长度相同，还要保证每一位的元素基本类型相同。因此如果数字都确定不大于255可以选用buffer比较。如果数字普遍偏大则可以考虑使用u32 buffer之类的实现。
+Str, Instance, List, Obj也依照以上算法比较。
 
 赋值就是复制，不太好笑。。
 

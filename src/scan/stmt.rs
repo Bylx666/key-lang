@@ -57,8 +57,14 @@ pub fn stmt(this:&Scanner)-> Stmt {
       b"class"=> classing(this),
       b"mod"=> moding(this),
       _=> {
-        let id = Expr::Variant(intern(id));
-        let expr = Box::new(this.expr_with_left(id));
+        let left = match &*id {
+          b"true"=> Expr::Literal(Litr::Bool(true)),
+          b"false"=> Expr::Literal(Litr::Bool(false)),
+          b"self"=> Expr::Kself,
+          b"uninit"=> Expr::Literal(Litr::Uninit),
+          _=> Expr::Variant(intern(id))
+        };
+        let expr = Box::new(this.expr_with_left(left));
         Stmt::Expression(expr)
       }
     }
@@ -88,9 +94,9 @@ fn letting(this:&Scanner)-> Box<AssignDef> {
       if let Expr::Empty = val {
         this.err("无法为空气赋值")
       }
-      return Box::new(AssignDef {
+      Box::new(AssignDef {
         id, val
-      });
+      })
     }
     b'(' => {
       this.next();
@@ -111,16 +117,14 @@ fn letting(this:&Scanner)-> Box<AssignDef> {
       // 其生命周期应当和Statements相同，绑定作用域时将被复制
       // 绑定作用域行为发生在runtime::Scope::calc
       let func = Box::new(LocalFuncRaw { argdecl: args, stmts });
-      return Box::new(AssignDef {
+      Box::new(AssignDef {
         id, 
         val: Expr::LocalDecl(func)
-      });
+      })
     }
-    _ => {
-      return Box::new(AssignDef {
-        id, val:Expr::Literal(Litr::Uninit)
-      });
-    }
+    _ => Box::new(AssignDef {
+      id, val:Expr::Literal(Litr::Uninit)
+    })
   }
 }
 

@@ -121,7 +121,6 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
     op_stack.push(op);
 
   }
-  this.err(&format!("你需要为标识符 '{:?}' 后使用 ';' 结尾。", (&left)));
 }
 
 pub fn group(this:&Scanner)-> Expr {

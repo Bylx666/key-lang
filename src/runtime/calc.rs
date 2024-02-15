@@ -3,6 +3,8 @@
 use super::*;
 
 /// 解析一个表达式，对应Expr
+/// 
+/// 该函数必定发生复制
 pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
   use Litr::*;
   match e {
@@ -24,17 +26,17 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
 
     // 一元运算符
     Expr::Unary(una)=> {
-      let right = this.calc(&una.right);
+      let right = this.calc_ref(&una.right);
       match una.op {
         b'-'=> {
-          match right {
+          match &*right {
             Int(n)=> Int(-n),
             Float(n)=> Float(-n),
             _=> err("负号只能用在有符号数")
           }
         }
         b'!'=> {
-          match right {
+          match &*right {
             Bool(b)=> Bool(!b),
             Int(n)=> Int(!n),
             Uint(n)=> Uint(!n),
@@ -67,7 +69,7 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
             continue 'a;
           }
         }
-        err(&format!("该类型不存在'{}'属性。", id.str()))
+        err(&format!("'{}'类型不存在'{}'属性。", cls.name, id.str()))
       }
       Litr::Inst(Box::new(Instance {cls, v:v.into()}))
     }
@@ -99,20 +101,20 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
         for func in cls.statics.iter() {
           if func.name == find {
             if !func.public && cls.module != this_module {
-              err(&format!("静态方法'{}'是私有的。",find))
+              err(&format!("'{}'类型的静态方法'{}'是私有的。", cls.name, find))
             }
-            return Litr::Func(Box::new(Function::Static(Box::new((cls.module, func.f.clone())))));
+            return Litr::Func(Box::new(Function::Local(Box::new(func.f.clone()))));
           }
         }
         for func in cls.methods.iter() {
           if !func.public && cls.module != this_module {
-            err(&format!("方法'{}'是私有的。",find))
+            err(&format!("'{}'类型中的方法'{}'是私有的。", cls.name, find))
           }
           if func.name == find {
-            return Litr::Func(Box::new(Function::Method(Box::new((cls, func.f.clone())))));
+            return Litr::Func(Box::new(Function::Local(Box::new(func.f.clone()))));
           }
         }
-        err(&format!("该类型没有'{}'静态方法", find.str()));
+        err(&format!("'{}'类型没有'{}'静态方法", cls.name, find.str()));
       }
 
       let find = acc.1;
@@ -144,61 +146,185 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
       let find = acc.1;
       match acc.0 {
         Expr::Variant(id)=> {
-          let v = unsafe{&mut *(this.var(id) as *mut Litr)};
-          get_prop(this, v, find)
+          let from = unsafe{&mut *(this.var(id) as *mut Litr)};
+          get_prop(this, from, find).own()
         }
         _=> {
           let scope = *this;
-          get_prop(&scope, &mut this.calc(&acc.0), find)
+          let from = &mut this.calc(&acc.0);
+          get_prop(this, from, find).own()
         }
       }
     }
+
+    Expr::Kself => unsafe{(*this.kself).clone()},
 
     Expr::Empty => err("得到空表达式"),
     _=> err("未实装的表达式 ")
   }
 }
 
+/// calc_ref既可能得到引用，也可能得到计算过的值
+pub enum CalcRef {
+  Ref(*mut Litr),
+  Own(Box<Litr>)
+}
+impl CalcRef {
+  /// 消耗CalcRef返回内部值
+  pub fn own(self)-> Litr {
+    match self {
+      CalcRef::Ref(p)=> unsafe {(*p).clone()}
+      CalcRef::Own(v)=> *v
+    }
+  }
+}
+impl std::ops::Deref for CalcRef {
+  type Target = Litr;
+  fn deref(&self) -> &Self::Target {
+    match self {
+      CalcRef::Ref(p)=> unsafe{&**p},
+      CalcRef::Own(b)=> &**b
+    }
+  }
+}
+impl std::ops::DerefMut for CalcRef {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match self {
+      CalcRef::Ref(p)=> unsafe{&mut **p},
+      CalcRef::Own(b)=> &mut **b
+    }
+  }
+}
+
+/// 能引用优先引用的calc，能避免很多复制同时保证引用正确
+pub fn calc_ref(this:&mut Scope, e:&Expr)-> CalcRef {
+  match e {
+    Expr::Kself=> {
+      let v = unsafe{&mut *this.kself};
+      CalcRef::Ref(v)
+    }
+    Expr::Property(acc)=> {
+      let find = acc.1;
+      let mut from = calc_ref(this, &acc.0);
+      get_prop(this, &mut *from, find)
+    }
+    Expr::Variant(id)=> CalcRef::Ref(this.var(*id)),
+    // todo: Expr::Index
+    _=> {
+      let v = this.calc(e);
+      CalcRef::Own(Box::new(v))
+    }
+  }
+}
+
+/// 同calc_ref, 但额外返回一个ref处的scope指针
+fn calc_ref_with_scope(this:&mut Scope, e:&Expr)-> (CalcRef, Scope) {
+  match e {
+    Expr::Kself=> {
+      let v = CalcRef::Ref(unsafe{&mut *this.kself});
+      let mut scope = *this;
+      let kself = this.kself;
+      while let Some(prt) = scope.parent {
+        // 如果self是顶级作用域的self就返回顶级作用域
+        if prt.kself == kself {
+          return (v, prt);
+        }
+        scope = prt;
+      }
+      (v, *this)
+    }
+    Expr::Property(acc)=> {
+      let find = acc.1;
+      let (mut from, scope) = calc_ref_with_scope(this, &acc.0);
+      (get_prop(this, &mut *from, find), scope)
+    }
+    Expr::Variant(id)=> {
+      let (rf, scope) = this.var_with_scope(*id);
+      (CalcRef::Ref(rf), scope)
+    }
+    // todo: Expr::Index
+    _=> {
+      let v = this.calc(e);
+      // 如果是需要计算的量，就代表其作用域就在this
+      (CalcRef::Own(Box::new(v)), *this)
+    }
+  }
+}
+
+
+/// 在作用域中从Litr中找.运算符指向的东西
+fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
+  match from {
+    Litr::Inst(inst)=> {
+      let cannot_access_private = unsafe {(*inst.cls).module} != this.module;
+      let cls = unsafe {&*inst.cls};
+
+      // 先找属性
+      let props = &cls.props;
+      for (n, prop) in props.iter().enumerate() {
+        if prop.name == find {
+          if !prop.public && cannot_access_private {
+            err(&format!("'{}'类型的成员属性'{}'是私有的", cls.name, find))
+          }
+          return CalcRef::Ref(&mut inst.v[n]);
+        }
+      }
+
+      // 再找方法
+      let methods = &cls.methods;
+      for mthd in methods.iter() {
+        if mthd.name == find {
+          if !mthd.public && cannot_access_private {
+            err(&format!("'{}'类型的成员方法'{}'是私有的", cls.name, find))
+          }
+          // 为函数绑定self
+          let mut f = mthd.f.clone();
+          f.bound = Some(from);
+          let f = Litr::Func(Box::new(Function::Local(Box::new(f))));
+          return CalcRef::Own(Box::new(f));
+        }
+      }
+
+      err(&format!("'{}'类型上没有'{}'属性", cls.name, find))
+    },
+    _=> err("该类型属性还没实装")
+  }
+}
+
+
 fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   use Litr::*;
+  let mut left = this.calc_ref(&bin.left);
+  let right = this.calc_ref(&bin.right);
   /// 二元运算中普通数字的戏份
   macro_rules! impl_num {
     ($pan:literal $op:tt) => {{
-      let left = this.calc(&bin.left);
-      let right = this.calc(&bin.right);
-      impl_num!($pan,left,right $op)
-    }};
-    ($pan:literal $op:tt $n:tt)=> {{
-      let left = this.calc(&bin.left);
-      let right = this.calc(&bin.right);
-      if match right {
-        Int(r) => r == 0,
-        Uint(r) => r == 0,
-        Float(r) => r == 0.0,
-        _=> false
-      } {err("除数必须非0")}
-      impl_num!($pan,left,right $op)
-    }};
-    ($pan:literal,$l:ident,$r:ident $op:tt) => {{
-      match ($l.clone(), $r.clone()) {
+      match (&*left, &*right) {
         (Int(l),Int(r))=> Int(l $op r),
         (Uint(l),Uint(r))=> Uint(l $op r),
-        (Uint(l),Int(r))=> Uint(l $op r as usize),
+        (Uint(l),Int(r))=> Uint(l $op *r as usize),
         (Float(l),Float(r))=> Float(l $op r),
-        (Float(l),Int(r))=> Float(l $op r as f64),
+        (Float(l),Int(r))=> Float(l $op *r as f64),
         _=> err($pan)
       }
+    }};
+    ($pan:literal $op:tt $n:tt)=> {{
+      if match &*right {
+        Int(r) => *r == 0,
+        Uint(r) => *r == 0,
+        Float(r) => *r == 0.0,
+        _=> false
+      } {err("除数必须非0")}
+      impl_num!($pan $op)
     }};
   }
 
   /// 二元运算中无符号数的戏份
   macro_rules! impl_unsigned {
     ($pan:literal $op:tt) => {{
-      let left = this.calc(&bin.left);
-      let right = this.calc(&bin.right);
-      match (left, right) {
+      match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
-        (Uint(l), Int(r))=> Uint(l $op r as usize),
+        (Uint(l), Int(r))=> Uint(l $op *r as usize),
         _=> err($pan)
       }
     }};
@@ -207,41 +333,31 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   /// 数字修改并赋值
   macro_rules! impl_num_assign {
     ($o:tt) => {{
-      let left = this.calc(&bin.left);
-      let right = this.calc(&bin.right);
-      if let Expr::Variant(id) = bin.left {
-        // 将Int自动转为对应类型
-        let n = match (left, right) {
-          (Uint(l), Uint(r))=> Uint(l $o r),
-          (Uint(l), Int(r))=> Uint(l $o r as usize),
-          (Int(l), Int(r))=> Int(l $o r),
-          (Float(l), Float(r))=> Float(l $o r),
-          (Float(l), Int(r))=> Float(l $o r as f64),
-          _=> err("运算并赋值的左右类型不同")
-        };
-        *this.var(id) = n;
-        return Uninit;
-      }
-      err("只能为变量赋值。");
+      // 将Int自动转为对应类型
+      let n = match (&*left, &*right) {
+        (Uint(l), Uint(r))=> Uint(l $o r),
+        (Uint(l), Int(r))=> Uint(l $o *r as usize),
+        (Int(l), Int(r))=> Int(l $o r),
+        (Float(l), Float(r))=> Float(l $o r),
+        (Float(l), Int(r))=> Float(l $o *r as f64),
+        _=> err("运算并赋值的左右类型不同")
+      };
+      *left = n;
+      Uninit
     }};
   }
 
   // 无符号数修改并赋值
   macro_rules! impl_unsigned_assign {
     ($op:tt) => {{
-      let left = this.calc(&bin.left);
-      let right = this.calc(&bin.right);
-      if let Expr::Variant(id) = bin.left {
-        // 数字默认为Int，所以所有数字类型安置Int自动转换
-        let n = match (left, right) {
-          (Uint(l), Uint(r))=> Uint(l $op r),
-          (Uint(l), Int(r))=> Uint(l $op r as usize),
-          _=> err("按位运算并赋值只允许无符号数")
-        };
-        *this.var(id) = n;
-        return Uninit;
-      }
-      err("只能为变量赋值。");
+      // 数字默认为Int，所以所有数字类型安置Int自动转换
+      let n = match (&*left, &*right) {
+        (Uint(l), Uint(r))=> Uint(l $op r),
+        (Uint(l), Int(r))=> Uint(l $op *r as usize),
+        _=> err("按位运算并赋值只允许无符号数")
+      };
+      *left = n;
+      Uninit
     }};
   }
 
@@ -250,77 +366,55 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   /// 需要读堆的数据类型都需要以引用进行比较，减少复制开销
   macro_rules! impl_ord {($o:tt) => {{
     fn match_basic(l:&Litr,r:&Litr)-> bool {
-      // 对于简单数字，复制开销并不大
-      match (l.clone(), r.clone()) {
+      match (l, r) {
+        (Uninit, Uninit)=> 0 $o 0,
         (Uint(l),Uint(r))=> l $o r,
-        (Uint(l),Int(r))=> l $o r as usize,
-        (Uint(l),Float(r))=> l $o r as usize,
-        (Int(l), Uint(r))=> l $o r as isize,
+        (Uint(l),Int(r))=> l $o &(*r as usize),
+        (Uint(l),Float(r))=> l $o &(*r as usize),
+        (Int(l), Uint(r))=> l $o &(*r as isize),
         (Int(l), Int(r))=> l $o r,
-        (Int(l), Float(r))=> l $o r as isize,
-        (Float(l), Uint(r))=> l $o r as f64,
-        (Float(l), Int(r))=> l $o r as f64,
+        (Int(l), Float(r))=> l $o &(*r as isize),
+        (Float(l), Uint(r))=> l $o &(*r as f64),
+        (Float(l), Int(r))=> l $o &(*r as f64),
         (Float(l), Float(r))=> l $o r,
         (Bool(l), Bool(r))=> l $o r,
+        (Str(l), Str(r))=> l $o r,
+        (Buffer(l), Buffer(r))=> l $o r,
+        (List(l), List(r))=> match_list(l,r),
+        (Obj, Obj)=> todo!("obj比较未实装"),
+        (Inst(l),Inst(r))=> {
+          if l.cls != r.cls {
+            err("实例类型不同无法比较");
+          }
+          match_list(&*l.v, &*r.v)
+        },
         _=> err("比较两侧类型不同。")
       }
     }
 
-    // mayclone会在复制时拿到复制值的所有权
-    let mut l_mayclone = Litr::Uninit;
-    let mut l = match &bin.left {
-      Expr::Variant(id)=> unsafe{&*(this.var(*id) as *mut Litr)}
-      Expr::Literal(l)=> l,
-      _=> {
-        l_mayclone = this.calc(&bin.left);
-        &l_mayclone
+    fn match_list(l:&[Litr], r:&[Litr])-> bool {
+      let len = l.len();
+      if len != r.len() {
+        err("列表长度不同，无法比较");
       }
-    };
-    let mut r_mayclone = Litr::Uninit;
-    let mut r = match &bin.right {
-      Expr::Variant(id)=> unsafe{&*(this.var(*id) as *mut Litr)}
-      Expr::Literal(l)=> l,
-      _=> {
-        r_mayclone = this.calc(&bin.right);
-        &r_mayclone
+      for i in 0..len {
+        if !match_basic(&l[i],&r[i]) {
+          return false
+        };
       }
-    };
-    Bool(match (l, r) {
-      (Str(l), Str(r))=> l $o r,
-      (List(l), List(r))=> {
-        let len = l.len();
-        if len != r.len() {
-          err("列表长度不同，无法比较");
-        }
-        let mut b = true;
-        for i in 0..len {
-          if !match_basic(&l[i],&r[i]) {
-            b = false;
-            break;
-          };
-        }
-        b
-      },
-      (Buffer(l), Buffer(r))=> l $o r,
-      _=> match_basic(l,r)
-    })
+      true
+    }
+
+    Bool(match_basic(&*left,&*right))
   }}}
 
   /// 逻辑符
   macro_rules! impl_logic {
     ($o:tt) => {{
-      let mut left = this.calc(&bin.left);
-      let mut right = this.calc(&bin.right);
-      // 先把uninit同化成false
-      if let Uninit = left {
-        left = Bool(false)
-      }
-      if let Uninit = right {
-        right = Bool(false)
-      }
-
-      match (left, right) {
-        (Bool(l), Bool(r))=> Bool(l $o r),
+      match (&*left, &*right) {
+        (Bool(l), Bool(r))=> Bool(*l $o *r),
+        (Bool(l), Uninit)=> Bool(*l $o false),
+        (Uninit, Bool(r))=> Bool(false $o *r),
         _=> err("逻辑运算符两边必须都为Bool")
       }
     }};
@@ -329,29 +423,10 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   match &*bin.op {
     // 数字
     b"+" => {
-      // 尽可能使用字符引用，避免复制字符(calc函数必定复制)
-      let mut left_mayclone = Litr::Uninit;
-      let left = match &bin.left {
-        Expr::Variant(id)=> unsafe{&*(this.var(*id) as *mut Litr)},
-        Expr::Literal(l)=> l,
-        _=> {
-          left_mayclone = this.calc(&bin.left);
-          &left_mayclone
-        }
-      };
-      let mut right_mayclone = Litr::Uninit;
-      let right = match &bin.right {
-        Expr::Variant(id)=> &*this.var(*id),
-        Expr::Literal(l)=> l,
-        _=> {
-          right_mayclone = this.calc(&bin.right);
-          &right_mayclone
-        }
-      };
-      if let Str(l) = left {
+      if let Str(l) = &*left {
         // litr.str()方法会把内部String复制一遍
         // 直接使用原String的引用可以避免这次复制
-        if let Str(r) = right {
+        if let Str(r) = &*right {
           let mut s = Box::new([l.as_str(),r.as_str()].concat());
           return Str(s);
         }
@@ -359,7 +434,7 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
         let mut s = Box::new([l.as_str(),r.as_str()].concat());
         return Str(s);
       }
-      impl_num!("相加类型不同",left,right +)
+      impl_num!("相加类型不同" +)
     },
     b"-" => impl_num!("相减类型不同" -),
     b"*" => impl_num!("相乘类型不同" *),
@@ -375,34 +450,29 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
 
     // 赋值
     b"=" => {
-      let (left,target_scope) = match bin.left {
-        Expr::Variant(id)=> {
-          let v = this.var_with_scope(id);
-          (unsafe{&mut *(v.0 as *mut Litr)}, v.1)
-        },
-        _=> return Uninit
-      };
-      let right = this.calc(&bin.right);
-      // 为函数定义处增加一层引用计数
-      match &right {
-        Litr::Func(f)=> {
-          if let Function::Local(f) = &**f {
-            outlive::outlive_to((**f).clone(),target_scope);
-          }
-        }
-        Litr::List(l)=> {
-          l.iter().for_each(|f|if let Litr::Func(f) = f {
+      /// 如果值包含本地函数就为函数定义处增加一层引用计数
+      fn may_add_ref(v:&Litr, target_scope: Scope) {
+        match v {
+          Litr::Func(f)=> {
             if let Function::Local(f) = &**f {
               outlive::outlive_to((**f).clone(),target_scope);
             }
-          })
-        }
-        _=> {
-          // todo!("Obj和Struct仍未实装");
+          }
+          Litr::List(l)=> 
+            l.iter().for_each(|item|may_add_ref(item, target_scope)),
+          Litr::Inst(inst)=> 
+            inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
+          Litr::Obj=> {err("obj赋值未实装")}
+          _=> {}
         }
       }
+
+      let (mut left, scope) = calc_ref_with_scope(this, &bin.left);
+      let right = right.own();
+      may_add_ref(&right, scope);
+      println!("{this:?} {scope:?}");
       *left = right;
-      return Uninit;
+      Uninit
     }
     b"+=" => impl_num_assign!(+),
     b"-=" => impl_num_assign!(-),
@@ -432,38 +502,3 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   }
 }
 
-
-fn get_prop(this:&Scope, v:&mut Litr, find:Interned)-> Litr {
-  match v {
-    Litr::Inst(inst)=> {
-      let cannot_access_private = unsafe {(*inst.cls).module} != this.module;
-
-      // 先找属性
-      let props = unsafe {&(*inst.cls).props};
-      for (n, prop) in props.iter().enumerate() {
-        if prop.name == find {
-          if !prop.public && cannot_access_private {
-            err(&format!("成员属性'{}'是私有的", find))
-          }
-          return inst.v[n].clone();
-        }
-      }
-
-      // 再找方法
-      let methods = unsafe {&(*inst.cls).methods};
-      for mthd in methods.iter() {
-        if mthd.name == find {
-          if !mthd.public && cannot_access_private {
-            err(&format!("成员方法'{}'是私有的", find))
-          }
-          return Litr::Func(Box::new(Function::BindedMethod(Box::new((
-            &mut **inst, mthd.f.clone()
-          )))));
-        }
-      }
-
-      err(&format!("该类型上没有'{}'属性",find))
-    },
-    _=> err("该类型属性还没实装")
-  }
-}

@@ -1,6 +1,21 @@
 
-mod D:\code\rs\key-lang\samples\testmod.ks> mym
-let s = mym-:MyStruct::new();
+class A {
+  a b
+  new():A{
+    a:A{b:9}
+  },
+  .f() {
+    self.a = 99;
+    :self
+  }
+  .g() {
+    log(self.a)
+  }
+}
 
-class A = mym-:MyStruct
-log(A::new().b)
+let a = A::new();
+{
+  let f() log("ok")
+  a.a.b = f
+}
+a.a.b()

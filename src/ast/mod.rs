@@ -27,7 +27,7 @@ pub enum Litr {
   Float  (f64),
   Bool   (bool),
 
-  Func   (Box<Function>), // extern和Func(){} 都属于Func直接表达式
+  Func   (Box<Function>), 
   Str    (Box<String>),
   Buffer (Box<Vec<u8>>),
   List   (Box<Vec<Litr>>),
@@ -70,14 +70,26 @@ impl Litr {
       Obj=> format!("obj"),
       Inst(i)=> {
         let cls = unsafe{&*i.cls};
-        let mut v = i.v.iter();
+        let mut name = cls.props.iter();
+        let mut val = i.v.iter();
         let mut str = String::new();
-        str.push_str("Instance { ");
-        for p in cls.props.iter() {
-          str.push_str(&p.name.str());
-          str.push_str(": ");
-          str.push_str(&v.next().unwrap().str());
+        macro_rules! next {($p:ident) => {{
+          str.push_str(&$p.name.str());
+          let next_v = val.next().unwrap().str();
+          if next_v != "" {
+            str.push_str(": ");
+            str.push_str(&next_v);
+          }
+        }}};
+        
+        str.push_str(&cls.name.str());
+        str.push_str(" { ");
+        if let Some(p) = name.next() {
+          next!(p);
+        }
+        for p in name {
           str.push_str(", ");
+          next!(p);
         }
         str.push_str(" }");
         str
@@ -94,12 +106,6 @@ pub enum Function {
   Native(fn(Vec<Litr>)-> Litr),
   // 脚本定义的本地函数
   Local(Box<LocalFunc>),
-  // class X {.x()}定义的方法，提供一个ClassDef指针来判断实例是否是该类型
-  Method(Box<(*const ClassDef, LocalFunc)>),
-  // 绑定了self的method
-  BindedMethod(Box<(*mut Instance, LocalFunc)>),
-  // class X {x()}定义的静态方法，提供*mut Module来判断是否能访问私有成员
-  Static(Box<(*mut Module, LocalFunc)>),
   // 使用extern语句得到的C函数
   Extern(Box<ExternFunc>)
 }
@@ -118,14 +124,18 @@ pub struct LocalFuncRaw {
 pub struct LocalFunc {
   /// pointer
   pub ptr:*const LocalFuncRaw,
-  pub scope: Scope
+  /// 来自的作用域
+  pub scope: Scope,
+  /// 是否绑定了self
+  pub bound: Option<*mut Litr>,
 }
 impl LocalFunc {
   /// 将本地函数定义和作用域绑定
   pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
     LocalFunc{
       ptr,
-      scope
+      scope,
+      bound: None
     }
   }
 }
