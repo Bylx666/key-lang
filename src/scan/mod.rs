@@ -2,17 +2,20 @@
 
 use std::collections::HashMap;
 
-use crate::ast::*;
 use crate::intern::{
   intern,
   Interned
 };
 use crate::runtime::Scope;
 
-mod charts;
-mod stmt;
-mod literal;
-mod expr;
+pub mod charts;
+pub mod stmt;
+pub mod literal;
+pub mod expr;
+
+use stmt::{Statements, Stmt};
+use literal::{Litr, KsType};
+use expr::Expr;
 
 /// 将字符整理为ast
 pub fn scan(src: Vec<u8>)-> Statements {

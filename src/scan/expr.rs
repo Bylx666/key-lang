@@ -1,9 +1,82 @@
 use super::{Scanner, charts};
-use crate::ast::{
-  Litr, Expr, BinDecl, CallDecl
+use super::literal::{
+  Litr, LocalFuncRaw
 };
+use crate::intern::Interned;
 
-pub fn expr(this:&Scanner)-> Expr {
+/// 可以出现在任何右值的，expression表达式
+#[derive(Debug, Clone)]
+pub enum Expr {
+  Empty,
+  // 字面量
+  Literal(Litr),
+  // 变量
+  Variant(Interned),
+  // self
+  Kself,
+
+  // 未绑定作用域的本地函数
+  LocalDecl (Box<LocalFuncRaw>),
+
+  // .运算符
+  Property  (Box<(Expr, Interned)>),
+  // -.运算符
+  ModFuncAcc(Box<(Interned, Interned)>),
+  // -:运算符
+  ModClsAcc (Box<(Interned, Interned)>),
+  // ::运算符
+  ImplAccess(Box<(Expr, Interned)>),
+  // 调用函数
+  Call      (Box<CallDecl>),
+  // 创建实例
+  NewInst   (Box<NewDecl>),
+
+  // 列表表达式
+  List      (Box<Vec<Expr>>),
+  // 对象表达式
+  Obj       (Box<ObjDecl>),
+
+  // 一元运算 ! -
+  Unary     (Box<UnaryDecl>),
+  // 二元运算
+  Binary    (Box<BinDecl>),
+}
+
+// V 注释见Expr V
+
+#[derive(Debug, Clone)]
+pub struct BinDecl {
+  pub left: Expr,
+  pub right: Expr,
+  pub op: Box<[u8]>
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryDecl {
+  pub right: Expr,
+  pub op: u8
+}
+
+
+#[derive(Debug, Clone)]
+pub struct CallDecl {
+  pub args: Vec<Expr>,
+  pub targ: Expr
+}
+
+#[derive(Debug, Clone)]
+pub struct NewDecl {
+  pub cls: Interned,
+  pub val: ObjDecl
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjDecl (
+  pub Vec<(Interned,Expr)>
+);
+
+
+pub(super) fn expr(this:&Scanner)-> Expr {
   this.spaces();
   // 判断开头有无括号
   let left = if this.cur() == b'(' {
@@ -14,7 +87,7 @@ pub fn expr(this:&Scanner)-> Expr {
   this.expr_with_left(left)
 }
 
-pub fn with_left(this:&Scanner, left:Expr)-> Expr {
+pub(super) fn with_left(this:&Scanner, left:Expr)-> Expr {
   use charts::prec;
 
   let mut expr_stack = vec![left];
@@ -123,7 +196,7 @@ pub fn with_left(this:&Scanner, left:Expr)-> Expr {
   }
 }
 
-pub fn group(this:&Scanner)-> Expr {
+pub(super) fn group(this:&Scanner)-> Expr {
   // 把左括号跳过去
   this.next();
   this.spaces();

@@ -88,9 +88,8 @@ pub fn evil(this:&mut Scope, code:&Stmt) {
       let f = LocalFunc::new(func_raw, *this);
       // 将函数定义处的作用域生命周期永久延长
       outlive::outlive_static(f.scope);
-      let exec = Function::Local(Box::new(f));
-      this.vars.push((id, Litr::Func(Box::new(exec.clone()))));
-      unsafe{(*this.module).export.funcs.push((id,exec))}
+      this.vars.push((id, Litr::Func(Box::new(Function::Local(Box::new(f.clone()))))));
+      unsafe{(*this.module).export.funcs.push((id,f))}
     }
 
     // 导出类 mod:

@@ -2,11 +2,15 @@
 //! 
 //! 将解析的ast放在实际作用域中运行
 
-use crate::ast::*;
 use crate::intern::{intern, Interned};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize,self};
 use std::ptr::NonNull;
+use crate::scan::{
+  literal::*,
+  stmt::*,
+  expr::*
+};
 
 mod outlive;
 pub use outlive::Outlives;
@@ -31,8 +35,8 @@ pub fn err(s:&str)-> ! {
 /// 当前Ks的模块
 #[derive(Debug)]
 pub struct Module {
-  pub imports: Vec<ModDef>,
-  pub export: ModDef
+  pub imports: Vec<LocalModDef>,
+  pub export: LocalModDef
 }
 
 
@@ -220,7 +224,7 @@ impl Scope {
 #[derive(Debug)]
 pub struct RunResult {
   pub returned: Litr,
-  pub exported: ModDef,
+  pub exported: LocalModDef,
   pub kself: Litr
 }
 
@@ -230,7 +234,7 @@ pub fn run(s:&Statements)-> RunResult {
   let mut return_to = &mut Some(&mut top_ret as *mut Litr);
   let mut mods = Module { 
     imports: Vec::new(), 
-    export: ModDef { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() } 
+    export: LocalModDef { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() } 
   };
   let mut kself = Litr::Uninit;
   top_scope(return_to, &mut mods, &mut kself).run(s);

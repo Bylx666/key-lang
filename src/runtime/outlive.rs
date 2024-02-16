@@ -2,7 +2,7 @@
 //! 
 //! 具体思路见Outlives结构
 
-use crate::ast::{LocalFuncRaw, LocalFunc};
+use super::{LocalFuncRaw, LocalFunc};
 use super::ScopeInner;
 use std::sync::atomic::Ordering;
 

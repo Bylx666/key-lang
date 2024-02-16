@@ -1,21 +1,9 @@
 
-class A {
-  a b
-  new():A{
-    a:A{b:9}
-  },
-  .f() {
-    self.a = 99;
-    :self
-  }
-  .g() {
-    log(self.a)
-  }
-}
+mod D:\code\rs\key-lang\samples\testmod.ks> m
 
-let a = A::new();
+let a = m-:MyStruct::new();
 {
-  let f() log("ok")
-  a.a.b = f
+  let f() log("2")
+  a.b.b = f
 }
-a.a.b()
+a.b.b()

@@ -1,9 +1,120 @@
 use super::{Scanner, scan};
 use crate::intern::{Interned,intern};
-use crate::runtime::{Scope, ScopeInner};
-use crate::ast::*;
+use crate::runtime::{Scope, ScopeInner, Module};
+use super::{
+  literal::{Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType},
+  expr::Expr
+};
 
-pub fn stmt(this:&Scanner)-> Stmt {
+/// 语句列表
+#[derive(Debug, Clone, Default)]
+pub struct Statements (
+  pub Vec<(usize, Stmt)>
+);
+
+/// 分号分隔的，statement语句
+#[derive(Debug, Clone)]
+pub enum Stmt {
+  Empty,
+
+  // 赋值
+  Let       (Box<AssignDef>),
+
+  // 定义类
+  Class     (Box<ClassDefRaw>),
+  // 类别名
+  Using     (Box<(Interned, Expr)>),
+
+  Mod       (Box<LocalModDef>),
+  ExportFn  (Box<(Interned, LocalFuncRaw)>),
+  ExportCls (Box<ClassDefRaw>),
+
+  // Key
+  // Key       (HashMap<Ident, KsType>),                // 类型声明语句
+  // Impl      (HashMap<Ident, KsLocalFunc>), // 方法定义语句
+  Match,     // 模式匹配
+
+  // 块系列
+  Block    (Box<Statements>),   // 一个普通块
+  If       (Box<Statements>),   // 条件语句
+  Loop     (Box<Statements>),   // 循环
+
+  // 流程控制
+  Break     (Box<Expr>),                  // 中断循环并提供返回值
+  Continue,                           // 立刻进入下一次循环
+  Return    (Box<Expr>),                  // 函数返回
+
+  // 表达式作为语句
+  Expression(Box<Expr>),
+}
+
+/// 赋值语句
+#[derive(Debug, Clone)]
+pub struct AssignDef {
+  pub id: Interned,
+  pub val: Expr
+}
+
+
+#[derive(Debug, Clone)]
+pub struct LocalModDef {
+  pub name: Interned,
+  pub funcs: Vec<(Interned, LocalFunc)>,
+  pub classes: Vec<(Interned, *const ClassDef)>
+}
+
+/// 未绑定作用域的类声明
+#[derive(Debug, Clone)]
+pub struct ClassDefRaw {
+  pub name: Interned,
+  pub props: Vec<ClassProp>,
+  pub methods: Vec<ClassFuncRaw>,
+  pub statics: Vec<ClassFuncRaw>
+}
+
+/// 绑定作用域的类声明
+#[derive(Debug, Clone)]
+pub struct ClassDef {
+  pub name: Interned,
+  pub props: Vec<ClassProp>,
+  pub statics: Vec<ClassFunc>,
+  pub methods: Vec<ClassFunc>,
+  /// 用来判断是否在模块外
+  pub module: *mut Module
+}
+
+/// 类中的属性声明
+#[derive(Debug, Clone)]
+pub struct ClassProp {
+  pub name: Interned,
+  pub typ: KsType,
+  pub public: bool
+}
+
+/// 类中的未绑定作用域的函数声明
+#[derive(Debug,Clone)]
+pub struct ClassFuncRaw {
+  pub name: Interned,
+  pub f: LocalFuncRaw,
+  pub public: bool
+}
+
+/// 类中的函数声明
+#[derive(Debug,Clone)]
+pub struct ClassFunc {
+  pub name: Interned,
+  pub f: LocalFunc,
+  pub public: bool
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeMod {
+  pub name: Interned,
+  pub funcs: Vec<crate::native::NativeFn>
+}
+
+
+pub(super) fn stmt(this:&Scanner)-> Stmt {
   this.spaces();
   if this.i() >= this.src.len() {
     this.next(); // 打破scan函数的while
@@ -56,6 +167,7 @@ pub fn stmt(this:&Scanner)-> Stmt {
       b"return"=> returning(this),
       b"class"=> classing(this),
       b"mod"=> moding(this),
+      b"async"|b"await"=> this.err("异步关键词暂未实现"),
       _=> {
         let left = match &*id {
           b"true"=> Expr::Literal(Litr::Bool(true)),

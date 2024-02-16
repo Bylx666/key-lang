@@ -6,7 +6,7 @@ use crate::intern::Interned;
 use crate::c::{dlopen,dlsym};
 
 
-use crate::ast::{
+use crate::scan::literal::{
   Litr, LocalFunc
 };
 use crate::runtime::ScopeInner;
@@ -58,7 +58,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     Buffer(v)=> Ok(v.as_ptr() as usize),
     Func(p)=> {
       let exec = unsafe {&*p};
-      use crate::ast::Function::*;
+      use crate::scan::literal::Function::*;
       match exec {
         Local(f)=> translate_local_impl! { f 
           0  agent0 ()

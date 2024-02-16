@@ -47,15 +47,6 @@ class MyClass {
 }
 MyClass::new().get_a() == "a"
 
-## 使用方法
-
-可以直接使用::运算符，并将其实例作为第一个参数作为self。
-
-class MyClass {
-  .a()
-}
-MyClass {}.a()
-MyClass::a(MyCLass {})
 
 ## 模块化
 
@@ -73,6 +64,16 @@ my_mod-:MyClass::some()
 
 let some = my_mod-:MyClass::some;
 some();
+```
+
+## 分隔符
+
+class成员间使用`,`分隔，一般可以省略。但以下例子会报错，因为程序会将new()内容解析为A{}.met()，然后下一个字符为`{`就会提示未闭合的大括号。解决方法就是在A{}后加逗号。
+```
+class A {
+  new(): A{}
+  .met() {}
+}
 ```
 
 ## obj

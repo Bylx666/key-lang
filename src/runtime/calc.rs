@@ -83,7 +83,7 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
         if def.name == modname {
           for (id, func) in def.funcs.iter() {
             if *id == funcname {
-              return Litr::Func(Box::new(func.clone()));
+              return Litr::Func(Box::new(Function::Local(Box::new(func.clone()))));
             }
           }
           err(&format!("模块'{}'中没有'{}'函数",modname,funcname))

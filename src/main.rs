@@ -6,7 +6,6 @@ use std::process::ExitCode;
 
 mod intern;
 use intern::intern;
-mod ast;
 mod scan;
 mod runtime;
 mod utils;
@@ -30,6 +29,7 @@ fn main()-> ExitCode {
   // 用cell代替ref
   // 析构函数..?
   // 指针self链式调用
+  // 约定方法str() array()
 
   // 传进Native的struct怎么处理？
   // Obj的ord
@@ -60,9 +60,9 @@ fn main()-> ExitCode {
 
   intern::init();
   let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  println!("{scanned:?}");
+  // println!("{scanned:?}");
   let exit = runtime::run(&scanned);
-  if let ast::Litr::Int(code) = exit.returned {
+  if let scan::literal::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);
   }
   ExitCode::SUCCESS
