@@ -11,6 +11,7 @@ use crate::scan::{
   stmt::*,
   expr::*
 };
+use crate::native::{NativeClassDef, NativeMod};
 
 mod outlive;
 pub use outlive::Outlives;
@@ -27,16 +28,23 @@ mod externer;
 /// 
 /// 只有主线程会访问，不存在多线程同步问题
 static mut LINE:usize = 0;
-pub fn err(s:&str)-> ! {
-  panic!("{} 运行时({})", s, unsafe{LINE})
+#[macro_use] macro_rules! err {($($a:expr$(,)?)*) => {
+  panic!("{} 运行时({})", format_args!($($a,)*), unsafe{LINE})
+}}
+pub(super) use err;
+
+
+#[derive(Debug, Clone)]
+pub enum Module {
+  Native(*const NativeMod),
+  Local(*const LocalMod)
 }
 
-// 是runtime单方面使用的，不需要定义到ast
-/// 当前Ks的模块
-#[derive(Debug)]
-pub struct Module {
-  pub imports: Vec<LocalModDef>,
-  pub export: LocalModDef
+/// 类声明，分为本地和原生类声明
+#[derive(Debug, Clone)]
+pub enum Class {
+  Native(*const NativeClassDef),
+  Local(*const ClassDef)
 }
 
 
@@ -52,11 +60,13 @@ pub struct ScopeInner {
   /// 类型声明(和作用域生命周期一致)
   pub class_defs: Vec<ClassDef>,
   /// 类型使用
-  pub class_uses: Vec<(Interned, *const ClassDef)>,
+  pub class_uses: Vec<(Interned, Class)>,
   /// self指针
   pub kself: *mut Litr,
-  /// 导入和导出的模块指针
-  pub module: *mut Module,
+  /// 当前脚本导入的模块
+  pub imports: *mut Vec<Module>,
+  /// ks本身作为模块导出的指针
+  pub exports: *mut LocalMod,
   /// 该作用域生命周期会被outlive的函数延长
   pub outlives: outlive::Outlives
 }
@@ -151,11 +161,6 @@ impl Scope {
     call::call_local(self, f, args)
   }
 
-  /// 调用method
-  pub fn call_method(&self, f:&LocalFunc, kself:*mut Litr, args:Vec<Litr>)-> Litr {
-    call::call_method(self, f, kself, args)
-  }
-
   /// 调用extern函数
   pub fn call_extern(&self, f:&ExternFunc, args:Vec<Litr>)-> Litr {
     externer::call_extern(self,f,args)
@@ -173,7 +178,7 @@ impl Scope {
     if let Some(parent) = &mut inner.parent {
       return parent.var(s);
     }
-    err(&format!("无法找到变量 '{}'", s.str()));
+    err!("无法找到变量 '{}'", s.str());
   }
 
   /// 在作用域找一个变量并返回其所在作用域
@@ -189,21 +194,68 @@ impl Scope {
     if let Some(parent) = &mut inner.parent {
       return parent.var_with_scope(s);
     }
-    err(&format!("无法找到变量 '{}'", s.str()));
+    err!("无法找到变量 '{}'", s.str());
   }
 
 
-  /// 寻找一个类声明
-  pub fn find_class(&self, s:Interned)-> &ClassDef {
+  /// 在当前use过的类声明中找对应的类
+  pub fn find_class(&self, s:Interned)-> Class {
     for (name, cls) in self.class_uses.iter().rev() {
       if *name == s {
-        return unsafe { &**cls };
+        return cls.clone();
       }
     }
     if let Some(parent) = &self.parent {
       return parent.find_class(s);
     }
-    err(&format!("未定义类 '{}'", s.str()));
+    err!("未定义类 '{}'", s.str());
+  }
+  /// 在一个模块中找一个类声明
+  pub fn find_class_in(&self, s:Interned, modname: Interned)-> Class {
+    let module = self.find_mod(modname);
+    match module {
+      Module::Local(p)=> {
+        let m = unsafe {&*p};
+        for (name, cls) in m.classes.iter() {
+          if *name == s {
+            return Class::Local(*cls);
+          }
+        }
+        err!("模块'{}'中没有'{}'类型",modname.str(), s.str())
+      }
+      Module::Native(p)=> {
+        let m = unsafe {&*p};
+        for cls in m.classes.iter() {
+          if cls.name == s {
+            return Class::Native(cls);
+          }
+        }
+        err!("模块'{}'中没有'{}'类型",modname.str(), s.str())
+      }
+    }
+  }
+
+
+  /// 寻找一个导入的模块
+  pub fn find_mod(&self, s:Interned)-> Module {
+    let imports = unsafe {&*self.imports};
+    for module in imports.iter() {
+      match module {
+        Module::Local(p)=> {
+          let m = unsafe {&**p};
+          if m.name == s {
+            return module.clone();
+          }
+        }
+        Module::Native(p)=> {
+          let m = unsafe {&**p};
+          if m.name == s {
+            return module.clone();
+          }
+        }
+      }
+    }
+    err!("当前模块中没有导入'{}'模块", s.str())
   }
 
 
@@ -224,7 +276,7 @@ impl Scope {
 #[derive(Debug)]
 pub struct RunResult {
   pub returned: Litr,
-  pub exported: LocalModDef,
+  pub exports: LocalMod,
   pub kself: Litr
 }
 
@@ -232,19 +284,17 @@ pub struct RunResult {
 pub fn run(s:&Statements)-> RunResult {
   let mut top_ret = Litr::Uint(0);
   let mut return_to = &mut Some(&mut top_ret as *mut Litr);
-  let mut mods = Module { 
-    imports: Vec::new(), 
-    export: LocalModDef { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() } 
-  };
+  let mut imports = Vec::new();
+  let mut exports = LocalMod { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() };
   let mut kself = Litr::Uninit;
-  top_scope(return_to, &mut mods, &mut kself).run(s);
-  RunResult { returned: top_ret, exported: mods.export, kself }
+  top_scope(return_to, &mut imports, &mut exports,&mut kself).run(s);
+  RunResult { returned: top_ret, exports, kself }
 }
 
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module, kself:*mut Litr)-> Scope {
+pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
     Litr::Func(Box::new(Function::Native(io::log))))
@@ -256,7 +306,9 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, module:*mut Module, kself:*mu
     class_defs:Vec::new(), 
     class_uses:Vec::new(),
     kself,
-    vars, module, 
+    imports,
+    exports,
+    vars, 
     outlives: Outlives::new()
   })
 }

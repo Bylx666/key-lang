@@ -1,9 +1,4 @@
 
-mod D:\code\rs\key-lang\samples\testmod.ks> m
+mod D:\code\rs\key-native\target\debug\key_native.dll> m
 
-let a = m-:MyStruct::new();
-{
-  let f() log("2")
-  a.b.b = f
-}
-a.b.b()
+let a = m-.test();

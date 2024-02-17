@@ -1,5 +1,6 @@
 use super::{Scanner, scan};
 use crate::intern::{Interned,intern};
+use crate::native::NativeMod;
 use crate::runtime::{Scope, ScopeInner, Module};
 use super::{
   literal::{Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType},
@@ -25,7 +26,8 @@ pub enum Stmt {
   // 类别名
   Using     (Box<(Interned, Expr)>),
 
-  Mod       (Box<LocalModDef>),
+  Mod       (Box<LocalMod>),
+  NativeMod (Box<NativeMod>),
   ExportFn  (Box<(Interned, LocalFuncRaw)>),
   ExportCls (Box<ClassDefRaw>),
 
@@ -57,7 +59,7 @@ pub struct AssignDef {
 
 
 #[derive(Debug, Clone)]
-pub struct LocalModDef {
+pub struct LocalMod {
   pub name: Interned,
   pub funcs: Vec<(Interned, LocalFunc)>,
   pub classes: Vec<(Interned, *const ClassDef)>
@@ -80,7 +82,7 @@ pub struct ClassDef {
   pub statics: Vec<ClassFunc>,
   pub methods: Vec<ClassFunc>,
   /// 用来判断是否在模块外
-  pub module: *mut Module
+  pub module: *mut LocalMod
 }
 
 /// 类中的属性声明
@@ -105,12 +107,6 @@ pub struct ClassFunc {
   pub name: Interned,
   pub f: LocalFunc,
   pub public: bool
-}
-
-#[derive(Debug, Clone)]
-pub struct NativeMod {
-  pub name: Interned,
-  pub funcs: Vec<crate::native::NativeFn>
 }
 
 
@@ -483,14 +479,14 @@ fn moding(this:&Scanner)-> Stmt {
     b".ksm"|b".dll"=> {
       let module = crate::native::parse(name, path).unwrap_or_else(|e|
         this.err(&format!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path))));
-      Stmt::Mod(Box::new(module))
+      Stmt::NativeMod(Box::new(module))
     }
     b".ks"=> {
       let path = &*String::from_utf8_lossy(path);
       let file = std::fs::read(path).unwrap_or_else(|e|this.err(&format!(
         "无法找到模块'{}'", path
       )));
-      let mut module = crate::runtime::run(&scan(file)).exported;
+      let mut module = crate::runtime::run(&scan(file)).exports;
       module.name = name;
       Stmt::Mod(Box::new(module))
     }

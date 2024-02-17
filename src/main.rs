@@ -30,6 +30,9 @@ fn main()-> ExitCode {
   // 析构函数..?
   // 指针self链式调用
   // 约定方法str() array()
+  // 检查run函数，块内外self是否一致
+  // newInst如果属性不全不让构造
+  // 把option<scope>换成topscope
 
   // 传进Native的struct怎么处理？
   // Obj的ord
