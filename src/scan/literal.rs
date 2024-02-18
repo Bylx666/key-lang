@@ -4,13 +4,13 @@ use super::{
   expr::*
 };
 
-use crate::runtime::{Module, Scope};
+use crate::{native::NativeInstance, runtime::{Module, Scope}};
 use crate::intern::Interned;
 
 use std::collections::HashMap;
 
 
-/// 变量或字面量
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,
@@ -25,7 +25,8 @@ pub enum Litr {
   Buffer (Box<Vec<u8>>),
   List   (Box<Vec<Litr>>),
   Obj,
-  Inst   (Box<Instance>)
+  Inst   (Box<Instance>),
+  Ninst  (Box<NativeInstance>)
 }
 impl Litr {
   /// 由Key编译器提供的转字符
@@ -86,6 +87,12 @@ impl Litr {
         }
         str.push_str(" }");
         str
+      }
+      Ninst(inst)=> {
+        let mut s = String::new();
+        s.push_str(&unsafe{&*inst.cls}.name.str());
+        s.push_str(" { Native }");
+        s
       }
     }
   }

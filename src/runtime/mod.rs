@@ -27,7 +27,7 @@ mod externer;
 /// 运行期追踪行号
 /// 
 /// 只有主线程会访问，不存在多线程同步问题
-static mut LINE:usize = 0;
+pub static mut LINE:usize = 0;
 #[macro_use] macro_rules! err {($($a:expr$(,)?)*) => {
   panic!("{} 运行时({})", format_args!($($a,)*), unsafe{LINE})
 }}
@@ -226,11 +226,12 @@ impl Scope {
       Module::Native(p)=> {
         let m = unsafe {&*p};
         for cls in m.classes.iter() {
-          if cls.name == s {
-            return Class::Native(cls);
+          let name = unsafe {&**cls}.name;
+          if name == s {
+            return Class::Native(*cls);
           }
         }
-        err!("模块'{}'中没有'{}'类型",modname.str(), s.str())
+        err!("原生模块'{}'中没有'{}'类型",modname.str(), s.str())
       }
     }
   }

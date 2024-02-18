@@ -77,6 +77,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     List(_)=> Err("列表类型不可作为C指针传递".to_string()),
     Obj=> Err("Ks对象不可作为C指针传递".to_string()),
     Inst(_)=> Err("Ks实例不可作为C指针传递".to_string()),
+    Ninst(_)=> Err("Ks原生实例不可作为C指针传递".to_string())
   }
 }
 
