@@ -40,9 +40,10 @@ impl Litr {
       Bool(n)=> n.to_string(),
       Func(f)=> {
         match **f {
-          Function::Local(_)=> "<Local Function>".to_owned(),
-          Function::Extern(_)=> "<Extern Function>".to_owned(),
-          _=> "<Builtin Function>".to_owned()
+          Function::Local(_)=> "<Local Function>".to_string(),
+          Function::Extern(_)=> "<Extern Function>".to_string(),
+          Function::Native(_)=> "<Native Function>".to_string(),
+          Function::NativeMethod(_)=> "<Native Method>".to_string()
         }
       }
       Str(s)=> (**s).clone(),
@@ -103,6 +104,8 @@ impl Litr {
 pub enum Function {
   // Native模块或Runtime提供的Rust函数
   Native(crate::native::NativeFn),
+  // 绑定了self的原生函数
+  NativeMethod(Box<crate::native::BoundNativeMethod>),
   // 脚本定义的本地函数
   Local(Box<LocalFunc>),
   // 使用extern语句得到的C函数

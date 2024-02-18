@@ -9,6 +9,7 @@ pub fn call(this:&mut Scope, call: &Box<CallDecl>)-> Litr {
     use Function::*;
     match &**exec {
       Native(f)=> f(args),
+      NativeMethod(f)=> (f.f)(f.bind, args),
       Local(f)=> call_local(this, &f, args),
       Extern(f)=> this.call_extern(&f, args),
     }

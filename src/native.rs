@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub type NativeFn = fn(Vec<Litr>)-> Litr;
-pub type NativeMethod = fn(kself:&mut Litr, Vec<Litr>)-> Litr;
+pub type NativeMethod = fn(*mut NativeInstance, Vec<Litr>)-> Litr;
 pub type Getter = fn(get:Interned)-> Litr;
 pub type Setter = fn(set:Interned, to:Litr);
 pub type IndexGetter = fn(get:usize)-> Litr;
@@ -26,6 +26,8 @@ pub struct NativeClassDef {
   pub setter: Setter,
   pub igetter: IndexGetter,
   pub isetter: IndexSetter,
+  pub onclone: NativeMethod,
+  pub ondrop: NativeMethod,
   pub statics: Vec<(Interned, NativeFn)>,
   pub methods: Vec<(Interned, NativeMethod)>
 }
@@ -43,8 +45,16 @@ struct NativeInterface {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct NativeInstance {
+  pub v1: usize,
+  pub v2: usize,
   pub cls: *mut NativeClassDef,
-  pub v: [usize;2],
+}
+
+/// Litr中使用的NativeMethod类型
+#[derive(Debug, Clone)]
+pub struct BoundNativeMethod {
+  pub bind: *mut NativeInstance,
+  pub f: NativeMethod
 }
 
 pub fn parse(name:Interned,path:&[u8])-> Result<NativeMod, String> {

@@ -1,5 +1,7 @@
 //! 注释都在mod.rs里，这没有注解
 
+use crate::native::BoundNativeMethod;
+
 use super::*;
 
 /// 解析一个表达式，对应Expr
@@ -281,6 +283,7 @@ fn calc_ref_with_scope(this:&mut Scope, e:&Expr)-> (CalcRef, Scope) {
 /// 在作用域中从Litr中找.运算符指向的东西
 fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
   match from {
+    // 本地class的实例
     Litr::Inst(inst)=> {
       let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
       let cls = unsafe {&*inst.cls};
@@ -313,6 +316,23 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
 
       err!("'{}'类型上没有'{}'属性", cls.name, find)
     },
+
+    // 原生类的实例
+    Litr::Ninst(inst)=> {
+      let cls = unsafe {&*inst.cls};
+      // 先找方法
+      for (name, f) in cls.methods.iter() {
+        if *name == find {
+          return CalcRef::Own(Box::new(Litr::Func(Box::new(Function::NativeMethod(Box::new(BoundNativeMethod {
+            bind: &mut **inst,
+            f: *f
+          }))))));
+        }
+      }
+      // 再找属性
+      todo!("setter未实装");
+      CalcRef::Own(Box::new((cls.getter)(find)))
+    }
     _=> err!("该类型属性还没实装")
   }
 }
