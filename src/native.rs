@@ -5,11 +5,11 @@ use crate::{
 };
 
 pub type NativeFn = fn(Vec<Litr>)-> Litr;
-pub type NativeMethod = fn(*mut NativeInstance, Vec<Litr>)-> Litr;
-pub type Getter = fn(get:Interned)-> Litr;
-pub type Setter = fn(set:Interned, to:Litr);
-pub type IndexGetter = fn(get:usize)-> Litr;
-pub type IndexSetter = fn(set:usize, to:Litr);
+pub type NativeMethod = fn(*mut NativeInstance, args:Vec<Litr>)-> Litr;
+pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
+pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
+pub type IndexGetter = fn(*mut NativeInstance, get:usize)-> Litr;
+pub type IndexSetter = fn(*mut NativeInstance, set:usize, to:Litr);
 
 #[derive(Debug, Clone)]
 pub struct NativeMod {

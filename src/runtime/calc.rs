@@ -50,11 +50,9 @@ pub fn calc(this:&mut Scope,e:&Expr)-> Litr {
     }
 
     // [列表]
-    Expr::List(v)=> {
-      Litr::List(Box::new(
-        v.iter().map(|e| this.calc(e)).collect()
-      ))
-    }
+    Expr::List(v)=> Litr::List(Box::new(
+      v.iter().map(|e| this.calc(e)).collect()
+    )),
 
     // Class {}创建实例
     Expr::NewInst(ins)=> {
@@ -245,36 +243,77 @@ pub fn calc_ref(this:&mut Scope, e:&Expr)-> CalcRef {
   }
 }
 
-/// 同calc_ref, 但额外返回一个ref处的scope指针
-fn calc_ref_with_scope(this:&mut Scope, e:&Expr)-> (CalcRef, Scope) {
-  match e {
-    Expr::Kself=> {
-      let v = CalcRef::Ref(unsafe{&mut *this.kself});
-      let mut scope = *this;
-      let kself = this.kself;
-      while let Some(prt) = scope.parent {
-        // 如果self是顶级作用域的self就返回顶级作用域
-        if prt.kself == kself {
-          return (v, prt);
+/// 在一个作用域设置一个表达式为v
+fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
+  /// 寻找引用和引用本体所在的作用域
+  fn calc_ref_with_scope(this: &mut Scope, e: &Expr)-> (CalcRef, Scope) {
+    match e {
+      Expr::Kself=> {
+        let v = CalcRef::Ref(unsafe{&mut *this.kself});
+        let mut scope = *this;
+        let kself = this.kself;
+        while let Some(prt) = scope.parent {
+          // 如果self是顶级作用域的self就返回顶级作用域
+          if prt.kself == kself {
+            return (v, prt);
+          }
+          scope = prt;
         }
-        scope = prt;
+        (v, *this)
       }
-      (v, *this)
+      Expr::Property(acc)=> {
+        let find = acc.1;
+        let (mut from, scope) = calc_ref_with_scope(this, &acc.0);
+        (get_prop(this, &mut *from, find), scope)
+      }
+      Expr::Variant(id)=> {
+        let (rf, scope) = this.var_with_scope(*id);
+        (CalcRef::Ref(rf), scope)
+      }
+      // todo: Expr::Index
+      _=> {
+        let v = this.calc(e);
+        // 如果是需要计算的量，就代表其作用域就在this
+        (CalcRef::Own(Box::new(v)), *this)
+      }
     }
-    Expr::Property(acc)=> {
-      let find = acc.1;
-      let (mut from, scope) = calc_ref_with_scope(this, &acc.0);
-      (get_prop(this, &mut *from, find), scope)
+  }
+
+  /// 如果值包含本地函数就为函数定义处增加一层引用计数
+  fn may_add_ref(v:&Litr, target_scope: Scope) {
+    match v {
+      Litr::Func(f)=> {
+        if let Function::Local(f) = &**f {
+          outlive::outlive_to((**f).clone(),target_scope);
+        }
+      }
+      Litr::List(l)=> 
+        l.iter().for_each(|item|may_add_ref(item, target_scope)),
+      Litr::Inst(inst)=> 
+        inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
+      Litr::Obj=> {err!("obj赋值未实装")}
+      _=> {}
     }
-    Expr::Variant(id)=> {
-      let (rf, scope) = this.var_with_scope(*id);
-      (CalcRef::Ref(rf), scope)
+  }
+
+  // 如果是用到了setter的原生类实例就必须在此使用setter, 不能直接*left = right
+  match left {
+    Expr::Property(prop)=> {
+      let (mut left, scope) = calc_ref_with_scope(this, &prop.0);
+      may_add_ref(&right, scope);
+      // 对ninst的outlive应当补充说明
+      if let Litr::Ninst(inst) = &mut *left {
+        let cls = unsafe {&*inst.cls};
+        (cls.setter)(&mut **inst, prop.1, right)
+      }else {
+        *get_prop(this, &mut left, prop.1) = right
+      }
     }
-    // todo: Expr::Index
-    _=> {
-      let v = this.calc(e);
-      // 如果是需要计算的量，就代表其作用域就在this
-      (CalcRef::Own(Box::new(v)), *this)
+    // todo Expr::Index
+    _=>{
+      let (mut left, scope) = calc_ref_with_scope(this, left);
+      may_add_ref(&right, scope);
+      *left = right;
     }
   }
 }
@@ -320,18 +359,18 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
     // 原生类的实例
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
+      let inst = &mut **inst;
       // 先找方法
       for (name, f) in cls.methods.iter() {
         if *name == find {
           return CalcRef::Own(Box::new(Litr::Func(Box::new(Function::NativeMethod(Box::new(BoundNativeMethod {
-            bind: &mut **inst,
+            bind: inst,
             f: *f
           }))))));
         }
       }
       // 再找属性
-      todo!("setter未实装");
-      CalcRef::Own(Box::new((cls.getter)(find)))
+      CalcRef::Own(Box::new((cls.getter)(inst, find)))
     }
     _=> err!("该类型属性还没实装")
   }
@@ -340,6 +379,12 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
 
 fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
   use Litr::*;
+  if &*bin.op == b"=" {
+    let v = this.calc(&bin.right);
+    expr_set(this, &bin.left, v);
+    return Uninit;
+  }
+
   let mut left = this.calc_ref(&bin.left);
   let right = this.calc_ref(&bin.right);
   /// 二元运算中普通数字的戏份
@@ -495,31 +540,6 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
     b"|" => impl_unsigned!("|需要左值无符号" |),
 
     // 赋值
-    b"=" => {
-      /// 如果值包含本地函数就为函数定义处增加一层引用计数
-      fn may_add_ref(v:&Litr, target_scope: Scope) {
-        match v {
-          Litr::Func(f)=> {
-            if let Function::Local(f) = &**f {
-              outlive::outlive_to((**f).clone(),target_scope);
-            }
-          }
-          Litr::List(l)=> 
-            l.iter().for_each(|item|may_add_ref(item, target_scope)),
-          Litr::Inst(inst)=> 
-            inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
-          Litr::Obj=> {err!("obj赋值未实装")}
-          _=> {}
-        }
-      }
-
-      let (mut left, scope) = calc_ref_with_scope(this, &bin.left);
-      let right = right.own();
-      may_add_ref(&right, scope);
-      println!("{this:?} {scope:?}");
-      *left = right;
-      Uninit
-    }
     b"+=" => impl_num_assign!(+),
     b"-=" => impl_num_assign!(-),
     b"*=" => impl_num_assign!(*),
