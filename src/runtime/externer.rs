@@ -75,7 +75,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
       }
     }
     List(_)=> Err("列表类型不可作为C指针传递".to_string()),
-    Obj=> Err("Ks对象不可作为C指针传递".to_string()),
+    Obj(_)=> Err("Ks对象不可作为C指针传递".to_string()),
     Inst(_)=> Err("Ks实例不可作为C指针传递".to_string()),
     Ninst(_)=> Err("Ks原生实例不可作为C指针传递".to_string())
   }
@@ -83,7 +83,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
 
 
 use super::{ExternFunc, Scope, err, LINE};
-pub fn call_extern(this:&Scope, f:&ExternFunc, args:Vec<Litr>)-> Litr {
+pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
   let len = f.argdecl.len();
   let mut args = args.into_iter();
 

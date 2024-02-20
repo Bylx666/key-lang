@@ -20,7 +20,7 @@ pub fn intern(s:&[u8])-> Interned {
 
 /// 字符串缓存
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Interned {
   p: *const Box<[u8]>
 }

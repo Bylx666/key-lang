@@ -10,6 +10,8 @@ pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
 pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
 pub type IndexGetter = fn(*mut NativeInstance, get:usize)-> Litr;
 pub type IndexSetter = fn(*mut NativeInstance, set:usize, to:Litr);
+pub type OnClone = fn(&mut NativeInstance)-> NativeInstance;
+pub type OnDrop = fn(&mut NativeInstance);
 
 #[derive(Debug, Clone)]
 pub struct NativeMod {
@@ -26,8 +28,8 @@ pub struct NativeClassDef {
   pub setter: Setter,
   pub igetter: IndexGetter,
   pub isetter: IndexSetter,
-  pub onclone: NativeMethod,
-  pub ondrop: NativeMethod,
+  pub onclone: OnClone,
+  pub ondrop: OnDrop,
   pub statics: Vec<(Interned, NativeFn)>,
   pub methods: Vec<(Interned, NativeMethod)>
 }
@@ -57,22 +59,19 @@ pub struct BoundNativeMethod {
   pub f: NativeMethod
 }
 
-pub fn parse(name:Interned,path:&[u8])-> Result<NativeMod, String> {
+pub fn parse(name:Interned,path:&[u8])-> Result<*const NativeMod, String> {
   let lib = Clib::load(path)?;
-  let mut funcs = Vec::new();
-  let mut classes = Vec::new();
+  let mut m = Box::new(NativeMod {
+    name, funcs: Vec::new(), classes: Vec::new()
+  });
   fn err(s:&str)->! {
     panic!("{} \n  运行时({})", s, unsafe{crate::runtime::LINE})
   }
   unsafe {
     let keymain:extern fn(&mut NativeInterface) = std::mem::transmute(lib.get(b"keymain").ok_or("模块需要'KeyMain'作为主运行函数")?);
     keymain(&mut NativeInterface {
-      intern, err, funcs: &mut funcs, classes: &mut classes
+      intern, err, funcs: &mut m.funcs, classes: &mut m.classes
     });
   }
-  Ok(NativeMod{
-    name,
-    funcs,
-    classes
-  })
+  Ok(Box::into_raw(m))
 }

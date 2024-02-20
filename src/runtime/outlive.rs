@@ -100,3 +100,22 @@ pub fn scope_end(mut scope:Scope) {
     sub_count(scope);
   }
 }
+
+
+/// 如果值包含本地函数就为函数定义处增加一层引用计数
+pub fn may_add_ref(v:&crate::scan::literal::Litr, target_scope: Scope) {
+  use crate::scan::literal::{Litr, Function};
+  match v {
+    Litr::Func(f)=> {
+      if let Function::Local(f) = &**f {
+        outlive_to((**f).clone(),target_scope);
+      }
+    }
+    Litr::List(l)=> 
+      l.iter().for_each(|item|may_add_ref(item, target_scope)),
+    Litr::Inst(inst)=> 
+      inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
+    Litr::Obj(map)=> map.values().for_each(|item|may_add_ref(item, target_scope)),
+    _=> {}
+  }
+}

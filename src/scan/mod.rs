@@ -17,7 +17,7 @@ use stmt::{Statements, Stmt};
 use literal::{Litr, KsType};
 use expr::Expr;
 
-/// 将字符整理为ast
+/// 将字符扫描为ast
 pub fn scan(src: Vec<u8>)-> Statements {
   // 已知此处所有变量未泄露
   // 为了规避&mut所有权检查，将引用改为指针
@@ -38,7 +38,6 @@ struct Scanner<'a> {
   line: *mut usize,
   sttms: *mut Statements,
 }
-
 
 
 /// 通用方法
@@ -176,7 +175,7 @@ impl Scanner<'_> {
     if self.i() == i {return None;}
     let ident = &self.src[self.i()..i];
     self.set_i(i);
-    return Some(ident);
+    Some(ident)
   }
 
   /// 检索一段 二元操作符
@@ -202,7 +201,7 @@ impl Scanner<'_> {
 
     let op = &self.src[self.i()..i];
     self.set_i(i);
-    return op;
+    op
   }
   
   /// 解析类型声明
@@ -243,36 +242,5 @@ impl Scanner<'_> {
       self.spaces();
     };
     args
-  }
-}
-
-
-/// 语句方法
-impl Scanner<'_> {
-  /// 匹配一个语句
-  fn stmt(&self)-> Stmt {
-    stmt::stmt(self)
-  }
-
-  /// 从self.i直接开始解析一段表达式
-  fn expr(&self)-> Expr {
-    expr::expr(self)
-  }
-
-  /// 匹配一段表达式，传入二元表达式左边部分
-  fn expr_with_left(&self, left:Expr)-> Expr {
-    expr::with_left(self, left)
-  }
-
-  /// 匹配带括号的表达式(提升优先级和函数调用)
-  fn expr_group(&self)-> Expr {
-    expr::group(self)
-  }
-
-  /// 解析一段字面量
-  /// 
-  /// 同时解析一元运算符
-  fn literal(&self)-> Expr {
-    literal::literal(self)
   }
 }

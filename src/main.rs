@@ -5,9 +5,9 @@ use std::{fs, collections::HashMap, mem::transmute, hash::{BuildHasher, Hash}, v
 use std::process::ExitCode;
 
 mod intern;
-use intern::intern;
 mod scan;
 mod runtime;
+mod primitive;
 mod utils;
 
 mod c;
@@ -24,18 +24,18 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // native cls
-  // 基本类型的方法
-  // 用cell代替ref
+  // index
+  // obj delete
+  // list obj构造时的引用计数
+  // 中文变量名
+  // 把option<scope>换成topscope
+  // 基本类型的方法，也就是所有litr的prop
+
   // 析构函数..?
-  // 指针self链式调用
   // 约定方法str() array()
   // 检查run函数，块内外self是否一致
   // newInst如果属性不全不让构造
-  // 把option<scope>换成topscope
-
   // 传进Native的struct怎么处理？
-  // Obj的ord
   // for i {func(){i}}内部的i是否正确
   // func bind
   // Native outlive api

@@ -17,7 +17,6 @@ mod outlive;
 pub use outlive::Outlives;
 
 use self::calc::CalcRef;
-mod io;
 mod evil;
 mod calc;
 mod call;
@@ -146,26 +145,6 @@ impl Scope {
     outlive::scope_end(self);
   }
 
-  /// 在作用域解析一个语句
-  pub fn evil(&mut self, code:&Stmt) {
-    evil::evil(self, code)
-  }
-
-  /// 调用一个函数
-  pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
-    call::call(self, call)
-  }
-
-  /// 调用本地定义的函数
-  pub fn call_local(&self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
-    call::call_local(self, f, args)
-  }
-
-  /// 调用extern函数
-  pub fn call_extern(&self, f:&ExternFunc, args:Vec<Litr>)-> Litr {
-    externer::call_extern(self,f,args)
-  }
-
   /// 在作用域找一个变量
   pub fn var(&mut self, s:Interned)-> &mut Litr {
     let inner = &mut (**self);
@@ -258,19 +237,6 @@ impl Scope {
     }
     err!("当前模块中没有导入'{}'模块", s.str())
   }
-
-
-  /// 在此作用域计算表达式的值
-  /// 
-  /// 调用此函数必定会复制原内容
-  pub fn calc(&mut self, e:&Expr)-> Litr {
-    calc::calc(self, e)
-  }
-
-  /// 计算表达式，但会优先得到引用，不会做不必要的复制
-  pub fn calc_ref(&mut self, e:&Expr)-> CalcRef {
-    calc::calc_ref(self, e)
-  }
 }
 
 
@@ -298,7 +264,7 @@ pub fn run(s:&Statements)-> RunResult {
 pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
-    Litr::Func(Box::new(Function::Native(io::log))))
+    Litr::Func(Box::new(Function::Native(crate::primitive::std::log))))
   );
 
   Scope::new(ScopeInner {
