@@ -7,7 +7,7 @@ impl Scope {
       // 只有表达式的语句
       Stmt::Expression(e)=> {
         // 如果你只是在一行里空放了一个变量就不会做任何事
-        if let Expr::Variant(_)=&**e {
+        if let Expr::Variant(_) = e {
           return;
         }
         self.calc_ref(e);
@@ -50,16 +50,15 @@ impl Scope {
         self.class_uses.push((raw.name, Class::Local(using)));
       }
 
-      Stmt::Using(acc)=> {
-        let alia = acc.0;
-        match &acc.1 {
+      Stmt::Using(alia, e)=> {
+        match e {
           Expr::Variant(id)=> {
             let cls = self.find_class(*id);
-            self.class_uses.push((acc.0, cls));
+            self.class_uses.push((*alia, cls));
           }
-          Expr::ModClsAcc(acc)=> {
-            let cls = self.find_class_in(acc.1, acc.0);
-            self.class_uses.push((alia, cls));
+          Expr::ModClsAcc(s, modname)=> {
+            let cls = self.find_class_in(*s, *modname);
+            self.class_uses.push((*alia, cls));
           }
           _=> err!("class = 语句后必须是个类声明")
         }
@@ -67,22 +66,21 @@ impl Scope {
       
       // 导入模块
       Stmt::Mod(m)=> unsafe {
-        (*self.imports).push(Module::Local(&**m));
+        (*self.imports).push(Module::Local(m));
       }
       Stmt::NativeMod(m)=> unsafe {
         (*self.imports).push(Module::Native(*m));
       }
 
       // 导出函数 mod.
-      Stmt::ExportFn(e)=> {
+      Stmt::ExportFn(id, f)=> {
         // 将函数本体生命周期拉为static
-        let func_raw = Box::leak(Box::new(e.1.clone()));
-        let id = e.0;
+        let func_raw = Box::leak(Box::new(f.clone()));
         let f = LocalFunc::new(func_raw, *self);
         // 将函数定义处的作用域生命周期永久延长
         outlive::outlive_static(f.scope);
-        self.vars.push((id, Litr::Func(Box::new(Function::Local(Box::new(f.clone()))))));
-        unsafe{(*self.exports).funcs.push((id,f))}
+        self.vars.push((*id, Litr::Func(Function::Local(f.clone()))));
+        unsafe{(*self.exports).funcs.push((*id,f))}
       }
 
       // 导出类 mod:

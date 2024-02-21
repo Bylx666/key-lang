@@ -190,7 +190,7 @@ impl Scope {
     err!("未定义类 '{}'", s.str());
   }
   /// 在一个模块中找一个类声明
-  pub fn find_class_in(&self, s:Interned, modname: Interned)-> Class {
+  pub fn find_class_in(&self, modname:Interned, s: Interned)-> Class {
     let module = self.find_mod(modname);
     match module {
       Module::Local(p)=> {
@@ -264,7 +264,7 @@ pub fn run(s:&Statements)-> RunResult {
 pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
-    Litr::Func(Box::new(Function::Native(crate::primitive::std::log))))
+    Litr::Func(Function::Native(crate::primitive::std::log)))
   );
 
   Scope::new(ScopeInner {

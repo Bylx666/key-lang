@@ -25,8 +25,8 @@ pub struct Interned {
   p: *const Box<[u8]>
 }
 impl Interned {
-  pub fn vec(&self)-> &Box<[u8]> {
-    unsafe{&*self.p}
+  pub fn vec(&self)-> &[u8] {
+    unsafe{&**self.p}
   }
   pub fn str(&self)-> String {
     String::from_utf8_lossy(self.vec()).into_owned()

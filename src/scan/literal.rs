@@ -22,13 +22,13 @@ pub enum Litr {
   Float  (f64),
   Bool   (bool),
 
-  Func   (Box<Function>), 
-  Str    (Box<String>),
-  Buffer (Box<Vec<u8>>),
-  List   (Box<Vec<Litr>>),
-  Obj    (Box<HashMap<Interned, Litr>>),
-  Inst   (Box<Instance>),
-  Ninst  (Box<NativeInstance>)
+  Func   (Function), 
+  Str    (String),
+  Buffer (Vec<u8>),
+  List   (Vec<Litr>),
+  Obj    (HashMap<Interned, Litr>),
+  Inst   (Instance),
+  Ninst  (NativeInstance)
 }
 impl Litr {
   /// 由Key编译器提供的转字符
@@ -41,14 +41,14 @@ impl Litr {
       Float(n)=> n.to_string(),
       Bool(n)=> n.to_string(),
       Func(f)=> {
-        match **f {
+        match *f {
           Function::Local(_)=> "<Local Function>".to_string(),
           Function::Extern(_)=> "<Extern Function>".to_string(),
           Function::Native(_)=> "<Native Function>".to_string(),
           Function::NativeMethod(_)=> "<Native Method>".to_string()
         }
       }
-      Str(s)=> (**s).clone(),
+      Str(s)=> s.clone(),
       List(a) => {
         let mut iter = a.iter();
         let mut str = String::new();
@@ -66,7 +66,7 @@ impl Litr {
       Buffer(b)=> format!("{:?}",b),
       Obj(map)=> {
         let mut s = String::new();
-        s.push_str("Obj { ");
+        s.push_str("{ ");
         let mut itr = map.iter();
         macro_rules! next {($k:ident,$v:ident)=>{{
           s.push_str(&$k.str());
@@ -128,11 +128,11 @@ pub enum Function {
   // Native模块或Runtime提供的Rust函数
   Native(crate::native::NativeFn),
   // 绑定了self的原生函数
-  NativeMethod(Box<crate::native::BoundNativeMethod>),
+  NativeMethod(crate::native::BoundNativeMethod),
   // 脚本定义的本地函数
-  Local(Box<LocalFunc>),
+  Local(LocalFunc),
   // 使用extern语句得到的C函数
-  Extern(Box<ExternFunc>)
+  Extern(ExternFunc)
 }
 
 /// 未绑定作用域的本地定义函数
@@ -213,8 +213,8 @@ impl Scanner<'_> {
   
     macro_rules! match_unary {($o:expr) => {{
       self.next();
-      let right = self.literal();
-      Expr::Unary(Box::new(UnaryDecl {right,op:$o}))
+      let right = Box::new(self.literal());
+      Expr::Unary{right,op:$o}
     }}}
   
     match first {
@@ -231,7 +231,7 @@ impl Scanner<'_> {
         }
         let s = String::from_utf8_lossy(&self.src[(self.i()+1)..i]);
         self.set_i(i+1);
-        Expr::Literal(Litr::Str(Box::new(s.to_string())))
+        Expr::Literal(Litr::Str(s.to_string()))
       }
   
       // 解析带转义的字符串
@@ -290,7 +290,7 @@ impl Scanner<'_> {
           .expect(&format!("字符串含非法字符 解析错误({})",self.line()));
   
         self.set_i(i + 1);
-        Expr::Literal(Litr::Str(Box::new(str)))
+        Expr::Literal(Litr::Str(str))
       }
   
       // 解析'buffer'
@@ -368,7 +368,7 @@ impl Scanner<'_> {
         vec.extend_from_slice(&self.src[start..i]);
   
         self.set_i(i+1);
-        Expr::Literal(Litr::Buffer(Box::new(vec)))
+        Expr::Literal(Litr::Buffer(vec))
       }
   
       // 解析数字字面量
@@ -444,11 +444,11 @@ impl Scanner<'_> {
           self.err("未闭合的右括号']'。");
         }
         self.next();
-        Expr::List(Box::new(ls))
+        Expr::List(ls)
       }
   
       // 解析对象
-      b'{'=> Expr::Obj(Box::new(self.obj())),
+      b'{'=> Expr::Obj(self.obj()),
   
       // 解析字面量或变量
       _=> {
@@ -464,10 +464,10 @@ impl Scanner<'_> {
               if self.cur() == b'{' {
                 if id[0].is_ascii_uppercase() {
                   let decl = self.obj();
-                  return Expr::NewInst(Box::new(NewDecl {
+                  return Expr::NewInst{
                     cls: intern(id),
                     val: decl
-                  }));
+                  };
                 }
               }
               Expr::Variant(intern(id))
@@ -481,7 +481,7 @@ impl Scanner<'_> {
   }
 
   /// 解析对象表达式
-  fn obj(&self)-> ObjDecl {
+  fn obj(&self)-> Vec<(Interned,Expr)> {
     self.next();
     self.spaces();
     let mut decl = Vec::new();
@@ -502,7 +502,7 @@ impl Scanner<'_> {
       self.err("未闭合的大括号")
     };
     self.next();
-    ObjDecl (decl)
+    decl
   }
 }
 

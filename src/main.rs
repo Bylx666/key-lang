@@ -34,6 +34,7 @@ fn main()-> ExitCode {
   // 析构函数..?
   // 约定方法str() array()
   // 检查run函数，块内外self是否一致
+  // -(xxxx)会提示空表达式
   // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确

@@ -7,14 +7,14 @@ use super::*;
 /// calc_ref既可能得到引用，也可能得到计算过的值
 pub enum CalcRef {
   Ref(*mut Litr),
-  Own(Box<Litr>)
+  Own(Litr)
 }
 impl CalcRef {
   /// 消耗CalcRef返回内部值
   pub fn own(self)-> Litr {
     match self {
       CalcRef::Ref(p)=> unsafe {(*p).clone()}
-      CalcRef::Own(v)=> *v
+      CalcRef::Own(v)=> v
     }
   }
 }
@@ -23,7 +23,7 @@ impl std::ops::Deref for CalcRef {
   fn deref(&self) -> &Self::Target {
     match self {
       CalcRef::Ref(p)=> unsafe{&**p},
-      CalcRef::Own(b)=> &**b
+      CalcRef::Own(b)=> b
     }
   }
 }
@@ -31,7 +31,7 @@ impl std::ops::DerefMut for CalcRef {
   fn deref_mut(&mut self) -> &mut Self::Target {
     match self {
       CalcRef::Ref(p)=> unsafe{&mut **p},
-      CalcRef::Own(b)=> &mut **b
+      CalcRef::Own(b)=> b
     }
   }
 }
@@ -43,7 +43,7 @@ impl Scope {
   pub fn calc(&mut self,e:&Expr)-> Litr {
     use Litr::*;
     match e {
-      Expr::Call(c)=> self.call(c),
+      Expr::Call { args, targ }=> self.call(args, targ),
 
       Expr::Literal(litr)=> litr.clone(),
 
@@ -51,18 +51,17 @@ impl Scope {
 
       // 函数表达式
       Expr::LocalDecl(local)=> {
-        let mut f = &**local;
-        let exec = Function::Local(Box::new(LocalFunc::new(f, *self)));
-        Litr::Func(Box::new(exec))
+        let exec = LocalFunc::new(local, *self);
+        Litr::Func(Function::Local(exec))
       }
 
       // 二元运算符
-      Expr::Binary(bin)=> binary(self, bin),
+      Expr::Binary { left, right, op }=> binary(self, left, right, op),
 
       // 一元运算符
-      Expr::Unary(una)=> {
-        let right = self.calc_ref(&una.right);
-        match una.op {
+      Expr::Unary{right, op}=> {
+        let right = self.calc_ref(right);
+        match op {
           b'-'=> {
             match &*right {
               Int(n)=> Int(-n),
@@ -83,27 +82,27 @@ impl Scope {
       }
 
       // [列表]
-      Expr::List(v)=> Litr::List(Box::new(
+      Expr::List(v)=> Litr::List(
         v.iter().map(|e| self.calc(e)).collect()
-      )),
+      ),
 
       // {a:"对",b:"象"}
       Expr::Obj(decl)=> {
-        let mut map = Box::new(HashMap::new());
-        decl.0.iter().for_each(|(name, v)|{
+        let mut map = HashMap::new();
+        decl.iter().for_each(|(name, v)|{
           map.insert(*name, self.calc(v));
         });
         Litr::Obj(map)
       }
 
       // Class {}创建实例
-      Expr::NewInst(ins)=> {
-        let cls = self.find_class(ins.cls);
+      Expr::NewInst{cls: clsname, val}=> {
+        let cls = self.find_class(*clsname);
         if let Class::Local(cls) = cls {
           let cls = unsafe {&*cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
           let module = self.exports;
-          'a: for (id, e) in ins.val.0.iter() {
+          'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
               if prop.name == *id {
                 if !prop.public && cls.module != module {
@@ -115,25 +114,23 @@ impl Scope {
             }
             err!("'{}'类型不存在'{}'属性。", cls.name, id.str())
           }
-          Litr::Inst(Box::new(Instance {cls, v:v.into()}))
+          Litr::Inst(Instance {cls, v:v.into()})
         }else {
-          err!("无法直接构建原生类型'{}'", ins.cls)
+          err!("无法直接构建原生类型'{}'", clsname)
         }
       }
 
       // -.运算符
-      Expr::ModFuncAcc(acc)=> {
-        let modname = acc.0;
-        let funcname = acc.1;
+      Expr::ModFuncAcc(modname, funcname)=> {
         let imports = unsafe {&*self.imports};
         for module in imports.iter() {
           match module {
             Module::Local(p)=> {
               let module = unsafe {&**p};
-              if module.name == modname {
+              if module.name == *modname {
                 for (id, func) in module.funcs.iter() {
-                  if *id == funcname {
-                    return Litr::Func(Box::new(Function::Local(Box::new(func.clone()))));
+                  if *id == *funcname {
+                    return Litr::Func(Function::Local(func.clone()));
                   }
                 }
                 err!("模块'{}'中没有'{}'函数",modname,funcname)
@@ -141,10 +138,10 @@ impl Scope {
             }
             Module::Native(p)=> {
               let module = unsafe {&**p};
-              if module.name == modname {
+              if module.name == *modname {
                 for (id, func) in module.funcs.iter() {
-                  if *id == funcname {
-                    return Litr::Func(Box::new(Function::Native(func.clone())));
+                  if *id == *funcname {
+                    return Litr::Func(Function::Native(func.clone()));
                   }
                 }
                 err!("模块'{}'中没有'{}'函数",modname,funcname)
@@ -155,10 +152,10 @@ impl Scope {
         err!("没有导入'{}'模块",modname)
       }
 
-      Expr::ModClsAcc(acc)=> err!("类型声明不是一个值。考虑使用`class {} = {}`语句代替",acc.0, acc.1),
+      Expr::ModClsAcc(a,b)=> err!("类型声明不是一个值。考虑使用`class T = {}-:{}`语句代替",a b),
 
       // 访问类方法
-      Expr::ImplAccess(acc)=> {
+      Expr::ImplAccess(e, find)=> {
         /// 在class中找一个函数
         fn find_fn(cls:Class, find:Interned, this_module:*mut LocalMod)->Litr {
           match cls {
@@ -170,7 +167,7 @@ impl Scope {
                   if !func.public && cannot_access_private {
                     err!("'{}'类型的静态方法'{}'是私有的。", cls.name, find)
                   }
-                  return Litr::Func(Box::new(Function::Local(Box::new(func.f.clone()))));
+                  return Litr::Func(Function::Local(func.f.clone()));
                 }
               }
               for func in cls.methods.iter() {
@@ -178,7 +175,7 @@ impl Scope {
                   if !func.public && cannot_access_private {
                     err!("'{}'类型中的方法'{}'是私有的。", cls.name, find)
                   }
-                  return Litr::Func(Box::new(Function::Local(Box::new(func.f.clone()))));
+                  return Litr::Func(Function::Local(func.f.clone()));
                 }
               }
               err!("'{}'类型没有'{}'方法", cls.name, find.str());
@@ -187,7 +184,7 @@ impl Scope {
               let cls = unsafe {&*m};
               for (name, func) in &cls.statics {
                 if *name == find {
-                  return Litr::Func(Box::new(Function::Native(*func)));
+                  return Litr::Func(Function::Native(*func));
                 }
               }
               err!("'{}'原生类型中没有'{}'静态方法", cls.name, find.str())
@@ -196,31 +193,29 @@ impl Scope {
           }
         }
 
-        let find = acc.1;
-        if let Expr::Variant(id) = acc.0 {
-          let cls = self.find_class(id);
-          return find_fn(cls, find, self.exports);
+        if let Expr::Variant(id) = &**e {
+          let cls = self.find_class(*id);
+          return find_fn(cls, *find, self.exports);
         }
 
-        if let Expr::ModClsAcc(acc) = &acc.0 {
-          let cls = self.find_class_in(acc.1, acc.0);
-          return find_fn(cls, find, self.exports);
+        if let Expr::ModClsAcc(s, modname) = &**e {
+          let cls = self.find_class_in(*s, *modname);
+          return find_fn(cls, *find, self.exports);
         }
-        
+
         err!("::左侧必须是个类型")
       }
 
-      Expr::Property(acc)=> {
-        let find = acc.1;
-        match acc.0 {
+      Expr::Property(e, find)=> {
+        match &**e {
           Expr::Variant(id)=> {
-            let from = unsafe{&mut *(self.var(id) as *mut Litr)};
-            get_prop(self, from, find).own()
+            let from = unsafe{&mut *(self.var(*id) as *mut Litr)};
+            get_prop(self, from, *find).own()
           }
           _=> {
             let scope = *self;
-            let from = &mut self.calc(&acc.0);
-            get_prop(self, from, find).own()
+            let from = &mut self.calc(&**e);
+            get_prop(self, from, *find).own()
           }
         }
       }
@@ -238,16 +233,15 @@ impl Scope {
         let v = unsafe{&mut *self.kself};
         CalcRef::Ref(v)
       }
-      Expr::Property(acc)=> {
-        let find = acc.1;
-        let mut from = self.calc_ref(&acc.0);
-        get_prop(self, &mut *from, find)
+      Expr::Property(e, find)=> {
+        let mut from = self.calc_ref(&e);
+        get_prop(self, &mut *from, *find)
       }
       Expr::Variant(id)=> CalcRef::Ref(self.var(*id)),
       // todo: Expr::Index
       _=> {
         let v = self.calc(e);
-        CalcRef::Own(Box::new(v))
+        CalcRef::Own(v)
       }
     }
   }
@@ -273,10 +267,9 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         }
         (v, *this)
       }
-      Expr::Property(acc)=> {
-        let find = acc.1;
-        let (mut from, scope) = calc_ref_with_scope(this, &acc.0);
-        (get_prop(this, &mut *from, find), scope)
+      Expr::Property(e, find)=> {
+        let (mut from, scope) = calc_ref_with_scope(this, &e);
+        (get_prop(this, &mut *from, *find), scope)
       }
       Expr::Variant(id)=> {
         let (rf, scope) = this.var_with_scope(*id);
@@ -286,7 +279,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
       _=> {
         let v = this.calc(e);
         // 如果是需要计算的量，就代表其作用域就在this
-        (CalcRef::Own(Box::new(v)), *this)
+        (CalcRef::Own(v), *this)
       }
     }
   }
@@ -294,18 +287,18 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
 
   // 如果是用到了setter的原生类实例就必须在此使用setter, 不能直接*left = right
   match left {
-    Expr::Property(prop)=> {
-      let (mut left, scope) = calc_ref_with_scope(this, &prop.0);
+    Expr::Property(e, find)=> {
+      let (mut left, scope) = calc_ref_with_scope(this, &e);
       may_add_ref(&right, scope);
       match &mut *left {
         Litr::Ninst(inst)=> {
           let cls = unsafe {&*inst.cls};
-          (cls.setter)(&mut **inst, prop.1, right)
+          (cls.setter)(inst, *find, right)
         }
         Litr::Obj(o)=> {
-          o.insert(prop.1, right);
+          o.insert(*find, right);
         },
-        _=> *get_prop(this, &mut left, prop.1) = right
+        _=> *get_prop(this, &mut left, *find) = right
       }
     }
     // todo Expr::Index
@@ -347,8 +340,8 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
           // 为函数绑定self
           let mut f = mthd.f.clone();
           f.bound = Some(from);
-          let f = Litr::Func(Box::new(Function::Local(Box::new(f))));
-          return CalcRef::Own(Box::new(f));
+          let f = Litr::Func(Function::Local(f));
+          return CalcRef::Own(f);
         }
       }
 
@@ -358,39 +351,39 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
     // 原生类的实例
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
-      let inst = &mut **inst;
       // 先找方法
       for (name, f) in cls.methods.iter() {
         if *name == find {
-          return CalcRef::Own(Box::new(Litr::Func(Box::new(Function::NativeMethod(Box::new(BoundNativeMethod {
+          return CalcRef::Own(Litr::Func(Function::NativeMethod(BoundNativeMethod {
             bind: inst,
             f: *f
-          }))))));
+          })));
         }
       }
       // 再找属性
-      CalcRef::Own(Box::new((cls.getter)(inst, find)))
+      CalcRef::Own((cls.getter)(inst, find))
     }
 
     // 哈希表
     Litr::Obj(map)=> 
       CalcRef::Ref(map.get_mut(&find).unwrap_or(&mut Litr::Uninit)),
 
+    Litr::Uninit=> err!("uninit没有属性"),
     _=> err!("该类型属性还没实装")
   }
 }
 
 
-fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
+fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;
-  if &*bin.op == b"=" {
-    let v = this.calc(&bin.right);
-    expr_set(this, &bin.left, v);
+  if &**op == b"=" {
+    let v = this.calc(&right);
+    expr_set(this, &left, v);
     return Uninit;
   }
 
-  let mut left = this.calc_ref(&bin.left);
-  let right = this.calc_ref(&bin.right);
+  let mut left = this.calc_ref(&left);
+  let right = this.calc_ref(&right);
   /// 二元运算中普通数字的戏份
   macro_rules! impl_num {
     ($pan:literal $op:tt) => {{
@@ -521,19 +514,17 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
     }};
   }
 
-  match &*bin.op {
+  match &**op {
     // 数字
     b"+" => {
       if let Str(l) = &*left {
         // litr.str()方法会把内部String复制一遍
         // 直接使用原String的引用可以避免这次复制
         if let Str(r) = &*right {
-          let mut s = Box::new([l.as_str(),r.as_str()].concat());
-          return Str(s);
+          return Str([l.as_str(),r.as_str()].concat());
         }
         let r = right.str();
-        let mut s = Box::new([l.as_str(),r.as_str()].concat());
-        return Str(s);
+        return Str([l.as_str(),r.as_str()].concat());
       }
       impl_num!("相加类型不同" +)
     },
@@ -574,7 +565,7 @@ fn binary(this:&mut Scope, bin:&BinDecl)-> Litr {
     b"&&" => impl_logic!(&&),
     b"||" => impl_logic!(||),
 
-    _=> err!("未知运算符'{}'", String::from_utf8_lossy(&bin.op))
+    _=> err!("未知运算符'{}'", String::from_utf8_lossy(&op))
   }
 }
 

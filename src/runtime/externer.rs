@@ -37,7 +37,7 @@ macro_rules! translate_local_impl {{
   match len {
     $(
       $n => {
-        unsafe {EXEC = Some(*$local.clone());}
+        unsafe {EXEC = Some($local.clone());}
         Ok($fname as usize)
       },
     )*
@@ -56,8 +56,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     Float(n)=> (unsafe{Ok(transmute(n))}),
     Str(p)=> Ok((*p).as_ptr() as usize),
     Buffer(v)=> Ok(v.as_ptr() as usize),
-    Func(p)=> {
-      let exec = unsafe {&*p};
+    Func(exec)=> {
       use crate::scan::literal::Function::*;
       match exec {
         Local(f)=> translate_local_impl! { f 

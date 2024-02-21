@@ -107,8 +107,8 @@ pub fn may_add_ref(v:&crate::scan::literal::Litr, target_scope: Scope) {
   use crate::scan::literal::{Litr, Function};
   match v {
     Litr::Func(f)=> {
-      if let Function::Local(f) = &**f {
-        outlive_to((**f).clone(),target_scope);
+      if let Function::Local(f) = f {
+        outlive_to(f.clone(),target_scope);
       }
     }
     Litr::List(l)=> 

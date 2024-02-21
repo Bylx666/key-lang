@@ -19,17 +19,17 @@ pub enum Stmt {
   Empty,
 
   // 赋值
-  Let       (Box<AssignDef>),
+  Let       (AssignDef),
 
   // 定义类
-  Class     (Box<ClassDefRaw>),
+  Class     (ClassDefRaw),
   // 类别名
-  Using     (Box<(Interned, Expr)>),
+  Using     (Interned, Expr),
 
-  Mod       (Box<LocalMod>),
+  Mod       (LocalMod),
   NativeMod (*const NativeMod),
-  ExportFn  (Box<(Interned, LocalFuncRaw)>),
-  ExportCls (Box<ClassDefRaw>),
+  ExportFn  (Interned, LocalFuncRaw),
+  ExportCls (ClassDefRaw),
 
   // Key
   // Key       (HashMap<Ident, KsType>),                // 类型声明语句
@@ -37,17 +37,17 @@ pub enum Stmt {
   Match,     // 模式匹配
 
   // 块系列
-  Block    (Box<Statements>),   // 一个普通块
-  If       (Box<Statements>),   // 条件语句
-  Loop     (Box<Statements>),   // 循环
+  Block    (Statements),   // 一个普通块
+  If       (Statements),   // 条件语句
+  Loop     (Statements),   // 循环
 
   // 流程控制
-  Break     (Box<Expr>),                  // 中断循环并提供返回值
+  Break     (Expr),                  // 中断循环并提供返回值
   Continue,                           // 立刻进入下一次循环
-  Return    (Box<Expr>),                  // 函数返回
+  Return    (Expr),                  // 函数返回
 
   // 表达式作为语句
-  Expression(Box<Expr>),
+  Expression(Expr),
 }
 
 /// 赋值语句
@@ -138,7 +138,7 @@ impl Scanner<'_> {
           self.spaces();
           if self.cur() == b'}' {
             self.next();
-            return Stmt::Block(Box::new(stmts));
+            return Stmt::Block(stmts);
           }
           
           let s = self.stmt();
@@ -174,7 +174,7 @@ impl Scanner<'_> {
             b"uninit"=> Expr::Literal(Litr::Uninit),
             _=> Expr::Variant(intern(id))
           };
-          let expr = Box::new(self.expr_with_left(left));
+          let expr = self.expr_with_left(left);
           Stmt::Expression(expr)
         }
       }
@@ -183,12 +183,12 @@ impl Scanner<'_> {
       if let Expr::Empty = expr {
         self.err(&format!("请输入一行正确的语句，'{}'并不合法", String::from_utf8_lossy(&[self.cur()])))
       }
-      Stmt::Expression(Box::new(expr))
+      Stmt::Expression(expr)
     }
   }
 
   /// 解析let关键词
-  fn letting(&self)-> Box<AssignDef> {
+  fn letting(&self)-> AssignDef {
     self.spaces();
     let id = self.ident().unwrap_or_else(||self.err("let后需要标识符"));
     let id = intern(id);
@@ -203,9 +203,9 @@ impl Scanner<'_> {
         if let Expr::Empty = val {
           self.err("无法为空气赋值")
         }
-        Box::new(AssignDef {
+        AssignDef {
           id, val
-        })
+        }
       }
       b'(' => {
         self.next();
@@ -217,7 +217,7 @@ impl Scanner<'_> {
   
         let stmt = self.stmt();
         let mut stmts = if let Stmt::Block(b) = stmt {
-          *b
+          b
         }else {
           Statements(vec![(self.line(), stmt)])
         };
@@ -225,15 +225,14 @@ impl Scanner<'_> {
         // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
         // 其生命周期应当和Statements相同，绑定作用域时将被复制
         // 绑定作用域行为发生在runtime::Scope::calc
-        let func = Box::new(LocalFuncRaw { argdecl: args, stmts });
-        Box::new(AssignDef {
+        AssignDef {
           id, 
-          val: Expr::LocalDecl(func)
-        })
+          val: Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })
+        }
       }
-      _ => Box::new(AssignDef {
+      _ => AssignDef {
         id, val:Expr::Literal(Litr::Uninit)
-      })
+      }
     }
   }
   
@@ -296,13 +295,13 @@ impl Scanner<'_> {
         &format!("动态库'{}'中不存在'{}'函数", 
         String::from_utf8_lossy(path), 
         String::from_utf8_lossy(sym))));
-      self.push(Stmt::Let(Box::new(AssignDef { 
+      self.push(Stmt::Let(AssignDef { 
         id:intern($id), 
-        val: Expr::Literal(Litr::Func(Box::new(Function::Extern(Box::new(ExternFunc { 
+        val: Expr::Literal(Litr::Func(Function::Extern(ExternFunc { 
           argdecl, 
           ptr
-        })))))
-      })));
+        })))
+      }));
     }}}
 
     // 大括号语法
@@ -330,9 +329,9 @@ impl Scanner<'_> {
     self.spaces();
     let expr = self.expr();
     if let Expr::Empty = expr {
-      Stmt::Return(Box::new(Expr::Literal(Litr::Uninit)))
+      Stmt::Return(Expr::Literal(Litr::Uninit))
     }else {
-      Stmt::Return(Box::new(expr))
+      Stmt::Return(expr)
     }
   }
 
@@ -344,7 +343,7 @@ impl Scanner<'_> {
     if self.cur() == b'=' {
       self.next();
       let right = self.expr();
-      return Stmt::Using(Box::new((intern(id),right)));
+      return Stmt::Using(intern(id),right);
     }
     if self.cur() != b'{' {
       self.err("class需要大括号");
@@ -382,7 +381,7 @@ impl Scanner<'_> {
         // 函数体
         let stmt = self.stmt();
         let mut stmts = if let Stmt::Block(b) = stmt {
-          *b
+          b
         }else {
           Statements(vec![(self.line(), stmt)])
         };
@@ -414,9 +413,9 @@ impl Scanner<'_> {
       self.err("class大括号未闭合");
     }
     self.next();
-    Stmt::Class(Box::new(ClassDefRaw {
+    Stmt::Class(ClassDefRaw {
       name:intern(id), props, methods, statics
-    }))
+    })
   }
   
   
@@ -429,7 +428,7 @@ impl Scanner<'_> {
         // 套用let声明模板
         let asn = self.letting();
         if let Expr::LocalDecl(f) = asn.val {
-          return Stmt::ExportFn(Box::new((asn.id, (*f).clone())));
+          return Stmt::ExportFn(asn.id, f.clone());
         }
         self.err("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
       },
@@ -438,7 +437,7 @@ impl Scanner<'_> {
         let cls = self.classing();
         match cls {
           Stmt::Class(cls)=> return Stmt::ExportCls(cls),
-          Stmt::Using(acc)=> self.err("无法导出using"),
+          Stmt::Using(_,_)=> self.err("无法导出using"),
           _=> unreachable!()
         }
       }
@@ -487,7 +486,7 @@ impl Scanner<'_> {
         )));
         let mut module = crate::runtime::run(&scan(file)).exports;
         module.name = name;
-        Stmt::Mod(Box::new(module))
+        Stmt::Mod(module)
       }
       _ => self.err("未知模块类型")
     }

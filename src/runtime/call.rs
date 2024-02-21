@@ -2,13 +2,13 @@ use super::*;
 
 impl Scope {
   /// 解析Expr的调用
-  pub fn call(&mut self, call: &Box<CallDecl>)-> Litr {
+  pub fn call(&mut self, args:&Vec<Expr>, targ:&Box<Expr>)-> Litr {
     // 将参数解析为参数列表
-    let args = call.args.iter().map(|e|self.calc(e)).collect();
-    let targ = self.calc_ref(&call.targ);
+    let args = args.iter().map(|e|self.calc(e)).collect();
+    let targ = self.calc_ref(targ);
     if let Litr::Func(exec) = &*targ {
       use Function::*;
-      match &**exec {
+      match exec {
         Native(f)=> f(args),
         NativeMethod(f)=> (f.f)(f.bind, args),
         Local(f)=> self.call_local(&f, args),

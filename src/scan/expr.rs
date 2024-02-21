@@ -16,64 +16,50 @@ pub enum Expr {
   Kself,
 
   // 未绑定作用域的本地函数
-  LocalDecl (Box<LocalFuncRaw>),
+  LocalDecl (LocalFuncRaw),
 
-  // .运算符
-  Property  (Box<(Expr, Interned)>),
   // -.运算符
-  ModFuncAcc(Box<(Interned, Interned)>),
+  ModFuncAcc(Interned, Interned),
   // -:运算符
-  ModClsAcc (Box<(Interned, Interned)>),
+  ModClsAcc (Interned, Interned),
+  // .运算符
+  Property  (Box<Expr>, Interned),
   // ::运算符
-  ImplAccess(Box<(Expr, Interned)>),
+  ImplAccess(Box<Expr>, Interned),
   // 调用函数
-  Call      (Box<CallDecl>),
+  Call{
+    args: Vec<Expr>,
+    targ: Box<Expr>
+  },
   // 创建实例
-  NewInst   (Box<NewDecl>),
+  NewInst{
+    cls: Interned,
+    val: Vec<(Interned,Expr)>
+  },
 
   // 列表表达式
-  List      (Box<Vec<Expr>>),
+  List(Vec<Expr>),
   // 对象表达式
-  Obj       (Box<ObjDecl>),
+  Obj(Vec<(Interned,Expr)>),
 
   // 一元运算 ! -
-  Unary     (Box<UnaryDecl>),
+  Unary{
+    right: Box<Expr>,
+    op: u8
+  },
+
   // 二元运算
-  Binary    (Box<BinDecl>),
-}
-
-// V 注释见Expr V
-
-#[derive(Debug, Clone)]
-pub struct BinDecl {
-  pub left: Expr,
-  pub right: Expr,
-  pub op: Box<[u8]>
-}
-
-#[derive(Debug, Clone)]
-pub struct UnaryDecl {
-  pub right: Expr,
-  pub op: u8
+  Binary{
+    left: Box<Expr>,
+    right: Box<Expr>,
+    op: Box<[u8]>
+  },
 }
 
 
 #[derive(Debug, Clone)]
 pub struct CallDecl {
-  pub args: Vec<Expr>,
-  pub targ: Expr
 }
-
-#[derive(Debug, Clone)]
-pub struct NewDecl {
-  pub cls: Interned,
-  pub val: ObjDecl
-}
-
-#[derive(Debug, Clone)]
-pub struct ObjDecl (
-  pub Vec<(Interned,Expr)>
-);
 
 
 impl Scanner<'_> {
@@ -120,7 +106,7 @@ impl Scanner<'_> {
           if last_op == $op {
             if let Expr::Variant(left) = second_last_expr {
               if let Expr::Variant(right) = last_expr {
-                expr_stack.push(Expr::$ty(Box::new((left, right))));
+                expr_stack.push(Expr::$ty(left, right));
                 continue;
               }
               self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
@@ -135,7 +121,7 @@ impl Scanner<'_> {
         macro_rules! impl_prop {($op:literal, $ty:ident) => {
           if last_op == $op {
             if let Expr::Variant(right) = last_expr {
-              expr_stack.push(Expr::$ty(Box::new(( second_last_expr, right ))));
+              expr_stack.push(Expr::$ty(Box::new(second_last_expr), right ));
               continue;
             }
             self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
@@ -144,11 +130,11 @@ impl Scanner<'_> {
         impl_prop!(b".", Property);
         impl_prop!(b"::", ImplAccess);
   
-        expr_stack.push(Expr::Binary(Box::new(BinDecl { 
-          left: second_last_expr, 
-          right: last_expr, 
+        expr_stack.push(Expr::Binary{ 
+          left: Box::new(second_last_expr), 
+          right: Box::new(last_expr), 
           op: last_op.into()
-        })));
+        });
       }
   
       // 如果没匹配到运算符就说明匹配结束
@@ -158,7 +144,7 @@ impl Scanner<'_> {
   
       // 如果此运算符是括号就代表call
       if op == b"(" {
-        let targ = expr_stack.pop().unwrap();
+        let targ = Box::new(expr_stack.pop().unwrap());
         self.next();
         self.spaces();
         let mut args = Vec::new();
@@ -178,9 +164,9 @@ impl Scanner<'_> {
           self.err("未闭合的右括号')'。");
         }
         self.next();
-        expr_stack.push(Expr::Call(Box::new(CallDecl{
+        expr_stack.push(Expr::Call{
           args, targ
-        })));
+        });
         continue;
       };
   
