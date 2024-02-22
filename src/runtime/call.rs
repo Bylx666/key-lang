@@ -34,9 +34,9 @@ impl Scope {
     // 将传入参数按定义参数数量放入作用域
     let mut vars = Vec::with_capacity(16);
     let mut args = args.into_iter();
-    for (name,ty) in f.argdecl.iter() {
-      let arg = args.next().unwrap_or(Litr::Uninit);
-      vars.push((*name,arg))
+    for argdecl in f.argdecl.iter() {
+      let arg = args.next().unwrap_or(argdecl.default.clone());
+      vars.push((argdecl.name, arg));
     }
     // 如果函数被bind了就用bound值，否则继续沿用上级self
     let kself = if let Some(s) = f.bound {s}else {self.kself};

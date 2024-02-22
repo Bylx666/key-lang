@@ -12,11 +12,8 @@ let a() {
 let a = || {
   b = 4;
 }
-
-let a(i: Int) {
-  i = 5;
-  let i = Int::new(i);
-  let i = i.copy();
+let a(a = 20) {
+  log(a)
 }
 
 ## 值得注意

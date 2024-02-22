@@ -134,10 +134,18 @@ pub enum Function {
   Extern(ExternFunc)
 }
 
+/// 参数声明
+#[derive(Debug, Clone)]
+pub struct ArgDecl {
+  pub name: Interned,
+  pub t: KsType,
+  pub default: Litr
+}
+
 /// 未绑定作用域的本地定义函数
 #[derive(Debug, Clone)]
 pub struct LocalFuncRaw {
-  pub argdecl: Vec<(Interned, KsType)>, 
+  pub argdecl: Vec<ArgDecl>, 
   pub stmts: Statements
 }
 
@@ -171,7 +179,7 @@ impl std::ops::Deref for LocalFunc {
 /// 插件只有一个Native类型
 #[derive(Debug, Clone)]
 pub struct ExternFunc {
-  pub argdecl: Vec<(Interned, KsType)>, 
+  pub argdecl: Vec<ArgDecl>, 
   pub ptr: usize,
 }
 

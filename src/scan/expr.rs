@@ -1,6 +1,6 @@
 use super::{Scanner, charts};
 use super::literal::{
-  Litr, LocalFuncRaw
+  KsType, Litr, LocalFuncRaw
 };
 use crate::intern::Interned;
 
@@ -147,6 +147,16 @@ impl Scanner<'_> {
         self.spaces();
         let targ = Box::new(expr_stack.pop().unwrap());
         let mut args = Vec::new();
+
+        // 如果直接遇到右括号则代表无参数传入
+        if self.cur() == b')' {
+          self.next();
+          expr_stack.push(Expr::Call{
+            args, targ
+          });
+          continue;
+        }
+
         loop {
           let e = self.expr();
           // 调用参数留空就当作uninit

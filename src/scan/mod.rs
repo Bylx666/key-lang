@@ -14,7 +14,7 @@ pub mod literal;
 pub mod expr;
 
 use stmt::{Statements, Stmt};
-use literal::{Litr, KsType};
+use literal::{Litr, KsType, ArgDecl};
 use expr::Expr;
 
 /// 将字符扫描为ast
@@ -229,19 +229,27 @@ impl Scanner<'_> {
   }
 
   /// 解析函数声明的参数
-  fn arguments(&self)-> Vec::<(Interned,KsType)> {
+  fn arguments(&self)-> Vec::<ArgDecl> {
     self.spaces();
-    let mut args = Vec::<(Interned,KsType)>::new();
+    let mut args = Vec::new();
     while let Some(n) = self.ident() {
-      let arg = intern(n);
-      let typ = self.typ();
-      args.push((arg,typ));
+      let name = intern(n);
+      let t = self.typ();
 
       self.spaces();
+      let default = if self.cur() == b'=' {
+        self.next();
+        self.spaces();
+        if let Expr::Literal(def) = self.literal() {
+          def
+        }else {self.err("默认参数只允许字面量")}
+      }else {Litr::Uninit};
+
       if self.cur() == b',' {
         self.next();
       }
       self.spaces();
+      args.push(ArgDecl {name, t, default});
     };
     args
   }
