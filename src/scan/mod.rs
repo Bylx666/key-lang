@@ -146,7 +146,7 @@ impl Scanner<'_> {
     }
   }
 
-  /// 匹配标识符(如果匹配不到则返回的vec.len()为0)
+  /// 匹配标识符
   fn ident(&self)-> Option<&[u8]> {
     let mut i = self.i();
     let len = self.src.len();
@@ -163,7 +163,9 @@ impl Scanner<'_> {
       match s {
         b'_' | b'$' | b'~' | b'@' |
         b'A'..=b'Z' | b'a'..=b'z' |
-        b'0'..=b'9' => {
+        b'0'..=b'9'|
+        // utf8双字节以上编码都以0b10xxxxxx开头
+        128..=255 => {
           i += 1;
         },
         _=> {

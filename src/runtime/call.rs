@@ -3,16 +3,26 @@ use super::*;
 impl Scope {
   /// 解析Expr的调用
   pub fn call(&mut self, args:&Vec<Expr>, targ:&Box<Expr>)-> Litr {
-    // 将参数解析为参数列表
-    let args = args.iter().map(|e|self.calc(e)).collect();
     let targ = self.calc_ref(targ);
     if let Litr::Func(exec) = &*targ {
       use Function::*;
       match exec {
-        Native(f)=> f(args),
-        NativeMethod(f)=> (f.f)(f.bind, args),
-        Local(f)=> self.call_local(&f, args),
-        Extern(f)=> super::externer::call_extern(&f, args),
+        Native(f)=> {
+          let args = args.iter().map(|e|self.calc_ref(e)).collect();
+          f(args)
+        },
+        NativeMethod(f)=> {
+          let args = args.iter().map(|e|self.calc_ref(e)).collect();
+          (f.f)(f.bind, args)
+        },
+        Local(f)=> {
+          let args = args.iter().map(|e|self.calc(e)).collect();
+          self.call_local(&f, args)
+        },
+        Extern(f)=> {
+          let args = args.iter().map(|e|self.calc(e)).collect();
+          super::externer::call_extern(&f, args)
+        }
       }
     }else {
       err!("'{}' 不是一个函数", targ.str())

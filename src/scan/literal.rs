@@ -12,7 +12,6 @@ use crate::intern::Interned;
 
 use std::collections::HashMap;
 
-#[repr(C)]
 #[derive(Debug, Clone)]
 pub enum Litr {
   Uninit,

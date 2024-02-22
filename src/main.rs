@@ -25,10 +25,6 @@ fn main()-> ExitCode {
   // }));
 
   // index
-  // obj delete
-  // list obj构造时的引用计数
-  // 中文变量名
-  // 把option<scope>换成topscope
   // 基本类型的方法，也就是所有litr的prop
 
   // 析构函数..?

@@ -57,11 +57,6 @@ pub enum Expr {
 }
 
 
-#[derive(Debug, Clone)]
-pub struct CallDecl {
-}
-
-
 impl Scanner<'_> {
   /// 从self.i直接开始解析一段表达式
   pub fn expr(&self)-> Expr {

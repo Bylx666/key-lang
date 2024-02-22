@@ -16,9 +16,8 @@ use crate::native::{NativeClassDef, NativeMod};
 mod outlive;
 pub use outlive::Outlives;
 
-use self::calc::CalcRef;
 mod evil;
-mod calc;
+pub mod calc;
 mod call;
 mod externer;
 
@@ -28,7 +27,7 @@ mod externer;
 /// 只有主线程会访问，不存在多线程同步问题
 pub static mut LINE:usize = 0;
 #[macro_use] macro_rules! err {($($a:expr$(,)?)*) => {
-  panic!("{} 运行时({})", format_args!($($a,)*), unsafe{LINE})
+  panic!("{} 运行时({})", format_args!($($a,)*), unsafe{crate::runtime::LINE})
 }}
 pub(super) use err;
 
@@ -266,12 +265,13 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exp
   vars.push((intern(b"log"), 
     Litr::Func(Function::Native(crate::primitive::std::log)))
   );
+  let mut class_uses = crate::primitive::classes();
 
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
     class_defs:Vec::new(), 
-    class_uses:Vec::new(),
+    class_uses,
     kself,
     imports,
     exports,
