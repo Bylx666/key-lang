@@ -116,6 +116,6 @@ pub fn may_add_ref(v:&crate::scan::literal::Litr, target_scope: Scope) {
     Litr::Inst(inst)=> 
       inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
     Litr::Obj(map)=> map.values().for_each(|item|may_add_ref(item, target_scope)),
-    _=> {}
+    _=> ()
   }
 }

@@ -17,6 +17,9 @@ impl CalcRef {
       CalcRef::Own(v)=> v
     }
   }
+  pub fn uninit()-> Self {
+    CalcRef::Own(Litr::Uninit)
+  }
 }
 impl std::ops::Deref for CalcRef {
   type Target = Litr;
@@ -41,9 +44,10 @@ impl Scope {
   /// 
   /// 该函数必定发生复制
   pub fn calc(&mut self,e:&Expr)-> Litr {
-    use Litr::*;
     match e {
       Expr::Call { args, targ }=> self.call(args, targ),
+
+      Expr::Index { left, i }=> calc_index(self, left, i).own(),
 
       Expr::Literal(litr)=> litr.clone(),
 
@@ -60,6 +64,7 @@ impl Scope {
 
       // 一元运算符
       Expr::Unary{right, op}=> {
+        use Litr::*;
         let right = self.calc_ref(right);
         match op {
           b'-'=> {
@@ -237,6 +242,7 @@ impl Scope {
         let mut from = self.calc_ref(&e);
         get_prop(self, &mut *from, *find)
       }
+      Expr::Index { left, i }=> calc_index(self, left, i),
       Expr::Variant(id)=> CalcRef::Ref(self.var(*id)),
       // todo: Expr::Index
       _=> {
@@ -275,7 +281,10 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         let (rf, scope) = this.var_with_scope(*id);
         (CalcRef::Ref(rf), scope)
       }
-      // todo: Expr::Index
+      Expr::Index{left, i}=> {
+        let (mut from, scope) = calc_ref_with_scope(this, &left);
+        (calc_index(this, left, i), scope)
+      }
       _=> {
         let v = this.calc(e);
         // 如果是需要计算的量，就代表其作用域就在this
@@ -301,7 +310,20 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         _=> *get_prop(this, &mut left, *find) = right
       }
     }
-    // todo Expr::Index
+    Expr::Index{left,i}=> {
+      let (mut left, scope) = calc_ref_with_scope(this, &left);
+      let i = match this.calc(i) {
+        Litr::Int(n)=> n as usize,
+        Litr::Uint(n)=> n,
+        _=> err!("Index必须是整数")
+      };
+      may_add_ref(&right, scope);
+      if let Litr::Ninst(inst) = &mut *left {
+        (unsafe{&*inst.cls}.isetter)(inst, i, right)
+      }else {
+        *index(left, i) = right;
+      }
+    }
     _=>{
       let (mut left, scope) = calc_ref_with_scope(this, left);
       may_add_ref(&right, scope);
@@ -373,6 +395,45 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
   }
 }
 
+fn calc_index(this:&mut Scope, left:&Box<Expr>, i:&Box<Expr>)-> CalcRef {
+  let mut left = this.calc_ref(left);
+  let i = match this.calc(i) {
+    Litr::Int(n)=> n as usize,
+    Litr::Uint(n)=> n,
+    _=> err!("Index必须是整数")
+  };
+  index(left, i)
+}
+fn index(mut left:CalcRef, i:usize)-> CalcRef {
+  match &mut *left {
+    Litr::Buffer(v)=> {
+      if i>=v.len() {return CalcRef::uninit()}
+      CalcRef::Own(Litr::Uint(v[i] as usize))
+    }
+    Litr::List(v)=> {
+      if i>=v.len() {return CalcRef::uninit()}
+      CalcRef::Ref(&mut v[i])
+    }
+    Litr::Inst(v)=> {
+      if i>=v.v.len() {return CalcRef::uninit()}
+      CalcRef::Ref(&mut v.v[i])
+    }
+    Litr::Ninst(v)=> {
+      CalcRef::Own((unsafe{&*v.cls}.igetter)(v, i))
+    }
+    Litr::Str(n)=> {
+      match n.chars().nth(i) {
+        Some(c)=> CalcRef::Own(Litr::Str(c.to_string())),
+        None=> CalcRef::uninit()
+      }
+    }
+    Litr::Uint(n)=> {
+      if i>=64 {return CalcRef::Own(Litr::Bool(false));}
+      CalcRef::Own(Litr::Bool((*n & (1<<i)) != 0))
+    }
+    _=> CalcRef::uninit()
+  }
+}
 
 fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;

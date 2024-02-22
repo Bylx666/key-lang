@@ -31,6 +31,10 @@ pub enum Expr {
     args: Vec<Expr>,
     targ: Box<Expr>
   },
+  Index{
+    left: Box<Expr>,
+    i: Box<Expr>
+  },
   // 创建实例
   NewInst{
     cls: Interned,
@@ -139,9 +143,9 @@ impl Scanner<'_> {
   
       // 如果此运算符是括号就代表call
       if op == b"(" {
-        let targ = Box::new(expr_stack.pop().unwrap());
         self.next();
         self.spaces();
+        let targ = Box::new(expr_stack.pop().unwrap());
         let mut args = Vec::new();
         loop {
           let e = self.expr();
@@ -163,7 +167,23 @@ impl Scanner<'_> {
           args, targ
         });
         continue;
-      };
+      }
+
+      // 如果此运算符是方括号就代表index
+      if op == b"[" {
+        self.next();
+        self.spaces();
+        let left = Box::new(expr_stack.pop().unwrap());
+        let i = Box::new(self.expr());
+        if self.i() >= self.src.len() || self.cur() != b']' {
+          self.err("未闭合的右括号']'。");
+        }
+        self.next();
+        expr_stack.push(Expr::Index{
+          left, i
+        });
+        continue;
+      }
   
       // 将新运算符和它右边的值推进栈
       self.spaces();

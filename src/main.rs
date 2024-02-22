@@ -25,6 +25,7 @@ fn main()-> ExitCode {
   // }));
 
   // index
+  // 迭代器 loop
   // 基本类型的方法，也就是所有litr的prop
 
   // 析构函数..?
