@@ -453,7 +453,7 @@ impl Scanner<'_> {
         self.next();
         Expr::List(ls)
       }
-  
+
       // 解析对象
       b'{'=> Expr::Obj(self.obj()),
   
@@ -469,12 +469,10 @@ impl Scanner<'_> {
             _=> {
               self.spaces();
               if self.cur() == b'{' {
-                if id[0].is_ascii_uppercase() {
-                  let decl = self.obj();
-                  return Expr::NewInst{
-                    cls: intern(id),
-                    val: decl
-                  };
+                let decl = self.obj();
+                return Expr::NewInst{
+                  cls: intern(id),
+                  val: decl
                 }
               }
               Expr::Variant(intern(id))

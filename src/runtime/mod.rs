@@ -51,8 +51,8 @@ pub enum Class {
 pub struct ScopeInner {
   /// 父作用域
   pub parent: Option<Scope>,
-  /// 返回值指针,None代表已返回
-  pub return_to: *mut Option<*mut Litr>,
+  /// 返回值指针
+  pub return_to: *mut Litr,
   /// (变量名,值)
   pub vars: Vec<(Interned, Litr)>,
   /// 类型声明(和作用域生命周期一致)
@@ -66,7 +66,10 @@ pub struct ScopeInner {
   /// ks本身作为模块导出的指针
   pub exports: *mut LocalMod,
   /// 该作用域生命周期会被outlive的函数延长
-  pub outlives: outlive::Outlives
+  pub outlives: outlive::Outlives,
+  /// 遇到return时会提前变为true
+  /// 用于标识return. break有自己的判断方法
+  pub ended: bool
 }
 
 
@@ -79,12 +82,25 @@ pub struct ScopeInner {
 pub struct Scope {
   pub ptr:*mut ScopeInner
 }
+impl std::ops::Deref for Scope {
+  type Target = ScopeInner;
+  fn deref(&self) -> &Self::Target {
+    unsafe {&*self.ptr}
+  }
+}
+impl std::ops::DerefMut for Scope {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    unsafe {&mut *self.ptr}
+  }
+}
+
 impl Scope {
   pub fn new(s:ScopeInner)-> Self {
     Scope {
       ptr: Box::into_raw(Box::new(s))
     }
   }
+
   /// 确认此作用域是否为一个作用域的子作用域
   pub fn subscope_of(&self,upper:Scope)-> bool {
     let mut scope = *self;
@@ -100,47 +116,39 @@ impl Scope {
     }
     false
   }
-}
-impl std::ops::Deref for Scope {
-  type Target = ScopeInner;
-  fn deref(&self) -> &Self::Target {
-    unsafe {&*self.ptr}
-  }
-}
-impl std::ops::DerefMut for Scope {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    unsafe {&mut *self.ptr}
-  }
-}
 
-impl Scope {
+  /// 生成一个子作用域
+  pub fn subscope(&self)-> Scope {
+    Scope::new(ScopeInner {
+      parent:Some(*self),
+      return_to: self.return_to,
+      class_defs:Vec::new(),
+      class_uses:Vec::new(),
+      kself: self.kself,
+      vars: Vec::with_capacity(16),
+      imports: self.imports,
+      exports: self.exports,
+      outlives: Outlives::new(),
+      ended: false
+    })
+  }
+
   /// 在此作用域运行ast代码
   /// 
   /// 此行为会根据引用计数回收作用域，在run之后再次使用Scope是未定义行为
   pub fn run(mut self, codes:&Statements) {
     for (l, sm) in &codes.0 {
+      // 运行一行语句
       unsafe{LINE = *l;}
+      self.evil(sm);
 
-      // 如果子作用域返回过了，这里就会是None状态
-      let return_to = unsafe{&*self.return_to};
-      if let None = return_to {
-        return;
-      }
-
-      // 遇到return语句就停止当前遍历
-      if let Stmt::Return(expr) = sm {
-        unsafe {
-          if let Some(p) = return_to {
-            **p = self.calc(expr);
-          }
-          *self.return_to = None;
-        }
+      // 停止已结束的作用域
+      if self.ended {
         outlive::scope_end(self);
         return;
       }
-
-      self.evil(sm);
     }
+    self.ended = true;
     outlive::scope_end(self);
   }
 
@@ -249,18 +257,17 @@ pub struct RunResult {
 /// 创建顶级作用域并运行一段程序
 pub fn run(s:&Statements)-> RunResult {
   let mut top_ret = Litr::Uint(0);
-  let mut return_to = &mut Some(&mut top_ret as *mut Litr);
   let mut imports = Vec::new();
   let mut exports = LocalMod { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() };
   let mut kself = Litr::Uninit;
-  top_scope(return_to, &mut imports, &mut exports,&mut kself).run(s);
+  top_scope(&mut top_ret, &mut imports, &mut exports,&mut kself).run(s);
   RunResult { returned: top_ret, exports, kself }
 }
 
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
+pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
     Litr::Func(Function::Native(crate::primitive::std::log)))
@@ -276,6 +283,7 @@ pub fn top_scope(return_to:*mut Option<*mut Litr>, imports:*mut Vec<Module>, exp
     imports,
     exports,
     vars, 
-    outlives: Outlives::new()
+    outlives: Outlives::new(),
+    ended: false
   })
 }

@@ -31,18 +31,26 @@ pub enum Stmt {
   ExportFn  (Interned, LocalFuncRaw),
   ExportCls (ClassDefRaw),
 
-  // Key
-  // Key       (HashMap<Ident, KsType>),                // 类型声明语句
-  // Impl      (HashMap<Ident, KsLocalFunc>), // 方法定义语句
   Match,     // 模式匹配
 
   // 块系列
   Block    (Statements),   // 一个普通块
-  If       (Statements),   // 条件语句
-  Loop     (Statements),   // 循环
+  If {
+    condition: Expr,
+    exec: Box<Stmt>,
+    els: Option<Box<Stmt>>
+  },
+  ForLoop,
+  ForWhile {
+    condition: Expr,
+    exec: Box<Stmt>
+  },
+  ForIter,
+  // If       (Statements),   // 条件语句
+  // Loop     (Statements),   // 循环
 
   // 流程控制
-  Break     (Expr),                  // 中断循环并提供返回值
+  Break,
   Continue,                           // 立刻进入下一次循环
   Return    (Expr),                  // 函数返回
 
@@ -156,33 +164,27 @@ impl Scanner<'_> {
       _=>{}
     }
   
-    let ident = self.ident();
-    if let Some(id) = ident {
-      match id {
+    let ident = self.literal();
+    if let Expr::Variant(id) = ident {
+      match &*id.vec() {
         // 如果是关键词，就会让对应函数处理关键词之后的信息
         b"let"=> Stmt::Let(self.letting()),
         b"extern"=> {self.externing();Stmt::Empty},
         b"return"=> self.returning(),
         b"class"=> self.classing(),
         b"mod"=> self.moding(),
+        b"for"=> self.foring(),
+        b"if"=> self.ifing(),
+        b"break"=> Stmt::Break,
+        b"continue"=> Stmt::Continue,
         b"async"|b"await"=> self.err("异步关键词暂未实现"),
         _=> {
-          let left = match &*id {
-            b"true"=> Expr::Literal(Litr::Bool(true)),
-            b"false"=> Expr::Literal(Litr::Bool(false)),
-            b"self"=> Expr::Kself,
-            b"uninit"=> Expr::Literal(Litr::Uninit),
-            _=> Expr::Variant(intern(id))
-          };
-          let expr = self.expr_with_left(left);
+          let expr = self.expr_with_left(ident);
           Stmt::Expression(expr)
         }
       }
     }else {
-      let expr = self.expr();
-      if let Expr::Empty = expr {
-        self.err(&format!("请输入一行正确的语句，'{}'并不合法", String::from_utf8_lossy(&[self.cur()])))
-      }
+      let expr = self.expr_with_left(ident);
       Stmt::Expression(expr)
     }
   }
@@ -489,6 +491,28 @@ impl Scanner<'_> {
         Stmt::Mod(module)
       }
       _ => self.err("未知模块类型")
+    }
+  }
+
+  fn ifing(&self)-> Stmt {
+    let condition = self.expr();
+    let exec = Box::new(self.stmt());
+    self.spaces();
+    if self.cur() == b'e' {
+
+    }
+    Stmt::If { condition, exec, els: None }
+  }
+
+  /// for语句
+  fn foring(&self)-> Stmt {
+    self.spaces();
+    if self.cur() == b'(' {
+      let condition = self.expr_group();
+      let exec = Box::new(self.stmt());
+      Stmt::ForWhile { condition, exec }
+    }else {
+      self.err("for语法错误")
     }
   }
 }

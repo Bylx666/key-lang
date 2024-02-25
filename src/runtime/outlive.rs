@@ -3,7 +3,6 @@
 //! 具体思路见Outlives结构
 
 use super::{LocalFuncRaw, LocalFunc};
-use super::ScopeInner;
 use std::sync::atomic::Ordering;
 
 
@@ -20,18 +19,13 @@ pub struct Outlives {
   /// 该作用域得到的延长了生命周期的函数列表
   /// 
   /// 在该作用域结束时会为列表中所有函数减少一层`count`
-  to_drop: Vec<LocalFunc>,
-  /// 在回收函数定义处的作用域时有可能会提前回收未结束的作用域
-  /// 
-  /// 此标志用来标识作用域是否执行完成
-  ended: bool
+  to_drop: Vec<LocalFunc>
 }
 impl Outlives {
   pub fn new()-> Self {
     Outlives {
       count:AtomicUsize::new(0),
-      to_drop:Vec::new(),
-      ended: false
+      to_drop:Vec::new()
     }
   }
 }
@@ -73,7 +67,6 @@ pub fn outlive_static(mut scope:Scope) {
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
   // 回收作用域本身
-  scope.outlives.ended = true;
   if scope.outlives.count.load(Ordering::Relaxed) == 0 {
     unsafe { std::ptr::drop_in_place(scope.ptr) }
   }
@@ -83,7 +76,7 @@ pub fn scope_end(mut scope:Scope) {
   fn sub_count(mut scope: Scope) {
     loop {
       let prev = scope.outlives.count.fetch_sub(1, Ordering::Relaxed);
-      if prev == 1 && scope.outlives.ended {
+      if prev == 1 && scope.ended {
         unsafe{ std::ptr::drop_in_place(scope.ptr) }
       }
       if let Some(prt) = scope.parent {

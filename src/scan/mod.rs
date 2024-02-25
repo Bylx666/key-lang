@@ -90,7 +90,7 @@ impl Scanner<'_> {
   /// 跳过一段空格,换行符和注释
   fn spaces(&self) {
     let len = self.src.len();
-    while self.i() < len {
+    loop {
       let c = self.cur();
       if c == b'\n' {
         unsafe{*self.line += 1;}
@@ -117,14 +117,14 @@ impl Scanner<'_> {
               self.next();
             }
             // 多行
-            if nc == b'`' {
+            if nc == b'\'' {
               self.set_i(next + 1);
               loop {
                 self.next();
                 if self.cur() == b'\n' {
                   unsafe{*self.line += 1;}
                 }
-                if self.cur() == b'`' {
+                if self.cur() == b'\'' {
                   let next = self.i() + 1;
                   if next >= len {
                     self.set_i(len);
@@ -132,12 +132,12 @@ impl Scanner<'_> {
                   }
                   if self.src[next] == b'/' {
                     self.set_i(next + 1);
-                    break;
                   }
                 }
               }
             }
           }
+          continue;
         }
         _=> {
           break;

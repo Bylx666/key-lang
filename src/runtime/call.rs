@@ -42,17 +42,17 @@ impl Scope {
     let kself = if let Some(s) = f.bound {s}else {self.kself};
 
     let mut ret = Litr::Uninit;
-    let mut return_to = Some(&mut ret as *mut Litr);
     let mut scope = Scope::new(ScopeInner {
       parent:Some(f.scope),
-      return_to:&mut return_to,
+      return_to:&mut ret,
       class_defs:Vec::new(),
       class_uses:Vec::new(),
       kself,
       vars,
       imports: self.imports,
       exports: self.exports,
-      outlives: Outlives::new()
+      outlives: Outlives::new(),
+      ended: false
     });
     scope.run(&f.stmts);
     ret

@@ -9,7 +9,6 @@ use crate::c::{dlopen,dlsym};
 use crate::scan::literal::{
   Litr, LocalFunc
 };
-use crate::runtime::ScopeInner;
 
 static mut EXEC:Option<LocalFunc> = None;
 
