@@ -40,12 +40,16 @@ pub enum Stmt {
     exec: Box<Stmt>,
     els: Option<Box<Stmt>>
   },
-  ForLoop,
+  ForLoop(Box<Stmt>),
   ForWhile {
     condition: Expr,
     exec: Box<Stmt>
   },
-  ForIter,
+  ForIter {
+    iterator: Expr,
+    id: Option<Interned>,
+    exec: Box<Stmt>
+  },
   // If       (Statements),   // 条件语句
   // Loop     (Statements),   // 循环
 
@@ -507,12 +511,35 @@ impl Scanner<'_> {
   /// for语句
   fn foring(&self)-> Stmt {
     self.spaces();
-    if self.cur() == b'(' {
-      let condition = self.expr_group();
-      let exec = Box::new(self.stmt());
-      Stmt::ForWhile { condition, exec }
-    }else {
-      self.err("for语法错误")
+    match self.cur() {
+      b'('=> {
+        let condition = self.expr_group();
+        let exec = Box::new(self.stmt());
+        Stmt::ForWhile { condition, exec }
+      }
+      b'!'=> {
+        let exec = Box::new(self.stmt());
+        Stmt::ForLoop(exec)
+      }
+      _=> {
+        let left = self.literal();
+        self.spaces();
+        // 使用迭代器值
+        if self.cur() == b':' {
+          self.next();
+          if let Expr::Variant(id) = left {
+            let right = self.expr();
+            let exec = Box::new(self.stmt());
+            return Stmt::ForIter {iterator:right, id:Some(id), exec};
+          }
+          self.err("`for v:iter`语句中:左边必须是标识符")
+        }
+
+        // 不使用迭代器值
+        let iterator = self.expr_with_left(left);
+        let exec = Box::new(self.stmt());
+        Stmt::ForIter {iterator, id:None, exec}
+      }
     }
   }
 }

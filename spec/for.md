@@ -6,4 +6,7 @@ for(a<200) { // 就是while
   a+=1
 }
 
-if和for后如果是单语句不是块就会在当前作用域直接执行,包括let和class
+if和for后如果是单语句不是块就会在当前作用域直接执行,包括let和class (for v:iter会额外创建一个块)
+使用break和continue
+
+迭代器过程中禁止改变迭代器的值

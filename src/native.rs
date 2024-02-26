@@ -25,14 +25,14 @@ pub struct NativeMod {
 #[derive(Debug, Clone)]
 pub struct NativeClassDef {
   pub name: Interned,
+  pub statics: Vec<(Interned, NativeFn)>,
+  pub methods: Vec<(Interned, NativeMethod)>,
   pub getter: Getter,
   pub setter: Setter,
   pub igetter: IndexGetter,
   pub isetter: IndexSetter,
   pub onclone: OnClone,
-  pub ondrop: OnDrop,
-  pub statics: Vec<(Interned, NativeFn)>,
-  pub methods: Vec<(Interned, NativeMethod)>
+  pub ondrop: OnDrop
 }
 
 /// 传进main里的东西，作为与原生的接口

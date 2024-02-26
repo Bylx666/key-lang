@@ -1,3 +1,5 @@
+use crate::primitive;
+
 use super::*;
 
 impl Scope {
@@ -120,38 +122,49 @@ impl Scope {
       }
 
       // for ()语句
-      Stmt::ForWhile { condition, exec }=> {
-        // 用重置作用域代替重新创建作用域
-        if let Stmt::Block(exec) = &**exec {
-          let mut scope = self.subscope();
-          let mut breaked = false;
-          while cond(self.calc(condition)) {
-            if scope.ended || breaked {
-              outlive::scope_end(scope);
+      Stmt::ForWhile { condition, exec }=>
+        start_loop(*self, ||cond(self.calc(condition)), exec),
+
+      // for!语句
+      Stmt::ForLoop(exec)=> start_loop(*self, ||true, exec),
+
+      // for v:iter语句
+      Stmt::ForIter{exec, id, iterator}=> {
+        use primitive::iter::LitrIterator;
+        let calced = self.calc_ref(iterator);
+        let mut scope = self.subscope();
+        let mut breaked = false;
+        match &**exec {
+          Stmt::Block(exec)=> {
+            for v in LitrIterator::new(&calced) {
+              if scope.ended || breaked {
+                outlive::scope_end(scope);
+                return;
+              }
+              scope.vars.clear();
+              if let Some(id) = id {
+                scope.vars.push((*id, v));
+              }
+              scope.class_uses.clear();
+              loop_run(scope, &mut breaked, exec)
+            }
+          },
+          _=> for v in LitrIterator::new(&calced) {
+            if scope.ended {
               return;
             }
             scope.vars.clear();
-            scope.class_uses.clear();
-            loop_run(scope, &mut breaked, exec);
-          }
-          scope.ended = true;
-          outlive::scope_end(scope);
-        // 单语句将由当前作用域代为执行,不再创建新作用域
-        }else {
-          match &**exec {
-            Stmt::Break=> err!("不允许`for() break`的写法"),
-            Stmt::Continue=> err!("不允许`for() continue`的写法`"),
-            _=> while cond(self.calc(condition)) {
-              if self.ended {
-                return;
-              }
-              self.evil(exec);
+            if let Some(id) = id {
+              scope.vars.push((*id, v));
             }
+            scope.evil(exec);
           }
+          Stmt::Break=> err!("不允许`for v:iter break`的写法"),
+          Stmt::Continue=> err!("不允许`for v:iter continue`的写法`"),
         }
-      }
-      Stmt::ForIter=>(),
-      Stmt::ForLoop=>(),
+        scope.ended = true;
+        outlive::scope_end(scope);
+      },
 
       Stmt::Match=>(),
 
@@ -172,8 +185,42 @@ fn cond(v:Litr)-> bool {
   }
 }
 
+/// 在一个作用域开始循环
+fn start_loop(mut this:Scope, mut condition:impl FnMut()-> bool, exec:&Box<Stmt>) {
+  // 用重置作用域代替重新创建作用域
+  if let Stmt::Block(exec) = &**exec {
+    let mut scope = this.subscope();
+    let mut breaked = false;
+    while condition() {
+      if scope.ended || breaked {
+        outlive::scope_end(scope);
+        return;
+      }
+      // 重置此作用域
+      scope.vars.clear();
+      scope.class_uses.clear();
+      loop_run(scope, &mut breaked, exec);
+    }
+    scope.ended = true;
+    outlive::scope_end(scope);
+  // 单语句将由当前作用域代为执行,不再创建新作用域
+  }else {
+    match &**exec {
+      Stmt::Break=> err!("不允许`for() break`的写法"),
+      Stmt::Continue=> err!("不允许`for() continue`的写法`"),
+      _=> while condition() {
+        if this.ended {
+          return;
+        }
+        this.evil(exec);
+      }
+    }
+  }
+}
+
 /// 以循环模式运行一段语句
 fn loop_run(mut scope:Scope,breaked:&mut bool,exec:&Statements) {
+  // 对于单Stmt的run实现
   macro_rules! loop_run_stmt {($stmt:expr)=>{{
     match $stmt {
       Stmt::Block(exec)=> {
@@ -182,17 +229,20 @@ fn loop_run(mut scope:Scope,breaked:&mut bool,exec:&Statements) {
         s.ended = true;
         outlive::scope_end(s);
       },
-      Stmt::Break=> *breaked = true,
+      Stmt::Break=> return *breaked = true,
+      Stmt::Continue=> return,
       _=> scope.evil($stmt)
     };
   }}}
+
   for (l, sm) in &exec.0 {
+    // 如果中途遇到return或者break就停止
     if scope.ended || *breaked {
-      // outlive::scope_end(scope);
       return;
     }
     match sm {
-      Stmt::Break=> *breaked = true,
+      Stmt::Break=> return *breaked = true,
+      Stmt::Continue=> return,
       // 把直属该for下的块拦截,检测break和continue
       Stmt::Block(v)=> loop_run(scope, breaked, exec),
       Stmt::If { condition, exec, els }=> {

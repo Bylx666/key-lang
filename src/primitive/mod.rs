@@ -13,7 +13,10 @@ use crate::intern::{Interned, intern};
 
 pub mod std;
 
+pub mod int;
+pub mod sym;
 pub mod obj;
+pub mod iter;
 
 fn getter(_v:*mut NativeInstance, _get:Interned)-> Litr {Litr::Uninit}
 fn setter(_v:*mut NativeInstance, _set:Interned, _to:Litr) {}
@@ -37,7 +40,8 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     cls.iter_mut().map(|(name, f)|(*name, Class::Native(f))).collect()
   }else {
     let obj_c = new_class(b"Obj", obj::statics());
-    CLASSES = Some(vec![obj_c]);
+    let sym_c = new_class(b"Sym", sym::statics());
+    CLASSES = Some(vec![obj_c, sym_c]);
     classes()
   }
 }}

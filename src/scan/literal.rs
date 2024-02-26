@@ -27,7 +27,8 @@ pub enum Litr {
   List   (Vec<Litr>),
   Obj    (HashMap<Interned, Litr>),
   Inst   (Instance),
-  Ninst  (NativeInstance)
+  Ninst  (NativeInstance),
+  Sym    (crate::primitive::sym::Symbol)
 }
 impl Litr {
   /// 由Key编译器提供的转字符
@@ -111,11 +112,14 @@ impl Litr {
         s.push_str(" }");
         s
       }
-      Ninst(inst)=> {
-        let mut s = String::new();
-        s.push_str(&unsafe{&*inst.cls}.name.str());
-        s.push_str(" { Native }");
-        s
+      Ninst(inst)=> 
+        format!("{} {{ Native }}", &unsafe{&*inst.cls}.name.str()),
+      Sym(s)=> {
+        use crate::primitive::sym::Symbol;
+        let t = match s {
+          Symbol::IterEnd=> "迭代结束"
+        };
+        format!("Sym {{ {} }}", t)
       }
     }
   }
