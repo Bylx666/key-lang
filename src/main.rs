@@ -24,9 +24,8 @@ fn main()-> ExitCode {
   //   }
   // }));
 
-  // 把return_to也做一个run的版本
-  // 迭代器 loop
   // 基本类型的方法，也就是所有litr的prop
+  // str::next_char(start)
 
   // 析构函数..?
   // 约定方法str() array()

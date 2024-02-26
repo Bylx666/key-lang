@@ -131,12 +131,12 @@ impl Scope {
       // for v:iter语句
       Stmt::ForIter{exec, id, iterator}=> {
         use primitive::iter::LitrIterator;
-        let calced = self.calc_ref(iterator);
+        let mut calced = self.calc_ref(iterator);
         let mut scope = self.subscope();
         let mut breaked = false;
         match &**exec {
           Stmt::Block(exec)=> {
-            for v in LitrIterator::new(&calced) {
+            for v in LitrIterator::new(&mut calced) {
               if scope.ended || breaked {
                 outlive::scope_end(scope);
                 return;
@@ -149,7 +149,7 @@ impl Scope {
               loop_run(scope, &mut breaked, exec)
             }
           },
-          _=> for v in LitrIterator::new(&calced) {
+          _=> for v in LitrIterator::new(&mut calced) {
             if scope.ended {
               return;
             }

@@ -7,7 +7,8 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
-  IterEnd
+  IterEnd,
+  Reserved
 }
 
 

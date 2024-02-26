@@ -117,7 +117,8 @@ impl Litr {
       Sym(s)=> {
         use crate::primitive::sym::Symbol;
         let t = match s {
-          Symbol::IterEnd=> "迭代结束"
+          Symbol::IterEnd=> "迭代结束",
+          Symbol::Reserved=> "未使用"
         };
         format!("Sym {{ {} }}", t)
       }
@@ -472,7 +473,7 @@ impl Scanner<'_> {
             b"uninit"=> Expr::Literal(Litr::Uninit),
             _=> {
               self.spaces();
-              if self.cur() == b'{' {
+              if self.cur() == b'{' && id[0].is_ascii_uppercase() {
                 let decl = self.obj();
                 return Expr::NewInst{
                   cls: intern(id),

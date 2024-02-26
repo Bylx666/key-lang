@@ -140,6 +140,12 @@ impl Scanner<'_> {
       if op.len() == 0 {
         return expr_stack.pop().unwrap();
       }
+
+      // 如果用户想用返回语句就直接以此分界
+      if op == b":" {
+        unsafe {(*self.i) -= 1;}
+        return expr_stack.pop().unwrap();
+      }
   
       // 如果此运算符是括号就代表call
       if op == b"(" {

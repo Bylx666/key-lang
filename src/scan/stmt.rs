@@ -506,7 +506,11 @@ impl Scanner<'_> {
     let exec = Box::new(self.stmt());
     self.spaces();
     if self.cur() == b'e' {
-
+      let else_end = self.i() + 4;
+      if else_end <= self.src.len() && &self.src[self.i()..else_end] == b"else" {
+        let els = Some(Box::new(self.stmt()));
+        return Stmt::If { condition, exec, els };
+      }
     }
     Stmt::If { condition, exec, els: None }
   }

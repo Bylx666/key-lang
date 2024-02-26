@@ -213,17 +213,9 @@ impl Scope {
       }
 
       Expr::Property(e, find)=> {
-        match &**e {
-          Expr::Variant(id)=> {
-            let from = CalcRef::Ref(self.var(*id) as *mut Litr);
-            get_prop(self, from, *find).own()
-          }
-          _=> {
-            let scope = *self;
-            let from = self.calc_ref(&**e);
-            get_prop(self, from, *find).own()
-          }
-        }
+        let scope = *self;
+        let from = self.calc_ref(&**e);
+        get_prop(self, from, *find).own()
       }
 
       Expr::Kself => unsafe{(*self.kself).clone()},
@@ -233,7 +225,7 @@ impl Scope {
   }
 
   /// 能引用优先引用的calc，能避免很多复制同时保证引用正确
-  pub fn calc_ref(self:&mut Scope, e:&Expr)-> CalcRef {
+  pub fn calc_ref(&mut self, e:&Expr)-> CalcRef {
     match e {
       Expr::Kself=> {
         let v = unsafe{&mut *self.kself};
