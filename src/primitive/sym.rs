@@ -5,7 +5,7 @@ use crate::{
   native::NativeFn
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Symbol {
   IterEnd,
   Reserved

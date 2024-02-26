@@ -535,6 +535,7 @@ fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
           }
           match_list(&*l.v, &*r.v)
         },
+        (Sym(l), Sym(r))=> l $o r,
         _=> false
       }
     }
