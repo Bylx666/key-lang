@@ -25,7 +25,7 @@ fn s_insert(mut args:Vec<CalcRef>)-> Litr {
     _=> err!("insert第二个参数必须是Str")
   };
   let v = args.next().unwrap().clone();
-  match targ.insert(intern(id.as_bytes()), v) {
+  match targ.insert(intern(id.as_bytes()), v.own()) {
     Some(v)=> v,
     None=> Litr::Uninit
   }

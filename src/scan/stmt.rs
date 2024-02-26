@@ -187,7 +187,10 @@ impl Scanner<'_> {
           Stmt::Expression(expr)
         }
       }
-    }else {
+    }else if let Expr::Empty = ident {
+      let expr = self.expr();
+      Stmt::Expression(expr)
+    } else {
       let expr = self.expr_with_left(ident);
       Stmt::Expression(expr)
     }

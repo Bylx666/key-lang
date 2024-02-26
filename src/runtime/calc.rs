@@ -5,6 +5,7 @@ use crate::native::BoundNativeMethod;
 use super::*;
 
 /// calc_ref既可能得到引用，也可能得到计算过的值
+#[derive(Debug, Clone)]
 pub enum CalcRef {
   Ref(*mut Litr),
   Own(Litr)
@@ -214,12 +215,12 @@ impl Scope {
       Expr::Property(e, find)=> {
         match &**e {
           Expr::Variant(id)=> {
-            let from = unsafe{&mut *(self.var(*id) as *mut Litr)};
+            let from = CalcRef::Ref(self.var(*id) as *mut Litr);
             get_prop(self, from, *find).own()
           }
           _=> {
             let scope = *self;
-            let from = &mut self.calc(&**e);
+            let from = self.calc_ref(&**e);
             get_prop(self, from, *find).own()
           }
         }
@@ -240,11 +241,10 @@ impl Scope {
       }
       Expr::Property(e, find)=> {
         let mut from = self.calc_ref(&e);
-        get_prop(self, &mut *from, *find)
+        get_prop(self, from, *find)
       }
       Expr::Index { left, i }=> calc_index(self, left, i),
       Expr::Variant(id)=> CalcRef::Ref(self.var(*id)),
-      // todo: Expr::Index
       _=> {
         let v = self.calc(e);
         CalcRef::Own(v)
@@ -275,7 +275,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
       }
       Expr::Property(e, find)=> {
         let (mut from, scope) = calc_ref_with_scope(this, &e);
-        (get_prop(this, &mut *from, *find), scope)
+        (get_prop(this, from, *find), scope)
       }
       Expr::Variant(id)=> {
         let (rf, scope) = this.var_with_scope(*id);
@@ -307,7 +307,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         Litr::Obj(o)=> {
           o.insert(*find, right);
         },
-        _=> *get_prop(this, &mut left, *find) = right
+        _=> *get_prop(this, left, *find) = right
       }
     }
     Expr::Index{left,i}=> {
@@ -334,8 +334,8 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
 
 
 /// 在作用域中从Litr中找.运算符指向的东西
-fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
-  match from {
+fn get_prop(this:&Scope, mut from:CalcRef, find:Interned)-> CalcRef {
+  match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
       let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
@@ -361,7 +361,7 @@ fn get_prop(this:&Scope, from:&mut Litr, find:Interned)-> CalcRef {
           }
           // 为函数绑定self
           let mut f = mthd.f.clone();
-          f.bound = Some(from);
+          f.bound = Some(Box::new(from));
           let f = Litr::Func(Function::Local(f));
           return CalcRef::Own(f);
         }

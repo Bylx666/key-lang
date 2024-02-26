@@ -1,3 +1,5 @@
+use self::calc::CalcRef;
+
 use super::*;
 
 impl Scope {
@@ -39,7 +41,9 @@ impl Scope {
       vars.push((argdecl.name, arg));
     }
     // 如果函数被bind了就用bound值，否则继续沿用上级self
-    let kself = if let Some(s) = f.bound {s}else {self.kself};
+    let kself = if let Some(s) = &f.bound {
+      (&***s) as *const Litr as *mut Litr
+    }else {self.kself};
 
     let mut ret = Litr::Uninit;
     let mut scope = Scope::new(ScopeInner {

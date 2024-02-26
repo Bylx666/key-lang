@@ -6,7 +6,7 @@ use super::{
 
 use crate::{
   native::NativeInstance, 
-  runtime::{Module, Scope}
+  runtime::{calc::CalcRef, Module, Scope}
 };
 use crate::intern::Interned;
 
@@ -160,8 +160,8 @@ pub struct LocalFunc {
   pub ptr:*const LocalFuncRaw,
   /// 来自的作用域
   pub scope: Scope,
-  /// 是否绑定了self
-  pub bound: Option<*mut Litr>,
+  /// 是否绑定了self (如果直接绑定了字面量将会持有其所有权)
+  pub bound: Option<Box<CalcRef>>,
 }
 impl LocalFunc {
   /// 将本地函数定义和作用域绑定
