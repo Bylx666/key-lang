@@ -191,7 +191,7 @@ pub struct ExternFunc {
 /// 类实例
 #[derive(Debug, Clone)]
 pub struct Instance {
-  pub cls: *const ClassDef,
+  pub cls: *mut ClassDef,
   pub v: Box<[Litr]>
 }
 

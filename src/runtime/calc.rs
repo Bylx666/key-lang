@@ -115,7 +115,7 @@ impl Scope {
           _=> err!("构建实例::左侧必须是类型名")
         };
         if let Class::Local(cls) = cls {
-          let cls = unsafe {&*cls};
+          let cls = unsafe {&mut *cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
           let cannot_access_private = self.exports != cls.module;
           'a: for (id, e) in val.iter() {
@@ -139,28 +139,24 @@ impl Scope {
       // -.运算符
       Expr::ModFuncAcc(modname, funcname)=> {
         let imports = unsafe {&*self.imports};
-        for module in imports.iter() {
-          match module {
-            Module::Local(p)=> {
-              let module = unsafe {&**p};
-              if module.name == *modname {
-                for (id, func) in module.funcs.iter() {
+        for (name, module) in imports.iter() {
+          if name == modname {
+            match module {
+              Module::Local(m)=> {
+                for (id, func) in unsafe{(**m).funcs.iter()} {
                   if *id == *funcname {
                     return Litr::Func(Function::Local(func.clone()));
                   }
                 }
                 err!("模块'{}'中没有'{}'函数",modname,funcname)
               }
-            }
-            Module::Native(p)=> {
-              let module = unsafe {&**p};
-              if module.name == *modname {
-                for (id, func) in module.funcs.iter() {
+              Module::Native(m)=> {
+                for (id, func) in unsafe{(**m).funcs.iter()} {
                   if *id == *funcname {
                     return Litr::Func(Function::Native(func.clone()));
                   }
                 }
-                err!("模块'{}'中没有'{}'函数",modname,funcname)
+                err!("原生模块'{}'中没有'{}'函数",modname,funcname)
               }
             }
           }
@@ -323,10 +319,22 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
     Expr::Index{left,i}=> {
       let (mut left, scope) = calc_ref_with_scope(this, &left);
       let i = this.calc_ref(i);
-      may_add_ref(&right, scope);
+      // may_add_ref(&right, scope);
       match &mut *left {
         Litr::Ninst(_)=> todo!(),
-        Litr::Inst(_)=> todo!(),
+        Litr::Inst(inst)=> {
+          let fname = intern(b"@index_set");
+          let cls = unsafe{&mut *inst.cls};
+          let opt = cls.methods.iter_mut().find(|v|v.name == fname);
+          match opt {
+            Some(f)=> {
+              let f = &mut f.f;
+              f.bound = Some(Box::new(left));
+              f.scope.call_local(f, vec![i.own(), right]);
+            }
+            None=> err!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
+          }
+        },
         Litr::Obj(map)=> {
           if let Litr::Str(s) = &*i {
             map.insert(intern(s.as_bytes()), right);
@@ -416,6 +424,19 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
       };
     }
     err!("Obj的索引必须使用Str")
+  }
+
+  // 判断实例index_get
+  if let Litr::Inst(inst) = &mut *left {
+    let fname = intern(b"@index_get");
+    let cls = unsafe{&mut *inst.cls};
+    let opt = cls.methods.iter_mut().find(|v|v.name == fname);
+    if let Some(f) = opt {
+      let f = &mut f.f;
+      f.bound = Some(Box::new(left));      
+      return CalcRef::Own(f.scope.call_local(f, vec![i.own()]));
+    }
+    err!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
   }
 
   // 把只会用到数字索引的放一起判断

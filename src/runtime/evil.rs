@@ -35,7 +35,7 @@ impl Scope {
         let module = self.exports;
         let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
         self.class_defs.push(clsdef);
-        let using = self.class_defs.last().unwrap() as *const ClassDef;
+        let using = self.class_defs.last_mut().unwrap() as *mut ClassDef;
         self.class_uses.push((raw.name, Class::Local(using)));
       }
 
@@ -54,11 +54,11 @@ impl Scope {
       }
       
       // 导入模块
-      Stmt::Mod(m)=> unsafe {
-        (*self.imports).push(Module::Local(*m));
+      Stmt::Mod(name, m)=> unsafe {
+        (*self.imports).push((*name, Module::Local(*m)));
       }
-      Stmt::NativeMod(m)=> unsafe {
-        (*self.imports).push(Module::Native(*m));
+      Stmt::NativeMod(name, m)=> unsafe {
+        (*self.imports).push((*name, Module::Native(*m)));
       }
 
       // 导出函数 mod.
@@ -89,11 +89,11 @@ impl Scope {
         let module = self.exports;
         let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
         self.class_defs.push(clsdef);
-        let using = self.class_defs.last().unwrap() as *const ClassDef;
+        let using = self.class_defs.last_mut().unwrap() as *mut ClassDef;
         self.class_uses.push((raw.name, Class::Local(using)));
 
         // 将指针推到export
-        let ptr = self.class_defs.last().unwrap() as *const ClassDef;
+        let ptr = self.class_defs.last_mut().unwrap() as *mut ClassDef;
         let module = unsafe {&mut*self.exports};
         module.classes.push((raw.name,ptr))
       }

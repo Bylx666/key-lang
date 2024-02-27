@@ -41,8 +41,8 @@ pub enum Module {
 /// 类声明，分为本地和原生类声明
 #[derive(Debug, Clone)]
 pub enum Class {
-  Native(*const NativeClassDef),
-  Local(*const ClassDef)
+  Native(*mut NativeClassDef),
+  Local(*mut ClassDef)
 }
 
 
@@ -62,7 +62,7 @@ pub struct ScopeInner {
   /// self指针
   pub kself: *mut Litr,
   /// 当前脚本导入的模块
-  pub imports: *mut Vec<Module>,
+  pub imports: *mut Vec<(Interned, Module)>,
   /// ks本身作为模块导出的指针
   pub exports: *mut LocalMod,
   /// 该作用域生命周期会被outlive的函数延长
@@ -224,25 +224,14 @@ impl Scope {
 
 
   /// 寻找一个导入的模块
-  pub fn find_mod(&self, s:Interned)-> Module {
+  pub fn find_mod(&self, find:Interned)-> Module {
     let imports = unsafe {&*self.imports};
-    for module in imports.iter() {
-      match module {
-        Module::Local(p)=> {
-          let m = unsafe {&**p};
-          if m.name == s {
-            return module.clone();
-          }
-        }
-        Module::Native(p)=> {
-          let m = unsafe {&**p};
-          if m.name == s {
-            return module.clone();
-          }
-        }
+    for (name, module) in imports.iter() {
+      if *name == find {
+        return module.clone();
       }
     }
-    err!("当前模块中没有导入'{}'模块", s.str())
+    err!("当前模块中没有导入'{}'模块", find.str())
   }
 }
 
@@ -258,7 +247,7 @@ pub struct RunResult {
 pub fn run(s:&Statements)-> RunResult {
   let mut top_ret = Litr::Uint(0);
   let mut imports = Vec::new();
-  let mut exports = Box::into_raw(Box::new(LocalMod { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() }));
+  let mut exports = Box::into_raw(Box::new(LocalMod { funcs: Vec::new(), classes: Vec::new() }));
   let mut kself = Litr::Uninit;
   top_scope(&mut top_ret, &mut imports, exports,&mut kself).run(s);
   RunResult { returned: top_ret, exports, kself }
@@ -267,7 +256,7 @@ pub fn run(s:&Statements)-> RunResult {
 /// 创建顶级作用域
 /// 
 /// 自定义此函数可添加初始函数和变量
-pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<Module>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
+pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<(Interned, Module)>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
   vars.push((intern(b"log"), 
     Litr::Func(Function::Native(crate::primitive::std::log)))

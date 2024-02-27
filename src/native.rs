@@ -12,9 +12,8 @@ pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
 
 #[derive(Debug, Clone)]
 pub struct NativeMod {
-  pub name: Interned,
   pub funcs: Vec<(Interned, NativeFn)>,
-  pub classes: Vec<*const NativeClassDef>
+  pub classes: Vec<*mut NativeClassDef>
 }
 
 #[repr(C)]
@@ -33,7 +32,7 @@ struct NativeInterface {
   intern: fn(&[u8])-> Interned,
   err: fn(&str)->!,
   funcs: *mut Vec<(Interned, NativeFn)>,
-  classes: *mut Vec<*const NativeClassDef>
+  classes: *mut Vec<*mut NativeClassDef>
 }
 
 /// 原生类型实例
@@ -52,10 +51,10 @@ pub struct BoundNativeMethod {
   pub f: NativeMethod
 }
 
-pub fn parse(name:Interned,path:&[u8])-> Result<*const NativeMod, String> {
+pub fn parse(path:&[u8])-> Result<*const NativeMod, String> {
   let lib = Clib::load(path)?;
   let mut m = Box::new(NativeMod {
-    name, funcs: Vec::new(), classes: Vec::new()
+    funcs: Vec::new(), classes: Vec::new()
   });
   fn err(s:&str)->! {
     panic!("{} \n  运行时({})", s, unsafe{crate::runtime::LINE})

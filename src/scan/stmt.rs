@@ -26,8 +26,8 @@ pub enum Stmt {
   // 类别名
   Using     (Interned, Expr),
 
-  Mod       (*const LocalMod),
-  NativeMod (*const NativeMod),
+  Mod       (Interned, *const LocalMod),
+  NativeMod (Interned, *const NativeMod),
   ExportFn  (Interned, LocalFuncRaw),
   ExportCls (ClassDefRaw),
 
@@ -72,9 +72,8 @@ pub struct AssignDef {
 
 #[derive(Debug, Clone)]
 pub struct LocalMod {
-  pub name: Interned,
   pub funcs: Vec<(Interned, LocalFunc)>,
-  pub classes: Vec<(Interned, *const ClassDef)>
+  pub classes: Vec<(Interned, *mut ClassDef)>
 }
 
 /// 未绑定作用域的类声明
@@ -484,9 +483,9 @@ impl Scanner<'_> {
     let suffix = &self.src[dot..i];
     match suffix {
       b".ksm"|b".dll"=> {
-        let module = crate::native::parse(name, path).unwrap_or_else(|e|
+        let module = crate::native::parse(path).unwrap_or_else(|e|
           self.err(&format!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path))));
-        Stmt::NativeMod(module)
+        Stmt::NativeMod(name, module)
       }
       b".ks"=> {
         let path = &*String::from_utf8_lossy(path);
@@ -494,8 +493,7 @@ impl Scanner<'_> {
           "无法找到模块'{}'", path
         )));
         let mut module = crate::runtime::run(&scan(file)).exports;
-        unsafe{(*module).name = name;}
-        Stmt::Mod(module)
+        Stmt::Mod(name, module)
       }
       _ => self.err("未知模块类型")
     }
