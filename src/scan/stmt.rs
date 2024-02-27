@@ -26,7 +26,7 @@ pub enum Stmt {
   // 类别名
   Using     (Interned, Expr),
 
-  Mod       (LocalMod),
+  Mod       (*const LocalMod),
   NativeMod (*const NativeMod),
   ExportFn  (Interned, LocalFuncRaw),
   ExportCls (ClassDefRaw),
@@ -494,7 +494,7 @@ impl Scanner<'_> {
           "无法找到模块'{}'", path
         )));
         let mut module = crate::runtime::run(&scan(file)).exports;
-        module.name = name;
+        unsafe{(*module).name = name;}
         Stmt::Mod(module)
       }
       _ => self.err("未知模块类型")

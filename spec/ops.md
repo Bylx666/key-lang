@@ -52,7 +52,6 @@ index[]
 以下类型可以使用索引
 Buffer 返回Uint,在下标无效时返回uninit
 List 返回对应槽位的值
-Inst 类实例传入下标可以无视可见性读取第n个属性
 Str 获取第i个unicode字符(性能较差,请用迭代器替代)
 Uint 传入小于64的数字,返回Bool,代表从右到左的二进制第i位是否为1
 

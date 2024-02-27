@@ -250,7 +250,7 @@ impl Scope {
 #[derive(Debug)]
 pub struct RunResult {
   pub returned: Litr,
-  pub exports: LocalMod,
+  pub exports: *mut LocalMod,
   pub kself: Litr
 }
 
@@ -258,9 +258,9 @@ pub struct RunResult {
 pub fn run(s:&Statements)-> RunResult {
   let mut top_ret = Litr::Uint(0);
   let mut imports = Vec::new();
-  let mut exports = LocalMod { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() };
+  let mut exports = Box::into_raw(Box::new(LocalMod { name: intern(b"mod"), funcs: Vec::new(), classes: Vec::new() }));
   let mut kself = Litr::Uninit;
-  top_scope(&mut top_ret, &mut imports, &mut exports,&mut kself).run(s);
+  top_scope(&mut top_ret, &mut imports, exports,&mut kself).run(s);
   RunResult { returned: top_ret, exports, kself }
 }
 

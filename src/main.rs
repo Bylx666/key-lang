@@ -26,9 +26,11 @@ fn main()-> ExitCode {
 
   // 基本类型的方法，也就是所有litr的prop
   // str::next_char(start)
+  // let [] = x
+  // let a=0,b=0
+  // LocalMod的name冲突
 
   // 析构函数..?
-  // 约定方法str() array()
   // 检查run函数，块内外self是否一致
   // -(xxxx)会提示空表达式
   // newInst如果属性不全不让构造

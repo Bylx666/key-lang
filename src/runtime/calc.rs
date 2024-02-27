@@ -48,7 +48,11 @@ impl Scope {
     match e {
       Expr::Call { args, targ }=> self.call(args, targ),
 
-      Expr::Index { left, i }=> calc_index(self, left, i).own(),
+      Expr::Index { left, i }=> {
+        let left = self.calc_ref(left);
+        let i = self.calc_ref(i);
+        index(left, i).own()
+      },
 
       Expr::Literal(litr)=> litr.clone(),
 
@@ -102,16 +106,22 @@ impl Scope {
       }
 
       // Class {}创建实例
-      Expr::NewInst{cls: clsname, val}=> {
-        let cls = self.find_class(*clsname);
+      Expr::NewInst{cls, val}=> {
+        let (cls, clsname) = match &**cls {
+          Expr::ModClsAcc(modname, clsname)=> 
+            (self.find_class_in(*modname, *clsname), clsname),
+          Expr::Variant(clsname)=> 
+            (self.find_class(*clsname), clsname),
+          _=> err!("构建实例::左侧必须是类型名")
+        };
         if let Class::Local(cls) = cls {
           let cls = unsafe {&*cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
-          let module = self.exports;
+          let cannot_access_private = self.exports != cls.module;
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
               if prop.name == *id {
-                if !prop.public && cls.module != module {
+                if !prop.public && cannot_access_private {
                   err!("成员属性'{}'是私有的。",id)
                 }
                 v[n] = self.clone().calc(e);
@@ -122,7 +132,7 @@ impl Scope {
           }
           Litr::Inst(Instance {cls, v:v.into()})
         }else {
-          err!("无法直接构建原生类型'{}'", clsname)
+          err!("无法直接构建原生类型'{}'", clsname.str())
         }
       }
 
@@ -235,7 +245,11 @@ impl Scope {
         let mut from = self.calc_ref(&e);
         get_prop(self, from, *find)
       }
-      Expr::Index { left, i }=> calc_index(self, left, i),
+      Expr::Index { left, i }=> {
+        let left = self.calc_ref(left);
+        let i = self.calc_ref(i);
+        index(left, i)
+      },
       Expr::Variant(id)=> CalcRef::Ref(self.var(*id)),
       _=> {
         let v = self.calc(e);
@@ -274,8 +288,9 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         (CalcRef::Ref(rf), scope)
       }
       Expr::Index{left, i}=> {
-        let (mut from, scope) = calc_ref_with_scope(this, &left);
-        (calc_index(this, left, i), scope)
+        let (mut left, scope) = calc_ref_with_scope(this, &left);
+        let i = this.calc_ref(i);
+        (index(left, i), scope)
       }
       _=> {
         let v = this.calc(e);
@@ -296,6 +311,9 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
           let cls = unsafe {&*inst.cls};
           (cls.setter)(inst, *find, right)
         }
+        Litr::Inst(inst)=> {
+          todo!("class setter")
+        }
         Litr::Obj(o)=> {
           o.insert(*find, right);
         },
@@ -304,16 +322,17 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
     }
     Expr::Index{left,i}=> {
       let (mut left, scope) = calc_ref_with_scope(this, &left);
-      let i = match this.calc(i) {
-        Litr::Int(n)=> n as usize,
-        Litr::Uint(n)=> n,
-        _=> err!("Index必须是整数")
-      };
+      let i = this.calc_ref(i);
       may_add_ref(&right, scope);
-      if let Litr::Ninst(inst) = &mut *left {
-        (unsafe{&*inst.cls}.isetter)(inst, i, right)
-      }else {
-        *index(left, i) = right;
+      match &mut *left {
+        Litr::Ninst(_)=> todo!(),
+        Litr::Inst(_)=> todo!(),
+        Litr::Obj(map)=> {
+          if let Litr::Str(s) = &*i {
+            map.insert(intern(s.as_bytes()), right);
+          }else {err!("Obj索引必须是Str")}
+        }
+        _=> *index(left, i) = right
       }
     }
     _=>{
@@ -387,16 +406,24 @@ fn get_prop(this:&Scope, mut from:CalcRef, find:Interned)-> CalcRef {
   }
 }
 
-fn calc_index(this:&mut Scope, left:&Box<Expr>, i:&Box<Expr>)-> CalcRef {
-  let mut left = this.calc_ref(left);
-  let i = match this.calc(i) {
-    Litr::Int(n)=> n as usize,
-    Litr::Uint(n)=> n,
-    _=> err!("Index必须是整数")
+fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
+  // 先判断Obj
+  if let Litr::Obj(map) = &mut *left {
+    if let Litr::Str(s) = &*i {
+      return match map.get_mut(&intern(s.as_bytes())) {
+        Some(v)=> CalcRef::Ref(v),
+        None=> CalcRef::uninit()
+      };
+    }
+    err!("Obj的索引必须使用Str")
+  }
+
+  // 把只会用到数字索引的放一起判断
+  let i = match &*i {
+    Litr::Uint(n)=> *n,
+    Litr::Int(n)=> (*n) as usize,
+    _=> err!("index必须是整数")
   };
-  index(left, i)
-}
-fn index(mut left:CalcRef, i:usize)-> CalcRef {
   match &mut *left {
     Litr::Buffer(v)=> {
       if i>=v.len() {return CalcRef::uninit()}
@@ -405,13 +432,6 @@ fn index(mut left:CalcRef, i:usize)-> CalcRef {
     Litr::List(v)=> {
       if i>=v.len() {return CalcRef::uninit()}
       CalcRef::Ref(&mut v[i])
-    }
-    Litr::Inst(v)=> {
-      if i>=v.v.len() {return CalcRef::uninit()}
-      CalcRef::Ref(&mut v.v[i])
-    }
-    Litr::Ninst(v)=> {
-      CalcRef::Own((unsafe{&*v.cls}.igetter)(v, i))
     }
     Litr::Str(n)=> {
       match n.chars().nth(i) {

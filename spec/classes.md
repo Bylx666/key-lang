@@ -42,7 +42,7 @@ class MyClass {
 
 class MyClass {
   a b
-  new(): MyClass {a:"a",b:2}
+  new(): MyClass::{a:"a",b:2},
   .get_a(): self.a
 }
 MyClass::new().get_a() == "a"
@@ -84,3 +84,7 @@ let obj = {
   a
   b: 24
 }
+
+Obj::insert has remove
+
+obj["a"] = xx 等效于insert

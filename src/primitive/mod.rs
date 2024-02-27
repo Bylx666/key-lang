@@ -32,7 +32,7 @@ fn new_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeClassDef) 
     name,
     methods: Vec::new(),
     statics: f,
-    getter, setter, igetter, isetter, onclone, ondrop
+    getter, setter
   })
 }
 pub fn classes()-> Vec<(Interned, Class)> {unsafe {

@@ -9,10 +9,6 @@ pub type NativeFn = fn(Vec<CalcRef>)-> Litr;
 pub type NativeMethod = fn(*mut NativeInstance, args:Vec<CalcRef>)-> Litr;
 pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
 pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
-pub type IndexGetter = fn(*mut NativeInstance, get:usize)-> Litr;
-pub type IndexSetter = fn(*mut NativeInstance, set:usize, to:Litr);
-pub type OnClone = fn(*mut NativeInstance)-> NativeInstance;
-pub type OnDrop = fn(*mut NativeInstance);
 
 #[derive(Debug, Clone)]
 pub struct NativeMod {
@@ -28,11 +24,7 @@ pub struct NativeClassDef {
   pub statics: Vec<(Interned, NativeFn)>,
   pub methods: Vec<(Interned, NativeMethod)>,
   pub getter: Getter,
-  pub setter: Setter,
-  pub igetter: IndexGetter,
-  pub isetter: IndexSetter,
-  pub onclone: OnClone,
-  pub ondrop: OnDrop
+  pub setter: Setter
 }
 
 /// 传进main里的东西，作为与原生的接口

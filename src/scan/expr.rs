@@ -37,7 +37,7 @@ pub enum Expr {
   },
   // 创建实例
   NewInst{
-    cls: Interned,
+    cls: Box<Expr>,
     val: Vec<(Interned,Expr)>
   },
 
@@ -116,19 +116,27 @@ impl Scanner<'_> {
         impl_access!(b"-.",ModFuncAcc);
         impl_access!(b"-:",ModClsAcc);
   
-        // .和::都是左边是表达式，右边是标识符
-        macro_rules! impl_prop {($op:literal, $ty:ident) => {
-          if last_op == $op {
-            if let Expr::Variant(right) = last_expr {
-              expr_stack.push(Expr::$ty(Box::new(second_last_expr), right ));
-              continue;
-            }
-            self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
+        // 属性表达式
+        if last_op == b"." {
+          if let Expr::Variant(right) = last_expr {
+            expr_stack.push(Expr::Property(Box::new(second_last_expr), right ));
+            continue;
           }
-        }}
-        impl_prop!(b".", Property);
-        impl_prop!(b"::", ImplAccess);
-  
+          self.err("`.`右侧需要一个标识符")
+        }
+
+        // ::表达式
+        if last_op == b"::" {
+          match last_expr {
+            Expr::Variant(id)=> 
+              expr_stack.push(Expr::ImplAccess(Box::new(second_last_expr), id)),
+            Expr::Obj(o)=> 
+              expr_stack.push(Expr::NewInst { cls: Box::new(second_last_expr), val: o }),
+            _=> self.err("::右侧只能是标识符或对象")
+          }
+          continue;
+        }
+
         expr_stack.push(Expr::Binary{ 
           left: Box::new(second_last_expr), 
           right: Box::new(last_expr), 

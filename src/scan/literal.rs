@@ -471,17 +471,7 @@ impl Scanner<'_> {
             b"false"=> Expr::Literal(Litr::Bool(false)),
             b"self"=> Expr::Kself,
             b"uninit"=> Expr::Literal(Litr::Uninit),
-            _=> {
-              self.spaces();
-              if self.cur() == b'{' && id[0].is_ascii_uppercase() {
-                let decl = self.obj();
-                return Expr::NewInst{
-                  cls: intern(id),
-                  val: decl
-                }
-              }
-              Expr::Variant(intern(id))
-            }
+            _=> Expr::Variant(intern(id))
           }
         }else {
           Expr::Empty

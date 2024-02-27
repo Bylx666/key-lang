@@ -53,8 +53,8 @@ impl Scope {
       class_uses:Vec::new(),
       kself,
       vars,
-      imports: self.imports,
-      exports: self.exports,
+      imports: f.scope.imports,
+      exports: f.scope.exports,
       outlives: Outlives::new(),
       ended: false
     });

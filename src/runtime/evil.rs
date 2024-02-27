@@ -33,7 +33,7 @@ impl Scope {
         let statics:Vec<_> = raw.statics.iter().map(binder).collect();
         let props = raw.props.clone();
         let module = self.exports;
-        let clsdef = ClassDef { name:raw.name, props, statics, methods, module};
+        let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
         self.class_defs.push(clsdef);
         let using = self.class_defs.last().unwrap() as *const ClassDef;
         self.class_uses.push((raw.name, Class::Local(using)));
@@ -55,7 +55,7 @@ impl Scope {
       
       // 导入模块
       Stmt::Mod(m)=> unsafe {
-        (*self.imports).push(Module::Local(m));
+        (*self.imports).push(Module::Local(*m));
       }
       Stmt::NativeMod(m)=> unsafe {
         (*self.imports).push(Module::Native(*m));
