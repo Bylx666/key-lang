@@ -1,7 +1,5 @@
 use super::{
-  charts, intern, Scanner,
-  stmt::{Statements, ClassDef},
-  expr::*
+  charts, expr::*, intern, stmt::{ClassDef, ClassFunc, Statements}, Scanner
 };
 
 use crate::{
@@ -189,11 +187,52 @@ pub struct ExternFunc {
 }
 
 /// 类实例
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Instance {
   pub cls: *mut ClassDef,
   pub v: Box<[Litr]>
 }
+
+impl Clone for Instance {
+  /// 为想要管理内存的实例提供@clone方法
+  fn clone(&self) -> Self {
+    let fname = intern(b"@clone");
+    let opt = unsafe{&mut *self.cls}.methods.iter_mut().find(|f|f.name==fname);
+    let cloned = Instance { cls: self.cls.clone(), v: self.v.clone() };
+    match opt {
+      Some(cls_f)=> {
+        let f = &mut cls_f.f;
+        f.bound = Some(Box::new(CalcRef::Own(Litr::Inst(cloned))));
+        let res = f.scope.call_local(f, vec![]);
+        if let Litr::Inst(v) = res {
+          v
+        }else {
+          panic!("'{}'的@clone方法必须返回实例", cls_f.name);
+        }
+      }
+      None=> cloned
+    }
+  }
+}
+
+impl Drop for Instance {
+  /// 调用自定义drop
+  fn drop(&mut self) {
+    let fname = intern(b"@drop");
+    let opt = unsafe{&mut *self.cls}.methods.iter_mut().find(|f|f.name==fname);
+    match opt {
+      Some(cls_f)=> {
+        let f = &mut cls_f.f;
+        // 不要额外调用clone
+        let binding = &mut *std::mem::ManuallyDrop::new(Litr::Inst(Instance { cls: self.cls, v: self.v.clone() }));
+        f.bound = Some(Box::new(CalcRef::Ref(binding)));
+        f.scope.call_local(f, vec![]);
+      }
+      None=> ()
+    }
+  }
+}
+
 
 /// Key语言内的类型声明
 /// 

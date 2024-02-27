@@ -68,16 +68,8 @@ impl Iterator for LitrIterator<'_> {
         Some(res)
       }
       Litr::Ninst(inst)=> {
-        if self.n == 0 {
-          let next_f = unsafe{&*inst.cls}.methods.iter()
-            .find(|f|f.0 == intern(b"@next"));
-          self.n = match next_f {
-            Some(f)=> f.1 as usize,
-            None=> panic!("迭代class需要定义.@next()方法")
-          };
-        }
-        let next:NativeMethod = unsafe{std::mem::transmute(self.n)};
-        let res = next(inst, vec![]);
+        let next = unsafe {(*inst.cls).next};
+        let res = next(inst);
         if let Litr::Sym(s) = &res {
           if let Symbol::IterEnd = s {
             return None;

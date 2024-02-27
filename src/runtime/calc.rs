@@ -299,6 +299,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
 
   // 如果是用到了setter的原生类实例就必须在此使用setter, 不能直接*left = right
   match left {
+    
     Expr::Property(e, find)=> {
       let (mut left, scope) = calc_ref_with_scope(this, &e);
       may_add_ref(&right, scope);
@@ -316,12 +317,12 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         _=> *get_prop(this, left, *find) = right
       }
     }
+
     Expr::Index{left,i}=> {
       let (mut left, scope) = calc_ref_with_scope(this, &left);
       let i = this.calc_ref(i);
       // may_add_ref(&right, scope);
       match &mut *left {
-        Litr::Ninst(_)=> todo!(),
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
           let cls = unsafe{&mut *inst.cls};
@@ -335,6 +336,9 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
             None=> err!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
           }
         },
+        Litr::Ninst(inst)=> {
+          (unsafe{&*inst.cls}.index_set)(inst, i, right);
+        },
         Litr::Obj(map)=> {
           if let Litr::Str(s) = &*i {
             map.insert(intern(s.as_bytes()), right);
@@ -343,6 +347,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
         _=> *index(left, i) = right
       }
     }
+
     _=>{
       let (mut left, scope) = calc_ref_with_scope(this, left);
       may_add_ref(&right, scope);
@@ -437,6 +442,11 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
       return CalcRef::Own(f.scope.call_local(f, vec![i.own()]));
     }
     err!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
+  }
+
+  // 判断原生类实例
+  if let Litr::Ninst(inst) = &mut *left {
+    return CalcRef::Own(unsafe{((*inst.cls).index_get)(inst, i)});
   }
 
   // 把只会用到数字索引的放一起判断

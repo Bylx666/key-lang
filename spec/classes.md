@@ -88,3 +88,7 @@ let obj = {
 Obj::insert has remove
 
 obj["a"] = xx 等效于insert
+
+## @xx
+
+@index_get index_set clone drop

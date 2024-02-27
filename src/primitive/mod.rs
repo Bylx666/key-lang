@@ -7,6 +7,7 @@ use crate::native::{
   NativeFn,
   NativeInstance
 };
+use crate::runtime::calc::CalcRef;
 use crate::runtime::Class;
 use crate::scan::literal::Litr;
 use crate::intern::{Interned, intern};
@@ -20,8 +21,9 @@ pub mod iter;
 
 fn getter(_v:*mut NativeInstance, _get:Interned)-> Litr {Litr::Uninit}
 fn setter(_v:*mut NativeInstance, _set:Interned, _to:Litr) {}
-fn igetter(_v:*mut NativeInstance, _get:usize)-> Litr {Litr::Uninit}
-fn isetter(_v:*mut NativeInstance, _set:usize, _to:Litr) {}
+fn index_get(_v:*mut NativeInstance, _get:CalcRef)-> Litr {Litr::Uninit}
+fn index_set(_v:*mut NativeInstance, _set:CalcRef, _to:Litr) {}
+fn next(_v:*mut NativeInstance)-> Litr {Litr::Uninit}
 fn onclone(v:*mut NativeInstance)-> NativeInstance {unsafe{&*v}.clone()}
 fn ondrop(_v:*mut NativeInstance) {}
 
@@ -32,7 +34,9 @@ fn new_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeClassDef) 
     name,
     methods: Vec::new(),
     statics: f,
-    getter, setter
+    getter, setter,
+    index_get, index_set,
+    next, onclone, ondrop
   })
 }
 pub fn classes()-> Vec<(Interned, Class)> {unsafe {

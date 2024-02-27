@@ -29,8 +29,6 @@ fn main()-> ExitCode {
   // let [] = x
   // let a=0,b=0
 
-  // 析构函数..?
-  // @clone @drop @index_set @index_get
   // 检查run函数，块内外self是否一致
   // -(xxxx)会提示空表达式
   // newInst如果属性不全不让构造
@@ -44,7 +42,7 @@ fn main()-> ExitCode {
   // !{}
   // 基本的语句好像还没实现完呢
   // 可变参数([args])
-  // let & some = 20 -> usize 显式指定指针变量
+  // let some & = 20 -> usize 显式指定指针变量
   // let * some = 20 -> *some == 20 常量const
   // key关键词到底有什么用啊
   // ..[参数展开]

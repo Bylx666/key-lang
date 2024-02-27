@@ -23,7 +23,12 @@ pub struct NativeClassDef {
   pub statics: Vec<(Interned, NativeFn)>,
   pub methods: Vec<(Interned, NativeMethod)>,
   pub getter: Getter,
-  pub setter: Setter
+  pub setter: Setter,
+  pub index_get: fn(*mut NativeInstance, CalcRef)-> Litr,
+  pub index_set: fn(*mut NativeInstance, CalcRef, Litr),
+  pub next: fn(*mut NativeInstance)-> Litr,
+  pub onclone: fn(*mut NativeInstance)-> NativeInstance,
+  pub ondrop: fn(*mut NativeInstance)
 }
 
 /// 传进main里的东西，作为与原生的接口
@@ -36,12 +41,25 @@ struct NativeInterface {
 }
 
 /// 原生类型实例
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[repr(C)]
 pub struct NativeInstance {
   pub v1: usize,
   pub v2: usize,
   pub cls: *mut NativeClassDef,
+}
+
+impl Clone for NativeInstance {
+  /// 调用自定义clone (key-native库中的默认clone行为也可用)
+  fn clone(&self) -> Self {
+    (unsafe{&*self.cls}.onclone)(self as *const NativeInstance as *mut NativeInstance)
+  }
+}
+impl Drop for NativeInstance {
+  /// 调用自定义drop (key-native的默认drop不做任何事)
+  fn drop(&mut self) {
+    (unsafe{&*self.cls}.ondrop)(self)
+  }
 }
 
 /// Litr中使用的NativeMethod类型
