@@ -92,3 +92,7 @@ obj["a"] = xx 等效于insert
 ## @xx
 
 @index_get index_set clone drop
+
+## is
+
+使用is来判断实例类型(类似typeof + instanceof)

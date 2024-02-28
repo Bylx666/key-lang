@@ -54,7 +54,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     Uint(n)=> Ok(n),
     Float(n)=> (unsafe{Ok(transmute(n))}),
     Str(p)=> Ok((*p).as_ptr() as usize),
-    Buffer(v)=> Ok(v.as_ptr() as usize),
+    Buf(v)=> Ok(v.as_ptr() as usize),
     Func(exec)=> {
       use crate::scan::literal::Function::*;
       match exec {

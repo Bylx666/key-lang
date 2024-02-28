@@ -21,7 +21,7 @@ pub enum Litr {
 
   Func   (Function), 
   Str    (String),
-  Buffer (Vec<u8>),
+  Buf (Vec<u8>),
   List   (Vec<Litr>),
   Obj    (HashMap<Interned, Litr>),
   Inst   (Instance),
@@ -61,7 +61,7 @@ impl Litr {
         str.push_str("]");
         str
       },
-      Buffer(b)=> format!("{:?}",b),
+      Buf(b)=> format!("{:?}",b),
       Obj(map)=> {
         let mut s = String::new();
         s.push_str("{ ");
@@ -419,7 +419,7 @@ impl Scanner<'_> {
         vec.extend_from_slice(&self.src[start..i]);
   
         self.set_i(i+1);
-        Expr::Literal(Litr::Buffer(vec))
+        Expr::Literal(Litr::Buf(vec))
       }
   
       // 解析数字字面量

@@ -187,7 +187,13 @@ impl Scanner<'_> {
       // 这里不i+=1因为对应的解析函数会自动i+=1
       b'(' => return b"(",
       b'[' => return b"[",
-      _=>{}
+      b'i' => {
+        if self.i() + 1 < self.src.len() && self.src[self.i()+1] == b's' {
+          self.set_i(self.i() + 2);
+          return b"is";
+        }
+      }
+      _=>()
     }
     let mut i = self.i();
     let len = self.src.len();

@@ -42,7 +42,7 @@ impl Scope {
       Stmt::Using(alia, e)=> {
         match e {
           Expr::Variant(id)=> {
-            let cls = self.find_class(*id);
+            let cls = self.find_class(*id).unwrap_or_else(||err!("未定义类'{}'", id.str()));
             self.class_uses.push((*alia, cls));
           }
           Expr::ModClsAcc(s, modname)=> {

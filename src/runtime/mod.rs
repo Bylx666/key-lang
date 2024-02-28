@@ -185,16 +185,16 @@ impl Scope {
 
 
   /// 在当前use过的类声明中找对应的类
-  pub fn find_class(&self, s:Interned)-> Class {
+  pub fn find_class(&self, s:Interned)-> Option<Class> {
     for (name, cls) in self.class_uses.iter().rev() {
       if *name == s {
-        return cls.clone();
+        return Some(cls.clone());
       }
     }
     if let Some(parent) = &self.parent {
       return parent.find_class(s);
     }
-    err!("未定义类 '{}'", s.str());
+    None
   }
   /// 在一个模块中找一个类声明
   pub fn find_class_in(&self, modname:Interned, s: Interned)-> Class {

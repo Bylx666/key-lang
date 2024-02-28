@@ -24,7 +24,7 @@ impl Iterator for LitrIterator<'_> {
         self.n += s.len();
         Litr::Str(s)}
       )}
-      Litr::Buffer(v)=> {
+      Litr::Buf(v)=> {
         let v = v.get(self.n).map(|n|Litr::Uint((*n) as usize));
         self.n += 1;
         v

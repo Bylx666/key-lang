@@ -111,7 +111,7 @@ impl Scope {
           Expr::ModClsAcc(modname, clsname)=> 
             (self.find_class_in(*modname, *clsname), clsname),
           Expr::Variant(clsname)=> 
-            (self.find_class(*clsname), clsname),
+            (self.find_class(*clsname).unwrap_or_else(||err!("未定义类 '{}'", clsname.str())), clsname),
           _=> err!("构建实例::左侧必须是类型名")
         };
         if let Class::Local(cls) = cls {
@@ -206,7 +206,7 @@ impl Scope {
         }
 
         if let Expr::Variant(id) = &**e {
-          let cls = self.find_class(*id);
+          let cls = self.find_class(*id).unwrap_or_else(||err!("未定义类 '{}'", id.str()));
           return find_fn(cls, *find, self.exports);
         }
 
@@ -226,6 +226,29 @@ impl Scope {
 
       Expr::Kself => unsafe{(*self.kself).clone()},
 
+      // is操作符
+      Expr::Is (left, right)=> {
+        let v = self.calc_ref(left);
+        macro_rules! matcher {($($d:ident)*)=> {
+          match &*v {
+            Litr::Inst(inst)=> Litr::Bool(match self.find_class(*right) {
+              Some(Class::Local(c))=> c == inst.cls,
+              _=> false
+            }),
+            Litr::Ninst(inst)=> Litr::Bool(match self.find_class(*right) {
+              _=> false,
+              Some(Class::Native(c))=> c == inst.cls
+            }),
+            Litr::Uninit=> Litr::Bool(false),
+            $(
+              Litr::$d(_) => Litr::Bool(intern(stringify!($d).as_bytes()) == *right),
+            )*
+          }
+        }}
+        matcher!{
+          Bool Buf Float Func Int List Obj Str Sym Uint
+        }
+      }
       Expr::Empty => err!("得到空表达式"),
     }
   }
@@ -321,7 +344,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
     Expr::Index{left,i}=> {
       let (mut left, scope) = calc_ref_with_scope(this, &left);
       let i = this.calc_ref(i);
-      // may_add_ref(&right, scope);
+      may_add_ref(&right, scope);
       match &mut *left {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
@@ -456,7 +479,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
     _=> err!("index必须是整数")
   };
   match &mut *left {
-    Litr::Buffer(v)=> {
+    Litr::Buf(v)=> {
       if i>=v.len() {return CalcRef::uninit()}
       CalcRef::Own(Litr::Uint(v[i] as usize))
     }
@@ -571,7 +594,7 @@ fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Float(l), Float(r))=> l $o r,
         (Bool(l), Bool(r))=> l $o r,
         (Str(l), Str(r))=> l $o r,
-        (Buffer(l), Buffer(r))=> l $o r,
+        (Buf(l), Buf(r))=> l $o r,
         (List(l), List(r))=> match_list(l,r),
         (Obj(l), Obj(r))=> {
           if l.len() != r.len() {

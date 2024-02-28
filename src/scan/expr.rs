@@ -24,6 +24,8 @@ pub enum Expr {
   ModClsAcc (Interned, Interned),
   // .运算符
   Property  (Box<Expr>, Interned),
+  // is运算符
+  Is (Box<Expr>, Interned),
   // ::运算符
   ImplAccess(Box<Expr>, Interned),
   // 调用函数
@@ -58,6 +60,7 @@ pub enum Expr {
     right: Box<Expr>,
     op: Box<[u8]>
   },
+
 }
 
 
@@ -101,29 +104,32 @@ impl Scanner<'_> {
         let second_last_expr = expr_stack.pop().unwrap();
   
         // 如果是模块或类的调用就不用Binary
-        macro_rules! impl_access {($op:literal, $ty:ident)=>{{
-          if last_op == $op {
+        macro_rules! impl_both_ident {($op:literal, $ty:ident)=>{{
+          if last_op == $op.as_bytes() {
             if let Expr::Variant(left) = second_last_expr {
               if let Expr::Variant(right) = last_expr {
                 expr_stack.push(Expr::$ty(left, right));
                 continue;
               }
-              self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
+              self.err(&format!("'{}'右侧需要一个标识符",$op))
             }
-            self.err(&format!("{}左侧需要一个标识符",String::from_utf8_lossy($op)))
+            self.err(&format!("'{}'左侧需要一个标识符",$op))
           }
         }}}
-        impl_access!(b"-.",ModFuncAcc);
-        impl_access!(b"-:",ModClsAcc);
-  
-        // 属性表达式
-        if last_op == b"." {
-          if let Expr::Variant(right) = last_expr {
-            expr_stack.push(Expr::Property(Box::new(second_last_expr), right ));
-            continue;
+        impl_both_ident!("-.",ModFuncAcc);
+        impl_both_ident!("-:",ModClsAcc);
+
+        macro_rules! impl_right_ident {($op:literal, $ty:ident) => {
+          if last_op == $op.as_bytes() {
+            if let Expr::Variant(right) = last_expr {
+              expr_stack.push(Expr::$ty(Box::new(second_last_expr), right ));
+              continue;
+            }
+            self.err("`{}`右侧需要一个标识符")
           }
-          self.err("`.`右侧需要一个标识符")
-        }
+        }}
+        impl_right_ident!(".", Property);
+        impl_right_ident!("is", Is);
 
         // ::表达式
         if last_op == b"::" {
