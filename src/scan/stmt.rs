@@ -182,16 +182,24 @@ impl Scanner<'_> {
         b"continue"=> Stmt::Continue,
         b"async"|b"await"=> self.err("异步关键词暂未实现"),
         _=> {
-          let expr = self.expr_with_left(ident);
+          let expr = self.expr_with_left(ident, vec![]);
           Stmt::Expression(expr)
         }
       }
     }else if let Expr::Empty = ident {
       let expr = self.expr();
-      Stmt::Expression(expr)
+      if let Expr::Empty = expr {
+        Stmt::Empty
+      }else {
+        Stmt::Expression(expr)
+      }
     } else {
-      let expr = self.expr_with_left(ident);
-      Stmt::Expression(expr)
+      let expr = self.expr_with_left(ident, vec![]);
+      if let Expr::Empty = expr {
+        Stmt::Empty
+      }else {
+        Stmt::Expression(expr)
+      }
     }
   }
 
@@ -541,7 +549,10 @@ impl Scanner<'_> {
         }
 
         // 不使用迭代器值
-        let iterator = self.expr_with_left(left);
+        let iterator = match left {
+          Expr::Empty=> self.expr(),
+          _=> self.expr_with_left(left, vec![])
+        };
         let exec = Box::new(self.stmt());
         Stmt::ForIter {iterator, id:None, exec}
       }

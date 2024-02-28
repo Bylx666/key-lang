@@ -262,17 +262,7 @@ impl Scanner<'_> {
     let len = self.src.len();
     let mut i = self.i();
   
-    macro_rules! match_unary {($o:expr) => {{
-      self.next();
-      let right = Box::new(self.literal());
-      Expr::Unary{right,op:$o}
-    }}}
-  
     match first {
-      // 一元运算符
-      b'-' => match_unary!(b'-'),
-      b'!' => match_unary!(b'!'),
-  
       // 解析字符字面量
       b'"' => {
         i += 1;

@@ -136,6 +136,8 @@ impl Scanner<'_> {
                 }
               }
             }
+            // /后面不是注释就直接返回
+            return;
           }
           continue;
         }
@@ -197,7 +199,7 @@ impl Scanner<'_> {
     }
     let mut i = self.i();
     let len = self.src.len();
-    while i < len {
+    while i + 1 < len {
       let cur = self.src[i];
       match cur {
         b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'|b':'=> {

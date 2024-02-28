@@ -676,7 +676,7 @@ fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     },
     b"-" => impl_num!("相减类型不同" -),
     b"*" => impl_num!("相乘类型不同" *),
-    b"%" => impl_num!("求余类型不同" %),
+    b"%" => impl_num!("求余类型不同" % 0),
     b"/" => impl_num!("相除类型不同" / 0),
 
     // unsigned

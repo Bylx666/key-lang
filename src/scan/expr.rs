@@ -70,19 +70,21 @@ impl Scanner<'_> {
   /// 从self.i直接开始解析一段表达式
   pub fn expr(&self)-> Expr {
     self.spaces();
+    let unary = self.expr_unary();
+    self.spaces();
     // 判断开头有无括号
     let left = if self.cur() == b'(' {
       self.expr_group()
     }else {
       self.literal()
     };
-    self.expr_with_left(left)
+    self.expr_with_left(left, unary)
   }
 
-  /// 匹配一段表达式，传入二元表达式左边部分
-  pub fn expr_with_left(&self, left:Expr)-> Expr {
+  /// 匹配一段表达式，传入二元表达式左边部分和一元运算符
+  pub fn expr_with_left(&self, left:Expr, mut unary:Vec<u8>)-> Expr {
     use charts::prec;
-  
+
     let mut expr_stack = vec![left];
     let mut op_stack = Vec::<&[u8]>::new();
   
@@ -92,8 +94,8 @@ impl Scanner<'_> {
       self.spaces();
       let op = self.operator();
       let precedence = prec(op);
-  
-      // 在新运算符加入之前，根据运算符优先级执行合并
+
+      // 在新运算符加入之前，根据二元运算符优先级执行合并
       while let Some(last_op) = op_stack.pop() {
         let last_op_prec = prec(last_op);
         // 只有在这次运算符优先级无效 或 小于等于上个运算符优先级才能进行合并
@@ -156,9 +158,19 @@ impl Scanner<'_> {
           op: last_op.into()
         });
       }
-  
+
+      // 在新运算符加入之前, 合并一元运算符
+      if precedence < charts::PREC_UNARY && unary.len() > 0 {
+        let mut right = expr_stack.pop().unwrap();
+        while let Some(op) = unary.pop() {
+          right = Expr::Unary { right:Box::new(right), op }
+        }
+        expr_stack.push(right);
+      }
+
       // 如果没匹配到运算符就说明匹配结束
       if op.len() == 0 {
+        assert_eq!(expr_stack.len(), 1);
         return expr_stack.pop().unwrap();
       }
 
@@ -224,6 +236,9 @@ impl Scanner<'_> {
   
       // 将新运算符和它右边的值推进栈
       self.spaces();
+      // 看看右侧值前有没有一元运算符
+      let mut una = self.expr_unary();
+      unary.append(&mut una);
       // 在此之前判断有没有括号来提升优先级
       if self.cur() == b'(' {
         let group = self.expr_group();
@@ -255,5 +270,22 @@ impl Scanner<'_> {
     }
     self.next();
     expr
+  }
+
+  /// 检查有没有一元运算符
+  fn expr_unary(&self)-> Vec<u8> {
+    let mut v = Vec::new();
+    loop {
+      let cur = self.cur();
+      match cur {
+        b'!' | b'-'=> {
+          self.next();
+          v.push(cur);
+          self.spaces();
+        }
+        _=> break
+      }
+    }
+    v
   }
 }

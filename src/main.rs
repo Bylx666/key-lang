@@ -30,7 +30,6 @@ fn main()-> ExitCode {
   // let a=0,b=0
 
   // 检查run函数，块内外self是否一致
-  // -(xxxx)会提示空表达式
   // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
@@ -40,7 +39,6 @@ fn main()-> ExitCode {
   // ^ 或许还能开一个强制分号模式
   // 连等似乎可以直接runtime里if let
   // !{}
-  // 基本的语句好像还没实现完呢
   // 可变参数([args])
   // let some & = 20 -> usize 显式指定指针变量
   // let * some = 20 -> *some == 20 常量const
