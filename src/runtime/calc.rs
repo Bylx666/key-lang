@@ -227,8 +227,26 @@ impl Scope {
       Expr::Kself => unsafe{(*self.kself).clone()},
 
       // is操作符
-      Expr::Is (left, right)=> {
+      Expr::Is { left, right }=> {
         let v = self.calc_ref(left);
+        let right = match &**right {
+          Expr::Variant(id)=> id,
+          Expr::ModClsAcc(modname, clsname)=> {
+            let cls = self.find_class_in(*modname, *clsname);
+            return Litr::Bool(match &*v {
+              Litr::Inst(inst)=> match cls {
+                Class::Local(cls)=> cls == inst.cls,
+                _=> false
+              }
+              Litr::Ninst(inst)=> match cls {
+                Class::Native(cls)=> cls == inst.cls,
+                _=> false
+              }
+              _=> false
+            })
+          }
+          _=> err!("is操作符右边必须是类型名")
+        };
         macro_rules! matcher {($($d:ident)*)=> {
           match &*v {
             Litr::Inst(inst)=> Litr::Bool(match self.find_class(*right) {

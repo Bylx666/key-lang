@@ -24,8 +24,6 @@ pub enum Expr {
   ModClsAcc (Interned, Interned),
   // .运算符
   Property  (Box<Expr>, Interned),
-  // is运算符
-  Is (Box<Expr>, Interned),
   // ::运算符
   ImplAccess(Box<Expr>, Interned),
   // 调用函数
@@ -61,6 +59,10 @@ pub enum Expr {
     op: Box<[u8]>
   },
 
+  Is {
+    left: Box<Expr>,
+    right: Box<Expr>
+  }
 }
 
 
@@ -100,52 +102,57 @@ impl Scanner<'_> {
           break;
         }
   
-        let last_expr = expr_stack.pop().unwrap();
-        let second_last_expr = expr_stack.pop().unwrap();
+        let right = expr_stack.pop().unwrap();
+        let left = expr_stack.pop().unwrap();
   
         // 如果是模块或类的调用就不用Binary
-        macro_rules! impl_both_ident {($op:literal, $ty:ident)=>{{
-          if last_op == $op.as_bytes() {
-            if let Expr::Variant(left) = second_last_expr {
-              if let Expr::Variant(right) = last_expr {
+        macro_rules! impl_access {($op:literal, $ty:ident)=>{{
+          if last_op == $op {
+            if let Expr::Variant(left) = left {
+              if let Expr::Variant(right) = right {
                 expr_stack.push(Expr::$ty(left, right));
                 continue;
               }
-              self.err(&format!("'{}'右侧需要一个标识符",$op))
+              self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
             }
-            self.err(&format!("'{}'左侧需要一个标识符",$op))
+            self.err(&format!("{}左侧需要一个标识符",String::from_utf8_lossy($op)))
           }
         }}}
-        impl_both_ident!("-.",ModFuncAcc);
-        impl_both_ident!("-:",ModClsAcc);
+        impl_access!(b"-.",ModFuncAcc);
+        impl_access!(b"-:",ModClsAcc);
 
-        macro_rules! impl_right_ident {($op:literal, $ty:ident) => {
-          if last_op == $op.as_bytes() {
-            if let Expr::Variant(right) = last_expr {
-              expr_stack.push(Expr::$ty(Box::new(second_last_expr), right ));
-              continue;
-            }
-            self.err("`{}`右侧需要一个标识符")
+        // 属性表达式
+        if last_op == b"." {
+          if let Expr::Variant(right) = right {
+            expr_stack.push(Expr::Property(Box::new(left), right ));
+            continue;
           }
-        }}
-        impl_right_ident!(".", Property);
-        impl_right_ident!("is", Is);
+          self.err("`.`右侧需要一个标识符")
+        }
 
         // ::表达式
         if last_op == b"::" {
-          match last_expr {
+          match right {
             Expr::Variant(id)=> 
-              expr_stack.push(Expr::ImplAccess(Box::new(second_last_expr), id)),
+              expr_stack.push(Expr::ImplAccess(Box::new(left), id)),
             Expr::Obj(o)=> 
-              expr_stack.push(Expr::NewInst { cls: Box::new(second_last_expr), val: o }),
+              expr_stack.push(Expr::NewInst { cls: Box::new(left), val: o }),
             _=> self.err("::右侧只能是标识符或对象")
           }
           continue;
         }
 
+        if last_op == b"is" {
+          expr_stack.push(Expr::Is {
+            left: Box::new(left),
+            right: Box::new(right)
+          });
+          continue;
+        }
+
         expr_stack.push(Expr::Binary{ 
-          left: Box::new(second_last_expr), 
-          right: Box::new(last_expr), 
+          left: Box::new(left), 
+          right: Box::new(right), 
           op: last_op.into()
         });
       }
