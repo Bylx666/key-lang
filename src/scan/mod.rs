@@ -18,14 +18,14 @@ use literal::{Litr, KsType, ArgDecl};
 use expr::Expr;
 
 /// 将字符扫描为ast
-pub fn scan(src: Vec<u8>)-> Statements {
+pub fn scan(src: &[u8])-> Statements {
   // 已知此处所有变量未泄露
   // 为了规避&mut所有权检查，将引用改为指针
   let mut i = 0;
   let mut line = 1;
   let mut sttms = Statements::default();
   let mut scanner = Scanner {
-    src:&*src, i:&mut i, line:&mut line,
+    src, i:&mut i, line:&mut line,
     sttms:&mut sttms as *mut Statements
   };
   scanner.scan();

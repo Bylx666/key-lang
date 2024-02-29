@@ -500,7 +500,7 @@ impl Scanner<'_> {
         let file = std::fs::read(path).unwrap_or_else(|e|self.err(&format!(
           "无法找到模块'{}'", path
         )));
-        let mut module = crate::runtime::run(&scan(file)).exports;
+        let mut module = crate::runtime::run(&scan(&file)).exports;
         Stmt::Mod(name, module)
       }
       _ => self.err("未知模块类型")

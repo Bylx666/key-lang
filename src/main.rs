@@ -59,7 +59,7 @@ fn main()-> ExitCode {
   // 如果不加分号报错会错行，记得提示用户
 
   intern::init();
-  let scanned = scan::scan(fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
+  let scanned = scan::scan(&fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
   println!("{scanned:?}");
   let exit = runtime::run(&scanned);
   if let scan::literal::Litr::Int(code) = exit.returned {

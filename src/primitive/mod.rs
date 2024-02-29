@@ -46,7 +46,8 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
   }else {
     let obj_c = new_class(b"Obj", obj::statics());
     let sym_c = new_class(b"Sym", sym::statics());
-    CLASSES = Some(vec![obj_c, sym_c]);
+    let func_c = new_class(b"Func", func::statics());
+    CLASSES = Some(vec![obj_c, sym_c, func_c]);
     classes()
   }
 }}
