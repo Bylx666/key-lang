@@ -44,7 +44,7 @@ impl Scope {
   /// 解析一个表达式，对应Expr
   /// 
   /// 该函数必定发生复制
-  pub fn calc(&mut self,e:&Expr)-> Litr {
+  pub fn calc(mut self,e:&Expr)-> Litr {
     match e {
       Expr::Call { args, targ }=> self.call(args, targ),
 
@@ -56,11 +56,11 @@ impl Scope {
 
       Expr::Literal(litr)=> litr.clone(),
 
-      Expr::Variant(id)=> self.var(*id).clone(),
+      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||err!("无法找到变量 '{}'", id.str())).own(),
 
       // 函数表达式
       Expr::LocalDecl(local)=> {
-        let exec = LocalFunc::new(local, *self);
+        let exec = LocalFunc::new(local, self);
         Litr::Func(Function::Local(exec))
       }
 
@@ -219,7 +219,7 @@ impl Scope {
       }
 
       Expr::Property(e, find)=> {
-        let scope = *self;
+        let scope = self;
         let from = self.calc_ref(&**e);
         get_prop(self, from, *find).own()
       }
@@ -272,7 +272,7 @@ impl Scope {
   }
 
   /// 能引用优先引用的calc，能避免很多复制同时保证引用正确
-  pub fn calc_ref(&mut self, e:&Expr)-> CalcRef {
+  pub fn calc_ref(mut self, e:&Expr)-> CalcRef {
     match e {
       Expr::Kself=> {
         let v = unsafe{&mut *self.kself};
@@ -287,7 +287,7 @@ impl Scope {
         let i = self.calc_ref(i);
         index(left, i)
       },
-      Expr::Variant(id)=> CalcRef::Ref(self.var(*id)),
+      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||err!("无法找到变量 '{}'", id.str())),
       _=> {
         let v = self.calc(e);
         CalcRef::Own(v)
@@ -299,13 +299,13 @@ impl Scope {
 
 
 /// 在一个作用域设置一个表达式为v
-fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
+fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
   /// 寻找引用和引用本体所在的作用域
-  fn calc_ref_with_scope(this: &mut Scope, e: &Expr)-> (CalcRef, Scope) {
+  fn calc_ref_with_scope(mut this: Scope, e: &Expr)-> (CalcRef, Scope) {
     match e {
       Expr::Kself=> {
         let v = CalcRef::Ref(unsafe{&mut *this.kself});
-        let mut scope = *this;
+        let mut scope = this;
         let kself = this.kself;
         while let Some(prt) = scope.parent {
           // 如果self是顶级作用域的self就返回顶级作用域
@@ -314,7 +314,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
           }
           scope = prt;
         }
-        (v, *this)
+        (v, this)
       }
       Expr::Property(e, find)=> {
         let (mut from, scope) = calc_ref_with_scope(this, &e);
@@ -332,7 +332,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
       _=> {
         let v = this.calc(e);
         // 如果是需要计算的量，就代表其作用域就在this
-        (CalcRef::Own(v), *this)
+        (CalcRef::Own(v), this)
       }
     }
   }
@@ -399,7 +399,7 @@ fn expr_set(this:&mut Scope, left:&Expr, right:Litr) {
 
 
 /// 在作用域中从Litr中找.运算符指向的东西
-fn get_prop(this:&Scope, mut from:CalcRef, find:Interned)-> CalcRef {
+fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
@@ -519,7 +519,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   }
 }
 
-fn binary(this:&mut Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
+fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;
   if &**op == b"=" {
     let v = this.calc(&right);

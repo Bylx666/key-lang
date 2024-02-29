@@ -18,6 +18,7 @@ pub mod int;
 pub mod sym;
 pub mod obj;
 pub mod iter;
+pub mod func;
 
 fn getter(_v:*mut NativeInstance, _get:Interned)-> Litr {Litr::Uninit}
 fn setter(_v:*mut NativeInstance, _set:Interned, _to:Litr) {}

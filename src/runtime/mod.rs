@@ -31,6 +31,8 @@ pub static mut LINE:usize = 0;
 }}
 pub(super) use err;
 
+use self::calc::CalcRef;
+
 
 #[derive(Debug, Clone)]
 pub enum Module {
@@ -153,18 +155,18 @@ impl Scope {
   }
 
   /// 在作用域找一个变量
-  pub fn var(&mut self, s:Interned)-> &mut Litr {
-    let inner = &mut (**self);
+  pub fn var(mut self, s:Interned)-> Option<CalcRef> {
+    let inner = &mut (*self);
     for (p, v) in inner.vars.iter_mut().rev() {
       if *p == s {
-        return v;
+        return Some(CalcRef::Ref(v));
       }
     }
 
     if let Some(parent) = &mut inner.parent {
       return parent.var(s);
     }
-    err!("无法找到变量 '{}'", s.str());
+    None
   }
 
   /// 在作用域找一个变量并返回其所在作用域

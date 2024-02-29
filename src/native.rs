@@ -3,10 +3,10 @@
 use crate::{
   c::Clib, intern::{intern, Interned}, scan::{literal::{Function, Litr}, stmt::LocalMod}
 };
-use crate::runtime::calc::CalcRef;
+use crate::runtime::{calc::CalcRef, Scope};
 
-pub type NativeFn = fn(Vec<CalcRef>)-> Litr;
-pub type NativeMethod = fn(*mut NativeInstance, args:Vec<CalcRef>)-> Litr;
+pub type NativeFn = fn(Vec<CalcRef>, Scope)-> Litr;
+pub type NativeMethod = fn(*mut NativeInstance, args:Vec<CalcRef>, Scope)-> Litr;
 pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
 pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
 
@@ -36,6 +36,7 @@ pub struct NativeClassDef {
 struct NativeInterface {
   intern: fn(&[u8])-> Interned,
   err: fn(&str)->!,
+  find_var: fn(Scope, Interned)-> Option<CalcRef>,
   funcs: *mut Vec<(Interned, NativeFn)>,
   classes: *mut Vec<*mut NativeClassDef>
 }
@@ -69,18 +70,20 @@ pub struct BoundNativeMethod {
   pub f: NativeMethod
 }
 
+fn err(s:&str)->! {
+  panic!("{} \n  运行时({})", s, unsafe{crate::runtime::LINE})
+}
+
 pub fn parse(path:&[u8])-> Result<*const NativeMod, String> {
   let lib = Clib::load(path)?;
   let mut m = Box::new(NativeMod {
     funcs: Vec::new(), classes: Vec::new()
   });
-  fn err(s:&str)->! {
-    panic!("{} \n  运行时({})", s, unsafe{crate::runtime::LINE})
-  }
   unsafe {
     let keymain:extern fn(&mut NativeInterface) = std::mem::transmute(lib.get(b"keymain").ok_or("模块需要'KeyMain'作为主运行函数")?);
     keymain(&mut NativeInterface {
-      intern, err, funcs: &mut m.funcs, classes: &mut m.classes
+      intern, err, find_var: Scope::var,
+      funcs: &mut m.funcs, classes: &mut m.classes
     });
   }
   Ok(Box::into_raw(m))

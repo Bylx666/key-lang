@@ -1,5 +1,5 @@
 use crate::{
-  runtime::calc::CalcRef, 
+  runtime::{calc::CalcRef, Scope}, 
   scan::literal::Litr,
   intern::{Interned, intern},
   native::NativeFn
@@ -18,6 +18,6 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
   ]
 }
 
-fn s_iter_end(_:Vec<CalcRef>)-> Litr {
+fn s_iter_end(_:Vec<CalcRef>, _cx:Scope)-> Litr {
   Litr::Sym(Symbol::IterEnd)
 }

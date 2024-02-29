@@ -1,6 +1,6 @@
 //! Obj基本类型的静态方法
 
-use crate::{intern::{intern, Interned}, native::NativeFn, runtime::{calc::CalcRef, err}, scan::literal::Litr};
+use crate::{intern::{intern, Interned}, native::NativeFn, runtime::{calc::CalcRef, err, Scope}, scan::literal::Litr};
 use std::collections::HashMap;
 
 pub fn statics()-> Vec<(Interned, NativeFn)> {
@@ -13,7 +13,7 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
 }
 
 /// static insert
-fn s_insert(mut args:Vec<CalcRef>)-> Litr {
+fn s_insert(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
   if args.len()<3 {err!("Obj::insert需要3个参数: obj, name:Str, val")};
   let mut args = args.iter_mut();
   let targ = match &mut**args.next().unwrap() {
@@ -32,7 +32,7 @@ fn s_insert(mut args:Vec<CalcRef>)-> Litr {
 }
 
 /// static remove
-fn s_remove(mut args:Vec<CalcRef>)-> Litr {
+fn s_remove(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
   if args.len()<2 {err!("Obj::remove需要2个参数: obj, name:Str")};
   let mut args = args.iter_mut();
   let targ = match &mut**args.next().unwrap() {
@@ -50,7 +50,7 @@ fn s_remove(mut args:Vec<CalcRef>)-> Litr {
 }
 
 /// static has
-fn s_has(mut args:Vec<CalcRef>)-> Litr {
+fn s_has(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
   if args.len()<2 {err!("Obj::has需要2个参数: obj, name:Str")};
   let mut args = args.iter_mut();
   let targ = match &mut**args.next().unwrap() {
@@ -68,7 +68,7 @@ fn s_has(mut args:Vec<CalcRef>)-> Litr {
 }
 
 /// static get
-fn s_get(mut args:Vec<CalcRef>)-> Litr {
+fn s_get(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
   if args.len()<2 {err!("Obj::has需要2个参数: obj, name:Str")};
   let mut args = args.iter_mut();
   let targ = match &mut**args.next().unwrap() {

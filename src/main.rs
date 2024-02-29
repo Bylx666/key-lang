@@ -29,7 +29,9 @@ fn main()-> ExitCode {
   // let [] = x
   // let a=0,b=0
 
-  // 检查run函数，块内外self是否一致
+  // call_here call_at_top
+  // pub use
+  // 报错显示文件, 导入文件的路径检测
   // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确

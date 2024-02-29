@@ -21,7 +21,7 @@ pub enum Litr {
 
   Func   (Function), 
   Str    (String),
-  Buf (Vec<u8>),
+  Buf    (Vec<u8>),
   List   (Vec<Litr>),
   Obj    (HashMap<Interned, Litr>),
   Inst   (Instance),

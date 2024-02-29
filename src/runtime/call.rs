@@ -11,11 +11,11 @@ impl Scope {
       match exec {
         Native(f)=> {
           let args = args.iter().map(|e|self.calc_ref(e)).collect();
-          f(args)
+          f(args, *self)
         },
         NativeMethod(f)=> {
           let args = args.iter().map(|e|self.calc_ref(e)).collect();
-          (f.f)(f.bind, args)
+          (f.f)(f.bind, args, *self)
         },
         Local(f)=> {
           let args = args.iter().map(|e|self.calc(e)).collect();
