@@ -1,6 +1,6 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance};
+use crate::{native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance}, primitive};
 
 use super::*;
 
@@ -221,7 +221,7 @@ impl Scope {
       Expr::Property(e, find)=> {
         let scope = self;
         let from = self.calc_ref(&**e);
-        get_prop(self, from, *find).own()
+        get_prop(self, from, *find)
       }
 
       Expr::Kself => unsafe{(*self.kself).clone()},
@@ -278,10 +278,6 @@ impl Scope {
         let v = unsafe{&mut *self.kself};
         CalcRef::Ref(v)
       }
-      Expr::Property(e, find)=> {
-        let mut from = self.calc_ref(&e);
-        get_prop(self, from, *find)
-      }
       Expr::Index { left, i }=> {
         let left = self.calc_ref(left);
         let i = self.calc_ref(i);
@@ -299,9 +295,32 @@ impl Scope {
 
 
 /// 在一个作用域设置一个表达式为v
-fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
+fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
+  /// 获取属性的引用
+  pub fn get_prop_ref(this: Scope, mut from:CalcRef, find:&Interned)-> CalcRef {
+    match &mut *from {
+      Litr::Obj(map)=> CalcRef::Ref(map.get_mut(find).unwrap_or_else(||err!("Obj中没有'{}'", find))),
+      Litr::Inst(inst)=> {
+        let cls = unsafe {&*inst.cls};
+        let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
+        let props = &cls.props;
+        for (n, prop) in props.iter().enumerate() {
+          if prop.name == *find {
+            if !prop.public && cannot_access_private {
+              err!("'{}'类型的成员属性'{}'是私有的", cls.name, find)
+            }
+            return CalcRef::Ref(&mut inst.v[n]);
+          }
+        }
+        err!("'{}'类型上没有'{}'属性", cls.name, find)
+      }
+      // native instance有自己的setter和getter,引用传递不了的
+      _=> CalcRef::Own(Litr::Uninit)
+    }
+  }
+
   /// 寻找引用和引用本体所在的作用域
-  fn calc_ref_with_scope(mut this: Scope, e: &Expr)-> (CalcRef, Scope) {
+  fn get_ref_with_scope(mut this: Scope, e: &Expr)-> (CalcRef, Scope) {
     match e {
       Expr::Kself=> {
         let v = CalcRef::Ref(unsafe{&mut *this.kself});
@@ -317,15 +336,16 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
         (v, this)
       }
       Expr::Property(e, find)=> {
-        let (mut from, scope) = calc_ref_with_scope(this, &e);
-        (get_prop(this, from, *find), scope)
+        let (from, scope) = get_ref_with_scope(this, &e);
+        let p = get_prop_ref(this, from, find);
+        (p, scope)
       }
       Expr::Variant(id)=> {
         let (rf, scope) = this.var_with_scope(*id);
         (CalcRef::Ref(rf), scope)
       }
       Expr::Index{left, i}=> {
-        let (mut left, scope) = calc_ref_with_scope(this, &left);
+        let (mut left, scope) = get_ref_with_scope(this, &left);
         let i = this.calc_ref(i);
         (index(left, i), scope)
       }
@@ -338,32 +358,39 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
   }
   use outlive::may_add_ref;
 
-  // 如果是用到了setter的原生类实例就必须在此使用setter, 不能直接*left = right
   match left {
-    
+    // 捕获native instance的setter
     Expr::Property(e, find)=> {
-      let (mut left, scope) = calc_ref_with_scope(this, &e);
+      let (mut left, scope) = get_ref_with_scope(this, &e);
+      // 如果左值不是引用就没必要继续运行
+      let left = match left {
+        CalcRef::Ref(p)=> unsafe {&mut*p},
+        _=> return
+      };
       may_add_ref(&right, scope);
-      match &mut *left {
+      match left {
         Litr::Ninst(inst)=> {
           let cls = unsafe {&*inst.cls};
           (cls.setter)(inst, *find, right)
         }
-        Litr::Inst(inst)=> {
-          todo!("class setter")
-        }
         Litr::Obj(o)=> {
           o.insert(*find, right);
         },
-        _=> *get_prop(this, left, *find) = right
+        _=> *get_prop_ref(this, CalcRef::Ref(left), find) = right
       }
     }
 
+    // 捕获index_set
     Expr::Index{left,i}=> {
-      let (mut left, scope) = calc_ref_with_scope(this, &left);
+      let (mut left, scope) = get_ref_with_scope(this, &left);
+      // 如果左值不是引用就没必要继续运行
+      let left = match left {
+        CalcRef::Ref(p)=> unsafe {&mut*p},
+        _=> return
+      };
       let i = this.calc_ref(i);
       may_add_ref(&right, scope);
-      match &mut *left {
+      match left {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
           let cls = unsafe{&mut *inst.cls};
@@ -371,7 +398,7 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
           match opt {
             Some(f)=> {
               let f = &mut f.f;
-              f.bound = Some(Box::new(left));
+              f.bound = Some(Box::new(CalcRef::Ref(left)));
               f.scope.call_local(f, vec![i.own(), right]);
             }
             None=> err!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
@@ -385,12 +412,12 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
             map.insert(intern(s.as_bytes()), right);
           }else {err!("Obj索引必须是Str")}
         }
-        _=> *index(left, i) = right
+        _=> *index(CalcRef::Ref(left), i) = right
       }
     }
 
     _=>{
-      let (mut left, scope) = calc_ref_with_scope(this, left);
+      let (mut left, scope) = get_ref_with_scope(this, left);
       may_add_ref(&right, scope);
       *left = right;
     }
@@ -398,43 +425,39 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
 }
 
 
-/// 在作用域中从Litr中找.运算符指向的东西
-fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
-  let is_ref = match &from {
-    CalcRef::Own(_)=> false,
-    _=> true
-  };
+/// 在作用域中从Litr中找'.'属性运算符指向的东西
+fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
       let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
       let cls = unsafe {&*inst.cls};
 
-      // 先找属性
+      // 寻找属性
       let props = &cls.props;
       for (n, prop) in props.iter().enumerate() {
         if prop.name == find {
           if !prop.public && cannot_access_private {
             err!("'{}'类型的成员属性'{}'是私有的", cls.name, find)
           }
-          return CalcRef::Ref(&mut inst.v[n]);
+          return inst.v[n].clone();
         }
       }
 
       // 再找方法
-      let methods = &cls.methods;
-      for mthd in methods.iter() {
-        if mthd.name == find {
-          if !mthd.public && cannot_access_private {
-            err!("'{}'类型的成员方法'{}'是私有的", cls.name, find)
-          }
-          // 为函数绑定self
-          let mut f = mthd.f.clone();
-          f.bound = Some(Box::new(from));
-          let f = Litr::Func(Function::Local(f));
-          return CalcRef::Own(f);
-        }
-      }
+      // let methods = &cls.methods;
+      // for mthd in methods.iter() {
+      //   if mthd.name == find {
+      //     if !mthd.public && cannot_access_private {
+      //       err!("'{}'类型的成员方法'{}'是私有的", cls.name, find)
+      //     }
+      //     // 为函数绑定self
+      //     let mut f = mthd.f.clone();
+      //     f.bound = Some(Box::new(from));
+      //     let f = Litr::Func(Function::Local(f));
+      //     return CalcRef::Own(f);
+      //   }
+      // }
 
       err!("'{}'类型上没有'{}'属性", cls.name, find)
     },
@@ -442,32 +465,67 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
     // 原生类的实例
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
-      let inst: *mut NativeInstance = inst;
-      let bound = match from {
-        CalcRef::Own(v)=> if let Litr::Ninst(inst_own) = v {
-          NaitveInstanceRef::Own(inst_own)
-        }else {unreachable!()}
-        CalcRef::Ref(_)=> NaitveInstanceRef::Ref(inst)
-      };
-      // 先找方法
-      for (name, f) in cls.methods.iter() {
-        if *name == find {
-          return CalcRef::Own(Litr::Func(Function::NativeMethod(BoundNativeMethod {
-            bound,
-            f: *f
-          })));
-        }
-      }
-      // 再找属性
-      CalcRef::Own((cls.getter)(inst, find))
+      (cls.getter)(inst, find)
+      // let inst: *mut NativeInstance = inst;
+      // let bound = match from {
+      //   CalcRef::Own(v)=> if let Litr::Ninst(inst_own) = v {
+      //     NaitveInstanceRef::Own(inst_own)
+      //   }else {unreachable!()}
+      //   CalcRef::Ref(_)=> NaitveInstanceRef::Ref(inst)
+      // };
+      // // 先找方法
+      // for (name, f) in cls.methods.iter() {
+      //   if *name == find {
+      //     return CalcRef::Own(Litr::Func(Function::NativeMethod(BoundNativeMethod {
+      //       bound,
+      //       f: *f
+      //     })));
+      //   }
+      // }
     }
 
     // 哈希表
+    // 直接clone是防止Obj作为临时变量使map引用失效
     Litr::Obj(map)=> 
-      CalcRef::Ref(map.get_mut(&find).unwrap_or(&mut Litr::Uninit)),
+      map.get_mut(&find).unwrap_or(&mut Litr::Uninit).clone(),
 
-    Litr::Uninit=> err!("uninit没有属性"),
-    _=> err!("该类型属性还没实装")
+    // 以下都是对基本类型的getter行为
+    Litr::Bool(v)=> match find.vec() {
+      b"opposite"=> Litr::Bool(!*v),
+      _=> Litr::Uninit
+    },
+
+    Litr::Buf(v)=> match find.vec() {
+      b"len"=> Litr::Uint(v.len()),
+      b"ref"=> Litr::Uint(v.as_mut_ptr() as usize),
+      b"capacity"=> Litr::Uint(v.capacity()),
+      _=> Litr::Uninit
+    },
+
+    Litr::Func(f)=> if find.vec() == b"type" {
+      match f {
+        Function::Local(_)=> Litr::Str("local".to_owned()),
+        Function::Extern(_)=> Litr::Str("extern".to_owned()),
+        Function::Native(_)=> Litr::Str("native".to_owned()),
+        Function::NativeMethod(_)=> unreachable!()
+      }
+    }else {Litr::Uninit}
+
+    Litr::List(v)=> match find.vec() {
+      b"len"=> Litr::Uint(v.len()),
+      b"capacity"=> Litr::Uint(v.capacity()),
+      _=> Litr::Uninit
+    },
+
+    Litr::Str(s)=> match find.vec() {
+      b"len"=> Litr::Uint(s.len()),
+      b"char_len"=> Litr::Uint(s.chars().count()),
+      b"lines"=> Litr::Uint(s.lines().count()),
+      b"capacity"=> Litr::Uint(s.capacity()),
+      _=> Litr::Uninit
+    },
+
+    _=> Litr::Uninit
   }
 }
 

@@ -1,12 +1,11 @@
 
 {
   let tt = "hhhh"
-  mod:MyStruct {
-    a,b
+  mod:Sample {
+    >a,b
     f();
-    >n() {MyStruct::f()},
-    >.d(){log("ok");:8},
-    >new(): MyStruct::{
+    >.d(){log(self.b)},
+    >new(): Sample::{
       a:99,b:20
     }
   }

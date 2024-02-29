@@ -1,6 +1,6 @@
 use crate::{
   intern::{intern, Interned}, 
-  native::{BoundNativeMethod, NativeFn}, 
+  native::{BoundNativeMethod, NaitveInstanceRef, NativeFn}, 
   runtime::{calc::CalcRef, err, Scope}, 
   scan::{literal::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, stmt::Statements}
 };
@@ -39,15 +39,4 @@ fn s_new(s:Vec<CalcRef>, cx:Scope)-> Litr {
   Litr::Func(Function::Local(LocalFunc::new(Box::into_raw(Box::new(
     LocalFuncRaw {argdecl, stmts}
   )),cx)))
-}
-
-// pub fn prop(s:CalcRef, p:Interned)-> Litr {
-//   Litr::Func(Function::NativeMethod(BoundNativeMethod {f: match p.vec() {
-//     b"call_here"=> call_here,
-//     _=> err!("Func没有{}属性", p)
-//   }, bind: s}))
-// }
-
-fn call_here(v:Litr, args:Vec<CalcRef>)-> Litr {
-  Litr::Uninit
 }

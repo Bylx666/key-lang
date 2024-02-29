@@ -25,6 +25,7 @@ fn main()-> ExitCode {
   // }));
 
   // 基本类型的方法，也就是所有litr的prop
+  // 方法必须直接调用,不能作为值使用 (get_prop做成prop_getter, setter直接重做不要依赖get_prop的*mut)
   // str::next_char(start)
   // let [] = x
   // let a=0,b=0
@@ -39,7 +40,6 @@ fn main()-> ExitCode {
   // Native outlive api
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式
-  // 连等似乎可以直接runtime里if let
   // !{}
   // 可变参数([args])
   // let some & = 20 -> usize 显式指定指针变量

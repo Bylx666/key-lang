@@ -417,7 +417,10 @@ impl Scanner<'_> {
         let mut is_float = false;
         while i < len {
           match self.src[i] {
-            b'.'=> is_float = true,
+            b'.'=> {
+              if is_float {break;}
+              is_float = true
+            },
             0x30..=0x39 | b'e' | b'E' => {}
             _=> break
           }
