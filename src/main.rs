@@ -35,7 +35,7 @@ fn main()-> ExitCode {
   // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
-  // func bind
+  // func bind (nativemethod 禁止bind)
   // Native outlive api
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式

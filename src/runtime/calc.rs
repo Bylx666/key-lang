@@ -1,6 +1,6 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::native::BoundNativeMethod;
+use crate::native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance};
 
 use super::*;
 
@@ -400,6 +400,10 @@ fn expr_set(mut this: Scope, left:&Expr, right:Litr) {
 
 /// 在作用域中从Litr中找.运算符指向的东西
 fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
+  let is_ref = match &from {
+    CalcRef::Own(_)=> false,
+    _=> true
+  };
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
@@ -438,11 +442,18 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
     // 原生类的实例
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
+      let inst: *mut NativeInstance = inst;
+      let bound = match from {
+        CalcRef::Own(v)=> if let Litr::Ninst(inst_own) = v {
+          NaitveInstanceRef::Own(inst_own)
+        }else {unreachable!()}
+        CalcRef::Ref(_)=> NaitveInstanceRef::Ref(inst)
+      };
       // 先找方法
       for (name, f) in cls.methods.iter() {
         if *name == find {
           return CalcRef::Own(Litr::Func(Function::NativeMethod(BoundNativeMethod {
-            bind: inst,
+            bound,
             f: *f
           })));
         }

@@ -15,7 +15,7 @@ impl Scope {
         },
         NativeMethod(f)=> {
           let args = args.iter().map(|e|self.calc_ref(e)).collect();
-          (f.f)(f.bind, args, *self)
+          (f.f)(f.bound.clone(), args, *self)
         },
         Local(f)=> {
           let args = args.iter().map(|e|self.calc(e)).collect();

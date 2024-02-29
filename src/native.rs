@@ -6,7 +6,7 @@ use crate::{
 use crate::runtime::{calc::CalcRef, Scope};
 
 pub type NativeFn = fn(Vec<CalcRef>, Scope)-> Litr;
-pub type NativeMethod = fn(*mut NativeInstance, args:Vec<CalcRef>, Scope)-> Litr;
+pub type NativeMethod = fn(NaitveInstanceRef, args:Vec<CalcRef>, Scope)-> Litr;
 pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
 pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
 
@@ -49,7 +49,6 @@ pub struct NativeInstance {
   pub v2: usize,
   pub cls: *mut NativeClassDef,
 }
-
 impl Clone for NativeInstance {
   /// 调用自定义clone (key-native库中的默认clone行为也可用)
   fn clone(&self) -> Self {
@@ -63,10 +62,34 @@ impl Drop for NativeInstance {
   }
 }
 
+/// 针对NativeMethod设计的Native Instance版的CalcRef
+#[derive(Debug, Clone)]
+pub enum NaitveInstanceRef {
+  Ref(*mut NativeInstance),
+  Own(NativeInstance)
+}
+impl std::ops::Deref for NaitveInstanceRef {
+  type Target = NativeInstance;
+  fn deref(&self) -> &Self::Target {
+    match self {
+      NaitveInstanceRef::Ref(p)=> unsafe{&**p}
+      NaitveInstanceRef::Own(v)=> v
+    }
+  }
+}
+impl std::ops::DerefMut for NaitveInstanceRef {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match self {
+      NaitveInstanceRef::Ref(p)=> unsafe{&mut**p}
+      NaitveInstanceRef::Own(v)=> v
+    }
+  }
+}
+
 /// Litr中使用的NativeMethod类型
 #[derive(Debug, Clone)]
 pub struct BoundNativeMethod {
-  pub bind: *mut NativeInstance,
+  pub bound: NaitveInstanceRef,
   pub f: NativeMethod
 }
 
