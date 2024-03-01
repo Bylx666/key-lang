@@ -2,7 +2,12 @@
 //mod D:\code\rs\key-native\target\debug\key_native.dll> m
 mod D:\code\rs\key-lang\samples\testmod.ks> m;
 
-let a = [{s:m-:Sample::new()}];
-a[0].s.a = {};
-a[0].s.a.f = 2.5
-log(a)
+let a(m) {
+  :m
+}
+let o = {
+  a:a, b:a
+}
+let t = m-:Sample::new()
+t.a = o
+log(t.a.a(200))

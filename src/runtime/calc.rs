@@ -46,7 +46,15 @@ impl Scope {
   /// 该函数必定发生复制
   pub fn calc(mut self,e:&Expr)-> Litr {
     match e {
-      Expr::Call { args, targ }=> self.call(args, targ),
+      Expr::Call { args, targ }=> {
+        // 先捕获方法调用
+        // if let Expr::Property(left, right) = targ {
+        //   self.call_
+        // }
+        let targ = self.calc_ref(targ);
+        let args = args.iter().map(|v|self.calc_ref(v)).collect();
+        self.call(args, targ)
+      },
 
       Expr::Index { left, i }=> {
         let left = self.calc_ref(left);
@@ -444,21 +452,6 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
         }
       }
 
-      // 再找方法
-      // let methods = &cls.methods;
-      // for mthd in methods.iter() {
-      //   if mthd.name == find {
-      //     if !mthd.public && cannot_access_private {
-      //       err!("'{}'类型的成员方法'{}'是私有的", cls.name, find)
-      //     }
-      //     // 为函数绑定self
-      //     let mut f = mthd.f.clone();
-      //     f.bound = Some(Box::new(from));
-      //     let f = Litr::Func(Function::Local(f));
-      //     return CalcRef::Own(f);
-      //   }
-      // }
-
       err!("'{}'类型上没有'{}'属性", cls.name, find)
     },
 
@@ -466,22 +459,6 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
       (cls.getter)(inst, find)
-      // let inst: *mut NativeInstance = inst;
-      // let bound = match from {
-      //   CalcRef::Own(v)=> if let Litr::Ninst(inst_own) = v {
-      //     NaitveInstanceRef::Own(inst_own)
-      //   }else {unreachable!()}
-      //   CalcRef::Ref(_)=> NaitveInstanceRef::Ref(inst)
-      // };
-      // // 先找方法
-      // for (name, f) in cls.methods.iter() {
-      //   if *name == find {
-      //     return CalcRef::Own(Litr::Func(Function::NativeMethod(BoundNativeMethod {
-      //       bound,
-      //       f: *f
-      //     })));
-      //   }
-      // }
     }
 
     // 哈希表

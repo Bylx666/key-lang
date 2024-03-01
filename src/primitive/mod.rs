@@ -7,13 +7,13 @@ use crate::native::{
   NativeFn,
   NativeInstance
 };
-use crate::runtime::calc::CalcRef;
-use crate::runtime::Class;
+use crate::runtime::{calc::CalcRef, Class, err};
 use crate::scan::literal::Litr;
 use crate::intern::{Interned, intern};
 
 pub mod std;
 
+pub mod buf;
 pub mod int;
 pub mod sym;
 pub mod obj;
