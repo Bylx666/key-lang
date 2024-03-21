@@ -13,19 +13,23 @@ mod utils;
 mod c;
 mod native;
 
+static mut LINE:usize = 0;
+
 fn main()-> ExitCode {
-  // 自定义panic
-  // std::panic::set_hook(Box::new(|inf| {
-  //   let str = inf.payload().downcast_ref::<String>();
-  //   if let Some(s) = str {
-  //     println!("\n> {}\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, utils::date());
-  //   }else {
-  //     println!("\n{}\n\nKey Script CopyLeft by Subkey\n{}\n", inf, utils::date());
-  //   }
-  // }));
+  // 自定义报错
+  std::panic::set_hook(Box::new(|inf| {
+    use crate::utils::date;
+    let line = unsafe{LINE};
+    let s = if let Some(payload) = inf.payload().downcast_ref::<&'static str>() {
+      payload
+    }else {"错误"};
+    println!("\n> {}\n  第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, line, date());
+  }));
 
   // 基本类型的方法，也就是所有litr的prop
-  // 方法必须直接调用,不能作为值使用 (get_prop做成prop_getter, setter直接重做不要依赖get_prop的*mut)
+  // @index_set @next之类的
+  // obj之类的to_str
+  // push之类的方法要注意outlive
   // str::next_char(start)
   // let [] = x
   // let a=0,b=0

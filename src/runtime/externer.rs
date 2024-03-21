@@ -29,7 +29,7 @@ macro_rules! translate_local_impl {{
       let ret = scope.call_local(exec, args);
       match translate(ret) {
         Ok(v)=> v,
-        Err(e)=> crate::runtime::err!("{}",e)
+        Err(e)=> panic!("{}",e)
       }
     }
   )*
@@ -81,7 +81,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
 }
 
 
-use super::{ExternFunc, Scope, err, LINE};
+use super::{ExternFunc, Scope};
 pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
   let len = f.argdecl.len();
   let mut args = args.into_iter();
@@ -97,7 +97,7 @@ pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
             let mut eargs = [0usize;$n];
             eargs.iter_mut().enumerate().for_each(|(i,p)| {
               if let Some(v) = args.next() {
-                let transed = translate(v).unwrap_or_else(|e|panic!("{} 运行时({})",e,unsafe{LINE}));
+                let transed = translate(v).unwrap_or_else(|e|panic!("{e}"));
                 *p = transed
               }
             });
@@ -106,7 +106,7 @@ pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
             Litr::Uint(ret)
           }
         )*
-        _=> {panic!("extern函数不支持{}位参数 运行时({})", len, unsafe {LINE})}
+        _=> {panic!("extern函数不支持{}位参数", len)}
       }
     }
   }

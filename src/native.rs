@@ -94,7 +94,7 @@ pub struct BoundNativeMethod {
 }
 
 fn err(s:&str)->! {
-  panic!("{} \n  运行时({})", s, unsafe{crate::runtime::LINE})
+  panic!("{s}")
 }
 
 pub fn parse(path:&[u8])-> Result<*const NativeMod, String> {

@@ -2,6 +2,7 @@ use super::{Scanner, scan};
 use crate::intern::{Interned,intern};
 use crate::native::NativeMod;
 use crate::runtime::{Scope, ScopeInner, Module};
+use crate::LINE;
 use super::{
   literal::{Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType},
   expr::Expr
@@ -143,9 +144,7 @@ impl Scanner<'_> {
         let len = self.src.len();
         self.next();
         loop {
-          if self.i() >= len {
-            self.err("未闭合的块大括号");
-          }
+          assert!(self.i()<len, "未闭合的块大括号");
           self.spaces();
           if self.cur() == b'}' {
             self.next();
@@ -156,7 +155,7 @@ impl Scanner<'_> {
           if let Stmt::Empty = s {
             continue;
           }
-          stmts.0.push((self.line(), s));
+          stmts.0.push((unsafe{LINE}, s));
         }
       }
       // 返回语句语法糖
@@ -180,7 +179,7 @@ impl Scanner<'_> {
         b"if"=> self.ifing(),
         b"break"=> Stmt::Break,
         b"continue"=> Stmt::Continue,
-        b"async"|b"await"=> self.err("异步关键词暂未实现"),
+        b"async"|b"await"=> panic!("异步关键词暂未实现"),
         _=> {
           let expr = self.expr_with_left(ident, vec![]);
           Stmt::Expression(expr)
@@ -207,7 +206,7 @@ impl Scanner<'_> {
   /// 解析let关键词
   fn letting(&self)-> AssignDef {
     self.spaces();
-    let id = self.ident().unwrap_or_else(||self.err("let后需要标识符"));
+    let id = self.ident().unwrap_or_else(||panic!("let后需要标识符"));
     let id = intern(id);
   
     // 检查标识符后的符号
@@ -218,7 +217,7 @@ impl Scanner<'_> {
         self.next();
         let val = self.expr();
         if let Expr::Empty = val {
-          self.err("无法为空气赋值")
+          panic!("无法为空气赋值")
         }
         AssignDef {
           id, val
@@ -227,16 +226,14 @@ impl Scanner<'_> {
       b'(' => {
         self.next();
         let args = self.arguments();
-        if self.cur() != b')' {
-          self.err("函数声明右括号缺失");
-        }
+        assert!(self.cur()==b')', "函数声明右括号缺失");
         self.next();
   
         let stmt = self.stmt();
         let mut stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
-          Statements(vec![(self.line(), stmt)])
+          Statements(vec![(unsafe{LINE}, stmt)])
         };
   
         // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
@@ -264,14 +261,12 @@ impl Scanner<'_> {
     let mut i = self.i();
     let len = self.src.len();
     while self.src[i] != b'>' {
-      if i >= len {
-        self.err("extern后需要 > 符号");
-      }
+      assert!(i<len, "extern后需要 > 符号");
       i += 1;
     }
   
     let path = &self.src[self.i()..i];
-    let lib = Clib::load(path).unwrap_or_else(|e|self.err(&e));
+    let lib = Clib::load(path).unwrap_or_else(|e|panic!("{}",e));
     self.set_i(i + 1);
     self.spaces();
   
@@ -285,22 +280,18 @@ impl Scanner<'_> {
         if let Some(i) = self.ident() {
           sym = i;
         }else {
-          self.err(":后需要别名")
+          panic!(":后需要别名")
         };
       }else {
         sym = $id;
       }
   
       // 解析小括号包裹的参数声明
-      if self.cur() != b'(' {
-        self.err("extern函数后应有括号");
-      }
+      assert!(self.cur()==b'(', "extern函数后应有括号");
       self.next();
       let argdecl = self.arguments();
       self.spaces();
-      if self.cur() != b')' {
-        self.err("extern函数声明右括号缺失");
-      }
+      assert!(self.cur() == b')', "extern函数声明右括号缺失");
       self.next();
       
       if self.cur() == b';' {
@@ -308,10 +299,10 @@ impl Scanner<'_> {
       }
   
       // 将函数名(id)和指针(ptr)作为赋值语句推到语句列表里
-      let ptr = lib.get(sym).unwrap_or_else(||self.err(
-        &format!("动态库'{}'中不存在'{}'函数", 
+      let ptr = lib.get(sym).unwrap_or_else(||panic!(
+        "动态库'{}'中不存在'{}'函数", 
         String::from_utf8_lossy(path), 
-        String::from_utf8_lossy(sym))));
+        String::from_utf8_lossy(sym)));
       self.push(Stmt::Let(AssignDef { 
         id:intern($id), 
         val: Expr::Literal(Litr::Func(Function::Extern(ExternFunc { 
@@ -330,13 +321,11 @@ impl Scanner<'_> {
         self.spaces();
       }
       self.spaces();
-      if self.cur() != b'}' {
-        self.err("extern大括号未闭合")
-      }
+      assert!(self.cur() == b'}', "extern大括号未闭合");
       self.next();
     }else {
       // 省略大括号语法
-      let id = self.ident().unwrap_or_else(||self.err("extern后应有函数名"));
+      let id = self.ident().unwrap_or_else(||panic!("extern后应有函数名"));
       parse_decl!(id);
     }
   }
@@ -355,16 +344,15 @@ impl Scanner<'_> {
   /// 解析类声明
   fn classing(&self)-> Stmt {
     self.spaces();
-    let id = self.ident().unwrap_or_else(||self.err("class后需要标识符"));
+    let id = self.ident().unwrap_or_else(||panic!("class后需要标识符"));
     self.spaces();
     if self.cur() == b'=' {
       self.next();
       let right = self.expr();
       return Stmt::Using(intern(id),right);
     }
-    if self.cur() != b'{' {
-      self.err("class需要大括号");
-    }
+
+    assert!(self.cur() == b'{', "class需要大括号");
     self.next();
   
     let mut props = Vec::new();
@@ -390,9 +378,7 @@ impl Scanner<'_> {
         self.next();
         // 参数
         let args = self.arguments();
-        if self.cur() != b')' {
-          self.err("函数声明右括号缺失??");
-        }
+        assert!(self.cur() == b')', "函数声明右括号缺失");
         self.next();
   
         // 函数体
@@ -400,7 +386,7 @@ impl Scanner<'_> {
         let mut stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
-          Statements(vec![(self.line(), stmt)])
+          Statements(vec![(unsafe{LINE}, stmt)])
         };
   
         let v = ClassFuncRaw {name: intern(id), f:LocalFuncRaw{argdecl:args,stmts}, public};
@@ -426,9 +412,7 @@ impl Scanner<'_> {
     }
   
     self.spaces();
-    if self.cur() != b'}' {
-      self.err("class大括号未闭合");
-    }
+    assert!(self.cur()==b'}', "class大括号未闭合");
     self.next();
     Stmt::Class(ClassDefRaw {
       name:intern(id), props, methods, statics
@@ -447,14 +431,14 @@ impl Scanner<'_> {
         if let Expr::LocalDecl(f) = asn.val {
           return Stmt::ExportFn(asn.id, f.clone());
         }
-        self.err("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
+        panic!("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
       },
       b':' => {
         self.next();
         let cls = self.classing();
         match cls {
           Stmt::Class(cls)=> return Stmt::ExportCls(cls),
-          Stmt::Using(_,_)=> self.err("无法导出using"),
+          Stmt::Using(_,_)=> panic!("无法导出using"),
           _=> unreachable!()
         }
       }
@@ -466,9 +450,7 @@ impl Scanner<'_> {
     let len = self.src.len();
     let mut dot = 0;
     loop {
-      if i >= len {
-        self.err("mod后需要 > 符号");
-      }
+      assert!(i<len, "mod后需要 > 符号");
       let cur = self.src[i];
       if cur == b'>' {
         break;
@@ -483,28 +465,26 @@ impl Scanner<'_> {
     self.set_i(i + 1);
   
     self.spaces();
-    let name = intern(&self.ident().unwrap_or_else(||self.err("需要为模块命名")));
+    let name = intern(&self.ident().unwrap_or_else(||panic!("需要为模块命名")));
     self.spaces();
-  
-    if dot == 0 {
-      self.err("未知模块类型")
-    }
+
+    assert!(dot!=0, "未知模块类型");
     let suffix = &self.src[dot..i];
     match suffix {
       b".ksm"|b".dll"=> {
         let module = crate::native::parse(path).unwrap_or_else(|e|
-          self.err(&format!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path))));
+          panic!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path)));
         Stmt::NativeMod(name, module)
       }
       b".ks"=> {
         let path = &*String::from_utf8_lossy(path);
-        let file = std::fs::read(path).unwrap_or_else(|e|self.err(&format!(
+        let file = std::fs::read(path).unwrap_or_else(|e|panic!(
           "无法找到模块'{}'", path
-        )));
+        ));
         let mut module = crate::runtime::run(&scan(&file)).exports;
         Stmt::Mod(name, module)
       }
-      _ => self.err("未知模块类型")
+      _ => panic!("未知模块类型")
     }
   }
 
@@ -546,7 +526,7 @@ impl Scanner<'_> {
             let exec = Box::new(self.stmt());
             return Stmt::ForIter {iterator:right, id:Some(id), exec};
           }
-          self.err("`for v:iter`语句中:左边必须是标识符")
+          panic!("`for v:iter`语句中:左边必须是标识符")
         }
 
         // 不使用迭代器值

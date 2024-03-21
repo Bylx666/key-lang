@@ -7,6 +7,7 @@ use crate::intern::{
   Interned
 };
 use crate::runtime::Scope;
+use crate::LINE;
 
 pub mod charts;
 pub mod stmt;
@@ -22,10 +23,9 @@ pub fn scan(src: &[u8])-> Statements {
   // 已知此处所有变量未泄露
   // 为了规避&mut所有权检查，将引用改为指针
   let mut i = 0;
-  let mut line = 1;
   let mut sttms = Statements::default();
   let mut scanner = Scanner {
-    src, i:&mut i, line:&mut line,
+    src, i:&mut i, 
     sttms:&mut sttms as *mut Statements
   };
   scanner.scan();
@@ -35,7 +35,6 @@ pub fn scan(src: &[u8])-> Statements {
 struct Scanner<'a> {
   src: &'a [u8],
   i: *mut usize,
-  line: *mut usize,
   sttms: *mut Statements,
 }
 
@@ -56,7 +55,7 @@ impl Scanner<'_> {
 
   #[inline]
   fn push(&self, s:Stmt) {
-    unsafe{(*self.sttms).0.push((self.line(), s));}
+    unsafe{(*self.sttms).0.push((LINE, s));}
   }
   /// 获取当前字符(ascii u8)
   #[inline]
@@ -77,15 +76,6 @@ impl Scanner<'_> {
   fn set_i(&self,n:usize) {
     unsafe{*self.i = n;}
   }
-  #[inline]
-  fn line(&self)->usize {
-    unsafe{*self.line}
-  }
-
-  /// 报错模板
-  fn err(&self, s:&str)-> ! {
-    panic!("{} 解析错误({})",s,self.line())
-  }
 
   /// 跳过一段空格,换行符和注释
   fn spaces(&self) {
@@ -93,7 +83,7 @@ impl Scanner<'_> {
     loop {
       let c = self.cur();
       if c == b'\n' {
-        unsafe{*self.line += 1;}
+        unsafe{LINE += 1;}
       }
       match c {
         b'\n' | b'\r' | b' ' => {
@@ -113,7 +103,7 @@ impl Scanner<'_> {
                   return;
                 }
               }
-              unsafe{*self.line += 1;}
+              unsafe{LINE += 1;}
               self.next();
             }
             // 多行
@@ -122,7 +112,7 @@ impl Scanner<'_> {
               loop {
                 self.next();
                 if self.cur() == b'\n' {
-                  unsafe{*self.line += 1;}
+                  unsafe{LINE += 1;}
                 }
                 if self.cur() == b'\'' {
                   let next = self.i() + 1;
@@ -229,7 +219,7 @@ impl Scanner<'_> {
           b"Obj"=>Obj,
           _=> Class(intern(decl))
         }
-      }else {self.err("类型声明不可为空")}
+      }else {panic!("类型声明不可为空")}
     }else {KsType::Any}
   }
 
@@ -247,7 +237,7 @@ impl Scanner<'_> {
         self.spaces();
         if let Expr::Literal(def) = self.literal() {
           def
-        }else {self.err("默认参数只允许字面量")}
+        }else {panic!("默认参数只允许字面量")}
       }else {Litr::Uninit};
 
       if self.cur() == b',' {

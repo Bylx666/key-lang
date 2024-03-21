@@ -42,14 +42,14 @@ impl Scope {
       Stmt::Using(alia, e)=> {
         match e {
           Expr::Variant(id)=> {
-            let cls = self.find_class(*id).unwrap_or_else(||err!("未定义类'{}'", id.str()));
+            let cls = self.find_class(*id).unwrap_or_else(||panic!("未定义类'{}'", id.str()));
             self.class_uses.push((*alia, cls));
           }
           Expr::ModClsAcc(s, modname)=> {
             let cls = self.find_class_in(*s, *modname);
             self.class_uses.push((*alia, cls));
           }
-          _=> err!("class = 语句后必须是个类声明")
+          _=> panic!("class = 语句后必须是个类声明")
         }
       }
       
@@ -159,8 +159,8 @@ impl Scope {
             }
             scope.evil(exec);
           }
-          Stmt::Break=> err!("不允许`for v:iter break`的写法"),
-          Stmt::Continue=> err!("不允许`for v:iter continue`的写法`"),
+          Stmt::Break=> panic!("不允许`for v:iter break`的写法"),
+          Stmt::Continue=> panic!("不允许`for v:iter continue`的写法`"),
         }
         scope.ended = true;
         outlive::scope_end(scope);
@@ -169,8 +169,8 @@ impl Scope {
       Stmt::Match=>(),
 
       // -
-      Stmt::Break=> err!("break不在循环体内"),
-      Stmt::Continue=> err!("continue不在循环体内"),
+      Stmt::Break=> panic!("break不在循环体内"),
+      Stmt::Continue=> panic!("continue不在循环体内"),
       Stmt::Empty=> (),
     }
   }
@@ -181,7 +181,7 @@ fn cond(v:Litr)-> bool {
   match v {
     Litr::Bool(b)=> b,
     Litr::Uninit=> false,
-    _=> err!("条件必须为Bool或uninit")
+    _=> panic!("条件必须为Bool或uninit")
   }
 }
 
@@ -206,8 +206,8 @@ fn start_loop(mut this:Scope, mut condition:impl FnMut()-> bool, exec:&Box<Stmt>
   // 单语句将由当前作用域代为执行,不再创建新作用域
   }else {
     match &**exec {
-      Stmt::Break=> err!("不允许`for() break`的写法"),
-      Stmt::Continue=> err!("不允许`for() continue`的写法`"),
+      Stmt::Break=> panic!("不允许`for() break`的写法"),
+      Stmt::Continue=> panic!("不允许`for() continue`的写法`"),
       _=> while condition() {
         if this.ended {
           return;

@@ -3,12 +3,13 @@
 //mod D:\code\rs\key-lang\samples\testmod.ks> m;
 
 class a {
-  a,
+  a!
   .t(v) {
     log(v,t)
   }
 }
 
-let a = '{ff aa da}';
-a.push(29u)
+let a = '{00 01 02 03 04 05}';
+a.copy_within(2,6,1)
 log(a)
+

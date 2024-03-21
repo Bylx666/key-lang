@@ -60,7 +60,7 @@ impl Litr {
         str.push_str("]");
         str
       },
-      Buf(b)=> format!("{:?}",b),
+      Buf(b)=> format!("Buf{:02X?}",b),
       Obj(map)=> {
         let mut s = String::new();
         s.push_str("{ ");
@@ -262,7 +262,7 @@ impl Scanner<'_> {
         i += 1;
         while self.src[i] != b'"' {
           i += 1;
-          if i >= len {self.err("未闭合的\"。")}
+          assert!(i < len, "未闭合的\"。");
         }
         let s = String::from_utf8_lossy(&self.src[(self.i()+1)..i]);
         self.set_i(i+1);
@@ -302,7 +302,7 @@ impl Scanner<'_> {
                 _=> {
                   let escaped = charts::escape(escaper);
                   if escaped == 255 {
-                    self.err(&format!("错误的转义符:{}", String::from_utf8_lossy(&[escaper])));
+                    panic!("错误的转义符:{}", String::from_utf8_lossy(&[escaper]));
                   }
                   vec.push(escaped);
                   i += 1;
@@ -314,13 +314,15 @@ impl Scanner<'_> {
             }
             _=> i += 1
           }
-          if i >= len {self.err("未闭合的'`'。")}
+          if i >= len {panic!("未闭合的'`'。")}
         }
   
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
-        let str = String::from_utf8(vec)
-          .expect(&format!("字符串含非法字符 解析错误({})",self.line()));
+        let str = match String::from_utf8(vec) {
+          Ok(s)=> s,
+          Err(_)=> panic!("字符串含非法字符")
+        };
 
         self.set_i(i + 1);
         Expr::Literal(Litr::Str(str))
@@ -346,9 +348,9 @@ impl Scanner<'_> {
             match char {
               b'0'..=b'9'|b'a'..=b'f'|b'A'..=b'F'|b'\n'|b'\r'|b' ' => i += 1,
               b'}' => break,
-              _=> self.err(&format!("十六进制非法字符:{}",String::from_utf8_lossy(&[char])))
+              _=> panic!("十六进制非法字符:{}",String::from_utf8_lossy(&[char]))
             };
-            if i >= len {self.err("未闭合的}")}
+            if i >= len {panic!("未闭合的}}")}
           };
   
           // 结算起点延后到大括号后面
@@ -363,7 +365,7 @@ impl Scanner<'_> {
               if braced >= i {break}
             };
             if braced >= i {
-              self.err("未闭合的}")
+              panic!("未闭合的}}")
             }
   
             let res:Result<u8,_>;
@@ -381,7 +383,7 @@ impl Scanner<'_> {
   
             match res {
               Ok(n)=> hex.push(n),
-              Err(_)=> self.err("十六进制解析:不要把一个Byte的两个字符拆开")
+              Err(_)=> panic!("十六进制解析:不要把一个Byte的两个字符拆开")
             }
           }
           vec.append(&mut hex);
@@ -395,7 +397,7 @@ impl Scanner<'_> {
             b'{' => parse_hex!(),
             _=> i += 1
           }
-          if i >= len {self.err("未闭合的'。")}
+          if i >= len {panic!("未闭合的'。")}
         }
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
@@ -426,7 +428,7 @@ impl Scanner<'_> {
             let n: Result<$t,_> = str.parse();
             match n {
               Err(e)=> {
-                panic!("无法解析数字:{} 解析错误({})\n  {}",str,self.line(),e)
+                panic!("无法解析数字:{}\n  {}",str,e)
               }
               Ok(n)=> {
                 self.next();
@@ -475,9 +477,9 @@ impl Scanner<'_> {
         }
         if self.i() >= self.src.len() || self.cur() != b']' {
           if self.cur() == b',' {
-            self.err("列表不允许空元素");
+            panic!("列表不允许空元素");
           }
-          self.err("未闭合的右括号']'。");
+          panic!("未闭合的右括号']'。");
         }
         self.next();
         Expr::List(ls)
@@ -523,7 +525,7 @@ impl Scanner<'_> {
     }
 
     if self.cur() != b'}' {
-      self.err("未闭合的大括号")
+      panic!("未闭合的大括号")
     };
     self.next();
     decl

@@ -127,9 +127,9 @@ impl Scanner<'_> {
                 expr_stack.push(Expr::$ty(left, right));
                 continue;
               }
-              self.err(&format!("{}右侧需要一个标识符",String::from_utf8_lossy($op)))
+              panic!("{}右侧需要一个标识符",String::from_utf8_lossy($op))
             }
-            self.err(&format!("{}左侧需要一个标识符",String::from_utf8_lossy($op)))
+            panic!("{}左侧需要一个标识符",String::from_utf8_lossy($op))
           }
         }}}
         impl_access!(b"-.",ModFuncAcc);
@@ -142,7 +142,7 @@ impl Scanner<'_> {
               expr_stack.push(Expr::ImplAccess(Box::new(left), id)),
             Expr::Obj(o)=> 
               expr_stack.push(Expr::NewInst { cls: Box::new(left), val: o }),
-            _=> self.err("::右侧只能是标识符或对象")
+            _=> panic!("::右侧只能是标识符或对象")
           }
           continue;
         }
@@ -201,7 +201,7 @@ impl Scanner<'_> {
           let left = Box::new(expr_stack.pop().unwrap());
           let name = match self.ident() {
             Some(n)=> intern(n),
-            None=> self.err("'.'右边需要属性名")
+            None=> panic!("'.'右边需要属性名")
           };
           self.spaces();
           // 属性后直接使用括号就是调用方法
@@ -222,7 +222,7 @@ impl Scanner<'_> {
           let left = Box::new(expr_stack.pop().unwrap());
           let i = Box::new(self.expr());
           if self.i() >= self.src.len() || self.cur() != b']' {
-            self.err("未闭合的右括号']'。");
+            panic!("未闭合的右括号']'。");
           }
           self.next();
           expr_stack.push(Expr::Index{
@@ -267,7 +267,7 @@ impl Scanner<'_> {
     let expr = self.expr();
     self.spaces();
     if self.i() >= self.src.len() || self.cur() != b')' {
-      self.err("未闭合的右括号')'。");
+      panic!("未闭合的右括号')'。");
     }
     self.next();
     expr
@@ -313,7 +313,7 @@ fn parse_input_args(this:&Scanner)-> Vec<Expr> {
     this.next();
   }
   if this.i() >= this.src.len() || this.cur() != b')' {
-    this.err("未闭合的右括号')'。");
+    panic!("未闭合的右括号')'。");
   }
   this.next();
   args

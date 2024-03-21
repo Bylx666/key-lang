@@ -3,6 +3,7 @@
 //! 将解析的ast放在实际作用域中运行
 
 use crate::intern::{intern, Interned};
+use crate::LINE;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize,self};
 use std::ptr::NonNull;
@@ -12,6 +13,7 @@ use crate::scan::{
   expr::*
 };
 use crate::native::{NativeClassDef, NativeMod};
+use self::calc::CalcRef;
 
 mod outlive;
 pub use outlive::Outlives;
@@ -20,18 +22,6 @@ mod evil;
 pub mod calc;
 mod call;
 mod externer;
-
-
-/// 运行期追踪行号
-/// 
-/// 只有主线程会访问，不存在多线程同步问题
-pub static mut LINE:usize = 0;
-#[macro_use] macro_rules! err {($($a:expr$(,)?)*) => {
-  panic!("{} 运行时({})", format_args!($($a,)*), unsafe{crate::runtime::LINE})
-}}
-pub(super) use err;
-
-use self::calc::CalcRef;
 
 
 #[derive(Debug, Clone)]
@@ -182,7 +172,7 @@ impl Scope {
     if let Some(parent) = &mut inner.parent {
       return parent.var_with_scope(s);
     }
-    err!("无法找到变量 '{}'", s.str());
+    panic!("无法找到变量 '{}'", s.str());
   }
 
 
@@ -209,7 +199,7 @@ impl Scope {
             return Class::Local(*cls);
           }
         }
-        err!("模块'{}'中没有'{}'类型",modname.str(), s.str())
+        panic!("模块'{}'中没有'{}'类型",modname.str(), s.str())
       }
       Module::Native(p)=> {
         let m = unsafe {&*p};
@@ -219,7 +209,7 @@ impl Scope {
             return Class::Native(*cls);
           }
         }
-        err!("原生模块'{}'中没有'{}'类型",modname.str(), s.str())
+        panic!("原生模块'{}'中没有'{}'类型",modname.str(), s.str())
       }
     }
   }
@@ -233,7 +223,7 @@ impl Scope {
         return module.clone();
       }
     }
-    err!("当前模块中没有导入'{}'模块", find.str())
+    panic!("当前模块中没有导入'{}'模块", find.str())
   }
 }
 

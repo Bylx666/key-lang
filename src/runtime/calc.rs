@@ -47,7 +47,11 @@ impl Scope {
   pub fn calc(mut self,e:&Expr)-> Litr {
     match e {
       Expr::Call { args, targ }=> {
-        let targ = self.calc_ref(targ);
+        let targ_ = self.calc_ref(targ);
+        let targ = match &*targ_ {
+          Litr::Func(f)=> f,
+          _=> panic!("{targ:?}不是一个函数")
+        };
         let args = args.iter().map(|v|self.calc_ref(v)).collect();
         self.call(args, targ)
       },
@@ -66,7 +70,7 @@ impl Scope {
 
       Expr::Literal(litr)=> litr.clone(),
 
-      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||err!("无法找到变量 '{}'", id.str())).own(),
+      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||panic!("无法找到变量 '{}'", id.str())).own(),
 
       // 函数表达式
       Expr::LocalDecl(local)=> {
@@ -86,7 +90,7 @@ impl Scope {
             match &*right {
               Int(n)=> Int(-n),
               Float(n)=> Float(-n),
-              _=> err!("负号只能用在有符号数")
+              _=> panic!("负号只能用在有符号数")
             }
           }
           b'!'=> {
@@ -95,7 +99,7 @@ impl Scope {
               Int(n)=> Int(!n),
               Uint(n)=> Uint(!n),
               Uninit => Bool(true),
-              _=> err!("!运算符只能用于整数和Bool")
+              _=> panic!("!运算符只能用于整数和Bool")
             }
           }_=>Uninit
         }
@@ -121,28 +125,27 @@ impl Scope {
           Expr::ModClsAcc(modname, clsname)=> 
             (self.find_class_in(*modname, *clsname), clsname),
           Expr::Variant(clsname)=> 
-            (self.find_class(*clsname).unwrap_or_else(||err!("未定义类 '{}'", clsname.str())), clsname),
-          _=> err!("构建实例::左侧必须是类型名")
+            (self.find_class(*clsname).unwrap_or_else(||panic!("未定义类 '{}'", clsname.str())), clsname),
+          _=> panic!("构建实例::左侧必须是类型名")
         };
         if let Class::Local(cls) = cls {
           let cls = unsafe {&mut *cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
-          let cannot_access_private = self.exports != cls.module;
+          let can_access_private = self.exports == cls.module;
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
               if prop.name == *id {
-                if !prop.public && cannot_access_private {
-                  err!("成员属性'{}'是私有的。",id)
-                }
+                assert!(prop.public || can_access_private,
+                  "成员属性'{}'是私有的",id);
                 v[n] = self.clone().calc(e);
                 continue 'a;
               }
             }
-            err!("'{}'类型不存在'{}'属性。", cls.name, id.str())
+            panic!("'{}'类型不存在'{}'属性", cls.name, id.str())
           }
           Litr::Inst(Instance {cls, v:v.into()})
         }else {
-          err!("无法直接构建原生类型'{}'", clsname.str())
+          panic!("无法直接构建原生类型'{}'", clsname.str())
         }
       }
 
@@ -158,7 +161,7 @@ impl Scope {
                     return Litr::Func(Function::Local(func.clone()));
                   }
                 }
-                err!("模块'{}'中没有'{}'函数",modname,funcname)
+                panic!("模块'{}'中没有'{}'函数",modname,funcname)
               }
               Module::Native(m)=> {
                 for (id, func) in unsafe{(**m).funcs.iter()} {
@@ -166,15 +169,15 @@ impl Scope {
                     return Litr::Func(Function::Native(func.clone()));
                   }
                 }
-                err!("原生模块'{}'中没有'{}'函数",modname,funcname)
+                panic!("原生模块'{}'中没有'{}'函数",modname,funcname)
               }
             }
           }
         }
-        err!("没有导入'{}'模块",modname)
+        panic!("没有导入'{}'模块",modname)
       }
 
-      Expr::ModClsAcc(a,b)=> err!("类型声明不是一个值。考虑使用`class T = {}-:{}`语句代替",a b),
+      Expr::ModClsAcc(a,b)=> panic!("类型声明不是一个值。考虑使用`class T = {}-:{}`语句代替",a, b),
 
       // 访问类方法
       Expr::ImplAccess(e, find)=> {
@@ -183,24 +186,22 @@ impl Scope {
           match cls {
             Class::Local(m)=> {
               let cls = unsafe {&*m};
-              let cannot_access_private = cls.module != this_module;
+              let can_access_private = cls.module == this_module;
               for func in cls.statics.iter() {
                 if func.name == find {
-                  if !func.public && cannot_access_private {
-                    err!("'{}'类型的静态方法'{}'是私有的。", cls.name, find)
-                  }
+                  assert!(func.public || can_access_private, 
+                    "'{}'类型的静态方法'{}'是私有的。", cls.name, find);
                   return Litr::Func(Function::Local(func.f.clone()));
                 }
               }
               for func in cls.methods.iter() {
                 if func.name == find {
-                  if !func.public && cannot_access_private {
-                    err!("'{}'类型中的方法'{}'是私有的。", cls.name, find)
-                  }
+                  assert!(!func.public || can_access_private,
+                    "'{}'类型中的方法'{}'是私有的。", cls.name, find);
                   return Litr::Func(Function::Local(func.f.clone()));
                 }
               }
-              err!("'{}'类型没有'{}'方法", cls.name, find.str());
+              panic!("'{}'类型没有'{}'方法", cls.name, find.str());
             }
             Class::Native(m)=> {
               let cls = unsafe {&*m};
@@ -209,14 +210,14 @@ impl Scope {
                   return Litr::Func(Function::Native(*func));
                 }
               }
-              err!("'{}'原生类型中没有'{}'静态方法", cls.name, find.str())
+              panic!("'{}'原生类型中没有'{}'静态方法", cls.name, find.str())
               // native模块的method使用bind太不安全了，只允许访问静态方法
             }
           }
         }
 
         if let Expr::Variant(id) = &**e {
-          let cls = self.find_class(*id).unwrap_or_else(||err!("未定义类 '{}'", id.str()));
+          let cls = self.find_class(*id).unwrap_or_else(||panic!("未定义类 '{}'", id.str()));
           return find_fn(cls, *find, self.exports);
         }
 
@@ -225,7 +226,7 @@ impl Scope {
           return find_fn(cls, *find, self.exports);
         }
 
-        err!("::左侧必须是个类型")
+        panic!("::左侧必须是个类型")
       }
 
       Expr::Property(e, find)=> {
@@ -255,7 +256,7 @@ impl Scope {
               _=> false
             })
           }
-          _=> err!("is操作符右边必须是类型名")
+          _=> panic!("is操作符右边必须是类型名")
         };
         macro_rules! matcher {($($d:ident)*)=> {
           match &*v {
@@ -277,7 +278,7 @@ impl Scope {
           Bool Buf Float Func Int List Obj Str Sym Uint
         }
       }
-      Expr::Empty => err!("得到空表达式"),
+      Expr::Empty => panic!("得到空表达式"),
     }
   }
 
@@ -293,7 +294,7 @@ impl Scope {
         let i = self.calc_ref(i);
         index(left, i)
       },
-      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||err!("无法找到变量 '{}'", id.str())),
+      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||panic!("无法找到变量 '{}'", id.str())),
       _=> {
         let v = self.calc(e);
         CalcRef::Own(v)
@@ -309,20 +310,19 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
   /// 获取属性的引用
   pub fn get_prop_ref(this: Scope, mut from:CalcRef, find:&Interned)-> CalcRef {
     match &mut *from {
-      Litr::Obj(map)=> CalcRef::Ref(map.get_mut(find).unwrap_or_else(||err!("Obj中没有'{}'", find))),
+      Litr::Obj(map)=> CalcRef::Ref(map.get_mut(find).unwrap_or_else(||panic!("Obj中没有'{}'", find))),
       Litr::Inst(inst)=> {
         let cls = unsafe {&*inst.cls};
-        let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
+        let can_access_private = unsafe {(*inst.cls).module} == this.exports;
         let props = &cls.props;
         for (n, prop) in props.iter().enumerate() {
           if prop.name == *find {
-            if !prop.public && cannot_access_private {
-              err!("'{}'类型的成员属性'{}'是私有的", cls.name, find)
-            }
+            assert!(prop.public || can_access_private,
+              "'{}'类型的成员属性'{}'是私有的", cls.name, find);
             return CalcRef::Ref(&mut inst.v[n]);
           }
         }
-        err!("'{}'类型上没有'{}'属性", cls.name, find)
+        panic!("'{}'类型上没有'{}'属性", cls.name, find)
       }
       // native instance有自己的setter和getter,引用传递不了的
       _=> CalcRef::Own(Litr::Uninit)
@@ -411,7 +411,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
               todo!();// f.bound = Some(Box::new(CalcRef::Ref(left)));
               f.scope.call_local(f, vec![i.own(), right]);
             }
-            None=> err!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
+            None=> panic!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
           }
         },
         Litr::Ninst(inst)=> {
@@ -420,7 +420,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
         Litr::Obj(map)=> {
           if let Litr::Str(s) = &*i {
             map.insert(intern(s.as_bytes()), right);
-          }else {err!("Obj索引必须是Str")}
+          }else {panic!("Obj索引必须是Str")}
         }
         _=> *index(CalcRef::Ref(left), i) = right
       }
@@ -440,21 +440,20 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
-      let cannot_access_private = unsafe {(*inst.cls).module} != this.exports;
+      let can_access_private = unsafe {(*inst.cls).module} == this.exports;
       let cls = unsafe {&*inst.cls};
 
       // 寻找属性
       let props = &cls.props;
       for (n, prop) in props.iter().enumerate() {
         if prop.name == find {
-          if !prop.public && cannot_access_private {
-            err!("'{}'类型的成员属性'{}'是私有的", cls.name, find)
-          }
+          assert!(prop.public || can_access_private,
+            "'{}'类型的成员属性'{}'是私有的", cls.name, find);
           return inst.v[n].clone();
         }
       }
 
-      err!("'{}'类型上没有'{}'属性", cls.name, find)
+      panic!("'{}'类型上没有'{}'属性", cls.name, find)
     },
 
     // 原生类的实例
@@ -517,7 +516,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
         None=> CalcRef::uninit()
       };
     }
-    err!("Obj的索引必须使用Str")
+    panic!("Obj的索引必须使用Str")
   }
 
   // 判断实例index_get
@@ -530,7 +529,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
       todo!();// f.bound = Some(Box::new(left));      
       return CalcRef::Own(f.scope.call_local(f, vec![i.own()]));
     }
-    err!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
+    panic!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
   }
 
   // 判断原生类实例
@@ -542,7 +541,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   let i = match &*i {
     Litr::Uint(n)=> *n,
     Litr::Int(n)=> (*n) as usize,
-    _=> err!("index必须是整数")
+    _=> panic!("index必须是整数")
   };
   match &mut *left {
     Litr::Buf(v)=> {
@@ -587,7 +586,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Uint(l),Int(r))=> Uint(l $op *r as usize),
         (Float(l),Float(r))=> Float(l $op r),
         (Float(l),Int(r))=> Float(l $op *r as f64),
-        _=> err!($pan)
+        _=> panic!($pan)
       }
     }};
     ($pan:literal $op:tt $n:tt)=> {{
@@ -596,7 +595,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         Uint(r) => *r == 0,
         Float(r) => *r == 0.0,
         _=> false
-      } {err!("除数必须非0")}
+      } {panic!("除数必须非0")}
       impl_num!($pan $op)
     }};
   }
@@ -607,7 +606,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
       match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
         (Uint(l), Int(r))=> Uint(l $op *r as usize),
-        _=> err!($pan)
+        _=> panic!($pan)
       }
     }};
   }
@@ -622,7 +621,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Int(l), Int(r))=> Int(l $o r),
         (Float(l), Float(r))=> Float(l $o r),
         (Float(l), Int(r))=> Float(l $o *r as f64),
-        _=> err!("运算并赋值的左右类型不同")
+        _=> panic!("运算并赋值的左右类型不同")
       };
       *left = n;
       Uninit
@@ -636,7 +635,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
       let n = match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
         (Uint(l), Int(r))=> Uint(l $op *r as usize),
-        _=> err!("按位运算并赋值只允许无符号数")
+        _=> panic!("按位运算并赋值只允许无符号数")
       };
       *left = n;
       Uninit
@@ -671,9 +670,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
           }
         },
         (Inst(l),Inst(r))=> {
-          if l.cls != r.cls {
-            err!("实例类型不同无法比较");
-          }
+          assert!(l.cls==r.cls, "实例类型不同无法比较");
           match_list(&*l.v, &*r.v)
         },
         (Sym(l), Sym(r))=> l $o r,
@@ -683,9 +680,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
 
     fn match_list(l:&[Litr], r:&[Litr])-> bool {
       let len = l.len();
-      if len != r.len() {
-        err!("列表长度不同，无法比较");
-      }
+      assert!(len==r.len(), "列表长度不同，无法比较");
       for i in 0..len {
         if !match_basic(&l[i],&r[i]) {
           return false
@@ -704,7 +699,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Bool(l), Bool(r))=> Bool(*l $o *r),
         (Bool(l), Uninit)=> Bool(*l $o false),
         (Uninit, Bool(r))=> Bool(false $o *r),
-        _=> err!("{}两边必须都为Bool或uninit", stringify!($o))
+        _=> panic!("{}两边必须都为Bool或uninit", stringify!($o))
       }
     }};
   }
@@ -760,7 +755,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     b"&&" => impl_logic!(&&),
     b"||" => impl_logic!(||),
 
-    _=> err!("未知运算符'{}'", String::from_utf8_lossy(&op))
+    _=> panic!("未知运算符'{}'", String::from_utf8_lossy(&op))
   }
 }
 

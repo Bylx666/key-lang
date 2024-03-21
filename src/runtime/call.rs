@@ -6,36 +6,31 @@ use super::*;
 
 impl Scope {
   /// 解析Expr的调用
-  pub fn call(mut self, args:Vec<CalcRef>, targ:CalcRef)-> Litr {
-    if let Litr::Func(exec) = &*targ {
-      use Function::*;
-      match exec {
-        Native(f)=> f(args, self),
-        Local(f)=> {
-          let args = args.into_iter().map(|e|e.own()).collect();
-          self.call_local(&f, args)
-        },
-        Extern(f)=> {
-          let args = args.into_iter().map(|e|e.own()).collect();
-          super::externer::call_extern(&f, args)
-        }
+  pub fn call(mut self, args:Vec<CalcRef>, targ:&Function)-> Litr {
+    use Function::*;
+    match targ {
+      Native(f)=> f(args, self),
+      Local(f)=> {
+        let args = args.into_iter().map(|e|e.own()).collect();
+        self.call_local(&f, args)
+      },
+      Extern(f)=> {
+        let args = args.into_iter().map(|e|e.own()).collect();
+        super::externer::call_extern(&f, args)
       }
-    }else {
-      err!("'{}' 不是一个函数", targ.str())
     }
   }
 
   /// 为a.b()的行为匹配对应方法并调用
   pub fn call_method(mut self, mut args:Vec<CalcRef>, mut targ:CalcRef, name:Interned)-> Litr {
-    match &mut*targ {
+    match &mut *targ {
       Litr::Bool(v)=> match name.vec() {
         b"rev"=> Litr::Bool(!*v),
         b"then"=> {
           let f = match args.get_mut(0) {
-            Some(f)=> {
-              let mut s = CalcRef::uninit();
-              std::mem::swap(&mut s,f);
-              s
+            Some(f)=> match &**f {
+              Litr::Func(f)=> f,
+              _=> panic!("bool.then第一个参数必须是函数")
             },
             None=> return Litr::Uninit
           };
@@ -45,10 +40,10 @@ impl Scope {
             Litr::Uninit
           }
         }
-        _=> err!("Bool类型只有'rev'和'then'方法")
+        _=> panic!("Bool类型只有'rev'和'then'方法")
       }
-      Litr::Buf(v)=> primitive::buf::method(v, name, args),
-      _=> err!("没有'{}'方法\n  如果你需要调用属性作为函数,请使用(a.b)()的写法", name)
+      Litr::Buf(v)=> primitive::buf::method(v, self, name, args),
+      _=> panic!("没有'{}'方法\n  如果你需要调用属性作为函数,请使用(a.b)()的写法", name)
     }
     // let mut left = self.calc_ref(left);
     // // 匹配所有可能使用.运算符得到函数的类型(instance, obj)
@@ -62,7 +57,7 @@ impl Scope {
     //     for mthd in methods.iter() {
     //       if mthd.name == right {
     //         if !mthd.public && cannot_access_private {
-    //           err!("'{}'类型的成员方法'{}'是私有的", cls.name, right)
+    //           panic!("'{}'类型的成员方法'{}'是私有的", cls.name, right)
     //         }
     //         // 为函数绑定self
     //         let mut f = mthd.f.clone();
@@ -77,7 +72,7 @@ impl Scope {
     //     for (n, prop) in props.iter().enumerate() {
     //       if prop.name == right {
     //         if !prop.public && cannot_access_private {
-    //           err!("'{}'类型的成员属性'{}'是私有的", cls.name, right)
+    //           panic!("'{}'类型的成员属性'{}'是私有的", cls.name, right)
     //         }
     //         return self.call(args, CalcRef::Ref(&mut inst.v[n]));
     //       }
@@ -106,8 +101,8 @@ impl Scope {
     //     return self.call(args, CalcRef::Own((cls.getter)(inst, right)));
     //   }
     //   Litr::Obj(map)=> return self.call(
-    //     args, CalcRef::Ref(map.get_mut(&right).unwrap_or_else(||err!("'{}'不是一个函数", right)))),
-    //   Litr::Bool(v)=> err!("Bool没有方法"),
+    //     args, CalcRef::Ref(map.get_mut(&right).unwrap_or_else(||panic!("'{}'不是一个函数", right)))),
+    //   Litr::Bool(v)=> panic!("Bool没有方法"),
     //   Litr::Buf(v)=> return primitive::buf::method(v, right, args),
     //   _=> ()
     // }

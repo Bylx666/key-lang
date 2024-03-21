@@ -7,7 +7,7 @@ use crate::native::{
   NativeFn,
   NativeInstance
 };
-use crate::runtime::{calc::CalcRef, Class, err};
+use crate::runtime::{calc::CalcRef, Class, Scope};
 use crate::scan::literal::Litr;
 use crate::intern::{Interned, intern};
 
@@ -54,22 +54,22 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
   }
 }}
 
+/// 从args迭代器中获取下一个参数
 macro_rules! next_arg {
   ($args:ident $($err:literal)+)=> {
     match $args.next() {
       Some(v)=> v,
-      None=> err!($($err,)+)
+      None=> panic!($($err,)+)
     }
   };
   ($args:ident $t:ty:$e:ident:$($t_err:literal)+; $($err:literal)+)=> {
     match $args.next() {
       Some(v)=> match v {
         Litr::$t(v)=> v,
-        _=> err!($($t_err,)+)
+        _=> panic!($($t_err,)+)
       },
-      None=> err!($($err,)+)
+      None=> panic!($($err,)+)
     }
   }
 }
-
-pub(super) use next_arg;
+pub(self) use next_arg;
