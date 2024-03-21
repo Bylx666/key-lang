@@ -42,8 +42,7 @@ impl Litr {
         match *f {
           Function::Local(_)=> "<Local Function>".to_string(),
           Function::Extern(_)=> "<Extern Function>".to_string(),
-          Function::Native(_)=> "<Native Function>".to_string(),
-          Function::NativeMethod(_)=> "<Native Method>".to_string()
+          Function::Native(_)=> "<Native Function>".to_string()
         }
       }
       Str(s)=> s.clone(),
@@ -129,8 +128,6 @@ impl Litr {
 pub enum Function {
   // Native模块或Runtime提供的Rust函数
   Native(crate::native::NativeFn),
-  // 绑定了self的原生函数
-  NativeMethod(crate::native::BoundNativeMethod),
   // 脚本定义的本地函数
   Local(LocalFunc),
   // 使用extern语句得到的C函数
@@ -159,16 +156,13 @@ pub struct LocalFunc {
   pub ptr:*const LocalFuncRaw,
   /// 来自的作用域
   pub scope: Scope,
-  /// 是否绑定了self (如果直接绑定了字面量将会持有其所有权)
-  pub bound: Option<Box<CalcRef>>,
 }
 impl LocalFunc {
   /// 将本地函数定义和作用域绑定
   pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
     LocalFunc{
       ptr,
-      scope,
-      bound: None
+      scope
     }
   }
 }
@@ -202,7 +196,7 @@ impl Clone for Instance {
     match opt {
       Some(cls_f)=> {
         let f = &mut cls_f.f;
-        f.bound = Some(Box::new(CalcRef::Own(Litr::Inst(cloned))));
+        todo!();// f.bound = Some(Box::new(CalcRef::Own(Litr::Inst(cloned))));
         let res = f.scope.call_local(f, vec![]);
         if let Litr::Inst(v) = res {
           v
@@ -225,7 +219,7 @@ impl Drop for Instance {
         let f = &mut cls_f.f;
         // 不要额外调用clone
         let binding = &mut *std::mem::ManuallyDrop::new(Litr::Inst(Instance { cls: self.cls, v: self.v.clone() }));
-        f.bound = Some(Box::new(CalcRef::Ref(binding)));
+        todo!();// f.bound = Some(Box::new(CalcRef::Ref(binding)));
         f.scope.call_local(f, vec![]);
       }
       None=> ()
@@ -280,14 +274,12 @@ impl Scanner<'_> {
         i += 1;
         let mut start = i; // 开始结算的起点
         let mut vec = Vec::<u8>::new();
-  
+
         loop {
           let c = self.src[i];
           match c {
             b'`' => break,
             b'\\'=> {
-              use charts::escape;
-  
               // 结算一次
               vec.extend_from_slice(&self.src[start..i]);
   
@@ -308,7 +300,7 @@ impl Scanner<'_> {
                 b'\n'=> escape_enter!(),
                 // 非换行符就按转义表转义
                 _=> {
-                  let escaped = escape(escaper);
+                  let escaped = charts::escape(escaper);
                   if escaped == 255 {
                     self.err(&format!("错误的转义符:{}", String::from_utf8_lossy(&[escaper])));
                   }
@@ -316,20 +308,20 @@ impl Scanner<'_> {
                   i += 1;
                 }
               }
-  
+
               // 更新结算起点
               start = i;
             }
             _=> i += 1
           }
-          if i >= len {self.err("未闭合的`。")}
+          if i >= len {self.err("未闭合的'`'。")}
         }
   
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
         let str = String::from_utf8(vec)
           .expect(&format!("字符串含非法字符 解析错误({})",self.line()));
-  
+
         self.set_i(i + 1);
         Expr::Literal(Litr::Str(str))
       }

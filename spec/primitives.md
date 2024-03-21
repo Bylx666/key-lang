@@ -1,9 +1,15 @@
 ## bool
 
-唯一属性opposite
+唯一属性rev
 
-true.opposite == !true
+true.rev == !true
 
+方法rev, then
+
+then会转达内部函数的返回值
+false.rev().then(||:20) == 20
+
+false.rev == false.rev() == true
 
 ## Func
 

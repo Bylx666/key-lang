@@ -2,63 +2,75 @@ use super::{Scanner, charts};
 use super::literal::{
   KsType, Litr, LocalFuncRaw
 };
-use crate::intern::Interned;
+use crate::intern::{intern, Interned};
 
 /// 可以出现在任何右值的，expression表达式
 #[derive(Debug, Clone)]
 pub enum Expr {
   Empty,
-  // 字面量
+  /// 字面量
   Literal(Litr),
-  // 变量
+  /// 变量
   Variant(Interned),
-  // self
+  /// self
   Kself,
 
-  // 未绑定作用域的本地函数
+  /// 未绑定作用域的本地函数
   LocalDecl (LocalFuncRaw),
 
-  // -.运算符
+  /// -.运算符 module-.func
   ModFuncAcc(Interned, Interned),
-  // -:运算符
+  /// -:运算符 module-:Class
   ModClsAcc (Interned, Interned),
-  // .运算符
+  /// .运算符 a.b
   Property  (Box<Expr>, Interned),
-  // ::运算符
+  /// ::运算符 Class::static_method
   ImplAccess(Box<Expr>, Interned),
-  // 调用函数
-  Call{
+
+  /// 调用函数 x()
+  Call {
     args: Vec<Expr>,
     targ: Box<Expr>
   },
+
+  /// 调用方法 x.method()
+  CallMethod {
+    args: Vec<Expr>,
+    targ: Box<Expr>,
+    name: Interned
+  },
+
+  /// 索引表达式
   Index{
     left: Box<Expr>,
     i: Box<Expr>
   },
-  // 创建实例
+
+  /// 创建实例
   NewInst{
     cls: Box<Expr>,
     val: Vec<(Interned,Expr)>
   },
 
-  // 列表表达式
+  /// 列表表达式
   List(Vec<Expr>),
-  // 对象表达式
+  /// 对象表达式
   Obj(Vec<(Interned,Expr)>),
 
-  // 一元运算 ! -
+  /// 一元运算 ! -
   Unary{
     right: Box<Expr>,
     op: u8
   },
 
-  // 二元运算
+  /// 二元运算
   Binary{
     left: Box<Expr>,
     right: Box<Expr>,
     op: Box<[u8]>
   },
 
+  /// is表达式 a is ClassA
   Is {
     left: Box<Expr>,
     right: Box<Expr>
@@ -106,8 +118,8 @@ impl Scanner<'_> {
   
         let right = expr_stack.pop().unwrap();
         let left = expr_stack.pop().unwrap();
-  
-        // 如果是模块或类的调用就不用Binary
+
+        // 对于模块访问左右都必须是标识符
         macro_rules! impl_access {($op:literal, $ty:ident)=>{{
           if last_op == $op {
             if let Expr::Variant(left) = left {
@@ -123,15 +135,6 @@ impl Scanner<'_> {
         impl_access!(b"-.",ModFuncAcc);
         impl_access!(b"-:",ModClsAcc);
 
-        // 属性表达式
-        if last_op == b"." {
-          if let Expr::Variant(right) = right {
-            expr_stack.push(Expr::Property(Box::new(left), right ));
-            continue;
-          }
-          self.err("`.`右侧需要一个标识符")
-        }
-
         // ::表达式
         if last_op == b"::" {
           match right {
@@ -144,6 +147,7 @@ impl Scanner<'_> {
           continue;
         }
 
+        // is表达式
         if last_op == b"is" {
           expr_stack.push(Expr::Is {
             left: Box::new(left),
@@ -174,71 +178,68 @@ impl Scanner<'_> {
         return expr_stack.pop().unwrap();
       }
 
-      // 如果用户想用返回语句就直接以此分界
-      if op == b":" {
-        unsafe {(*self.i) -= 1;}
-        return expr_stack.pop().unwrap();
-      }
-  
-      // 如果此运算符是括号就代表call
-      if op == b"(" {
-        self.next();
-        self.spaces();
-        let targ = Box::new(expr_stack.pop().unwrap());
-        let mut args = Vec::new();
+      // 对二元运算符的各种情况做处理
+      match op {
+        // 如果用户想用返回语句就直接以此分界
+        b":"=> {
+          unsafe {(*self.i) -= 1;}
+          return expr_stack.pop().unwrap();
+        }
 
-        // 如果直接遇到右括号则代表无参数传入
-        if self.cur() == b')' {
+        // 如果此运算符是括号就代表call
+        b"("=> {
           self.next();
-          expr_stack.push(Expr::Call{
-            args, targ
-          });
+          self.spaces();
+          let targ = Box::new(expr_stack.pop().unwrap());
+          let mut args = parse_input_args(self);
+          expr_stack.push(Expr::Call { args, targ });
           continue;
         }
 
-        loop {
-          let e = self.expr();
-          // 调用参数留空就当作uninit
-          args.push(if let Expr::Empty = e {
-            Expr::Literal(Litr::Uninit)
-          }else {e});
+        // 如果是.就说明是属性或者调用方法
+        b"."=> {
+          let left = Box::new(expr_stack.pop().unwrap());
+          let name = match self.ident() {
+            Some(n)=> intern(n),
+            None=> self.err("'.'右边需要属性名")
+          };
           self.spaces();
-          if self.cur() != b',' {
-            break;
+          // 属性后直接使用括号就是调用方法
+          if self.cur() == b'(' {
+            self.next();
+            let args = parse_input_args(self);
+            expr_stack.push(Expr::CallMethod { args, targ: left, name });
+          }else {
+            expr_stack.push(Expr::Property(left, name));
+          }
+          continue;
+        }
+
+        // 如果此运算符是方括号就代表index
+        b"["=> {
+          self.next();
+          self.spaces();
+          let left = Box::new(expr_stack.pop().unwrap());
+          let i = Box::new(self.expr());
+          if self.i() >= self.src.len() || self.cur() != b']' {
+            self.err("未闭合的右括号']'。");
           }
           self.next();
+          expr_stack.push(Expr::Index{
+            left, i
+          });
+          continue;
         }
-        if self.i() >= self.src.len() || self.cur() != b')' {
-          self.err("未闭合的右括号')'。");
-        }
-        self.next();
-        expr_stack.push(Expr::Call{
-          args, targ
-        });
-        continue;
+        _=>()
       }
 
-      // 如果此运算符是方括号就代表index
-      if op == b"[" {
-        self.next();
-        self.spaces();
-        let left = Box::new(expr_stack.pop().unwrap());
-        let i = Box::new(self.expr());
-        if self.i() >= self.src.len() || self.cur() != b']' {
-          self.err("未闭合的右括号']'。");
-        }
-        self.next();
-        expr_stack.push(Expr::Index{
-          left, i
-        });
-        continue;
-      }
-  
       // 将新运算符和它右边的值推进栈
       self.spaces();
+
       // 看看右侧值前有没有一元运算符
       let mut una = self.expr_unary();
       unary.append(&mut una);
+
       // 在此之前判断有没有括号来提升优先级
       if self.cur() == b'(' {
         let group = self.expr_group();
@@ -247,8 +248,8 @@ impl Scanner<'_> {
         let litr = self.literal();
         expr_stack.push(litr);
       }
-      op_stack.push(op);
-  
+
+      op_stack.push(op);  
     }
   }
   
@@ -262,7 +263,7 @@ impl Scanner<'_> {
       self.next();
       return Expr::Literal(Litr::Uninit);
     }
-  
+
     let expr = self.expr();
     self.spaces();
     if self.i() >= self.src.len() || self.cur() != b')' {
@@ -288,4 +289,32 @@ impl Scanner<'_> {
     }
     v
   }
+}
+
+/// 解析传入参数
+fn parse_input_args(this:&Scanner)-> Vec<Expr> {
+  let mut args = Vec::new();
+  // 如果直接遇到右括号则代表无参数传入
+  if this.cur() == b')' {
+    this.next();
+    return args;
+  }
+
+  loop {
+    let e = this.expr();
+    // 调用参数留空就当作uninit
+    args.push(if let Expr::Empty = e {
+      Expr::Literal(Litr::Uninit)
+    }else {e});
+    this.spaces();
+    if this.cur() != b',' {
+      break;
+    }
+    this.next();
+  }
+  if this.i() >= this.src.len() || this.cur() != b')' {
+    this.err("未闭合的右括号')'。");
+  }
+  this.next();
+  args
 }

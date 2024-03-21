@@ -47,13 +47,15 @@ impl Scope {
   pub fn calc(mut self,e:&Expr)-> Litr {
     match e {
       Expr::Call { args, targ }=> {
-        // 先捕获方法调用
-        // if let Expr::Property(left, right) = targ {
-        //   self.call_
-        // }
         let targ = self.calc_ref(targ);
         let args = args.iter().map(|v|self.calc_ref(v)).collect();
         self.call(args, targ)
+      },
+
+      Expr::CallMethod { args, targ, name }=> {
+        let targ = self.calc_ref(targ);
+        let args = args.iter().map(|v|self.calc_ref(v)).collect();
+        self.call_method(args, targ, *name)
       },
 
       Expr::Index { left, i }=> {
@@ -406,7 +408,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
           match opt {
             Some(f)=> {
               let f = &mut f.f;
-              f.bound = Some(Box::new(CalcRef::Ref(left)));
+              todo!();// f.bound = Some(Box::new(CalcRef::Ref(left)));
               f.scope.call_local(f, vec![i.own(), right]);
             }
             None=> err!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
@@ -468,7 +470,7 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
 
     // 以下都是对基本类型的getter行为
     Litr::Bool(v)=> match find.vec() {
-      b"opposite"=> Litr::Bool(!*v),
+      b"rev"=> Litr::Bool(!*v),
       _=> Litr::Uninit
     },
 
@@ -483,8 +485,7 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
       match f {
         Function::Local(_)=> Litr::Str("local".to_owned()),
         Function::Extern(_)=> Litr::Str("extern".to_owned()),
-        Function::Native(_)=> Litr::Str("native".to_owned()),
-        Function::NativeMethod(_)=> unreachable!()
+        Function::Native(_)=> Litr::Str("native".to_owned())
       }
     }else {Litr::Uninit}
 
@@ -506,6 +507,7 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
   }
 }
 
+
 fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   // 先判断Obj
   if let Litr::Obj(map) = &mut *left {
@@ -525,7 +527,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
     let opt = cls.methods.iter_mut().find(|v|v.name == fname);
     if let Some(f) = opt {
       let f = &mut f.f;
-      f.bound = Some(Box::new(left));      
+      todo!();// f.bound = Some(Box::new(left));      
       return CalcRef::Own(f.scope.call_local(f, vec![i.own()]));
     }
     err!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
@@ -564,6 +566,7 @@ fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
     _=> CalcRef::uninit()
   }
 }
+
 
 fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;

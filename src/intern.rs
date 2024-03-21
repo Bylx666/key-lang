@@ -25,7 +25,7 @@ pub struct Interned {
   p: *const Box<[u8]>
 }
 impl Interned {
-  pub fn vec(&self)-> &[u8] {
+  pub const fn vec(&self)-> &[u8] {
     unsafe{&**self.p}
   }
   pub fn str(&self)-> String {

@@ -191,6 +191,7 @@ impl Scanner<'_> {
       if let Expr::Empty = expr {
         Stmt::Empty
       }else {
+        println!("{expr:?}");
         Stmt::Expression(expr)
       }
     } else {

@@ -52,7 +52,7 @@ impl Iterator for LitrIterator<'_> {
           self.n = match next_f {
             Some(f)=> {
               let mut f = Box::new(f.f.clone());
-              f.bound = Some(Box::new(CalcRef::Ref(self.v)));
+              todo!();// f.bound = Some(Box::new(CalcRef::Ref(self.v)));
               Box::into_raw(f) as usize
             },
             None=> panic!("迭代class需要定义.@next()方法")

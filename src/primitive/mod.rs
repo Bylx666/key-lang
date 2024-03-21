@@ -11,7 +11,7 @@ use crate::runtime::{calc::CalcRef, Class, err};
 use crate::scan::literal::Litr;
 use crate::intern::{Interned, intern};
 
-pub mod std;
+pub mod kstd;
 
 pub mod buf;
 pub mod int;
@@ -29,6 +29,7 @@ fn onclone(v:*mut NativeInstance)-> NativeInstance {unsafe{&*v}.clone()}
 fn ondrop(_v:*mut NativeInstance) {}
 
 static mut CLASSES:Option<Vec<(Interned, NativeClassDef)>> = None;
+
 fn new_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeClassDef) {
   let name = intern(s);
   (name, NativeClassDef {
@@ -40,6 +41,7 @@ fn new_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeClassDef) 
     next, onclone, ondrop
   })
 }
+
 pub fn classes()-> Vec<(Interned, Class)> {unsafe {
   if let Some(cls) = &mut CLASSES {
     cls.iter_mut().map(|(name, f)|(*name, Class::Native(f))).collect()
@@ -51,3 +53,23 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     classes()
   }
 }}
+
+macro_rules! next_arg {
+  ($args:ident $($err:literal)+)=> {
+    match $args.next() {
+      Some(v)=> v,
+      None=> err!($($err,)+)
+    }
+  };
+  ($args:ident $t:ty:$e:ident:$($t_err:literal)+; $($err:literal)+)=> {
+    match $args.next() {
+      Some(v)=> match v {
+        Litr::$t(v)=> v,
+        _=> err!($($t_err,)+)
+      },
+      None=> err!($($err,)+)
+    }
+  }
+}
+
+pub(super) use next_arg;

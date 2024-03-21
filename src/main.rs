@@ -60,7 +60,7 @@ fn main()-> ExitCode {
 
   intern::init();
   let scanned = scan::scan(&fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  println!("{scanned:?}");
+  // println!("{scanned:?}");
   let exit = runtime::run(&scanned);
   if let scan::literal::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);

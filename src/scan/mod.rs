@@ -117,7 +117,7 @@ impl Scanner<'_> {
               self.next();
             }
             // 多行
-            if nc == b'\'' {
+            else if nc == b'\'' {
               self.set_i(next + 1);
               loop {
                 self.next();
@@ -137,13 +137,10 @@ impl Scanner<'_> {
               }
             }
             // /后面不是注释就直接返回
-            return;
+            else{return;}
           }
-          continue;
         }
-        _=> {
-          break;
-        }
+        _=> break
       }
     }
   }
