@@ -50,7 +50,14 @@ impl Scope {
         let targ_ = self.calc_ref(targ);
         let targ = match &*targ_ {
           Litr::Func(f)=> f,
-          _=> panic!("{targ:?}不是一个函数")
+          _=> {
+            let s = match &**targ {
+              Expr::Literal(n)=> n.str(),
+              Expr::Variant(n)=> n.str(),
+              _=> "".to_string()
+            };
+            panic!("{s}不是一个函数")
+          }
         };
         let args = args.iter().map(|v|self.calc_ref(v)).collect();
         self.call(args, targ)
@@ -278,6 +285,7 @@ impl Scope {
           Bool Buf Float Func Int List Obj Str Sym Uint
         }
       }
+      
       Expr::Empty => panic!("得到空表达式"),
     }
   }
@@ -584,6 +592,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Int(l),Int(r))=> Int(l $op r),
         (Uint(l),Uint(r))=> Uint(l $op r),
         (Uint(l),Int(r))=> Uint(l $op *r as usize),
+        (Int(l),Uint(r))=> Int(l $op *r as isize),
         (Float(l),Float(r))=> Float(l $op r),
         (Float(l),Int(r))=> Float(l $op *r as f64),
         _=> panic!($pan)

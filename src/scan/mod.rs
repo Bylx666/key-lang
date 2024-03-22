@@ -168,38 +168,6 @@ impl Scanner<'_> {
     self.set_i(i);
     Some(ident)
   }
-
-  /// 检索一段 二元操作符
-  fn operator(&self)-> &[u8] {
-    // 如果第一个字符就是左括号就告诉Expr：这是个函数调用
-    match self.cur() {
-      // 这里不i+=1因为对应的解析函数会自动i+=1
-      b'(' => return b"(",
-      b'[' => return b"[",
-      b'i' => {
-        if self.i() + 1 < self.src.len() && self.src[self.i()+1] == b's' {
-          self.set_i(self.i() + 2);
-          return b"is";
-        }
-      }
-      _=>()
-    }
-    let mut i = self.i();
-    let len = self.src.len();
-    while i + 1 < len {
-      let cur = self.src[i];
-      match cur {
-        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b'|'|b':'=> {
-          i += 1;
-        }
-        _=> break
-      }
-    }
-
-    let op = &self.src[self.i()..i];
-    self.set_i(i);
-    op
-  }
   
   /// 解析类型声明
   fn typ(&self)-> KsType {
@@ -237,7 +205,7 @@ impl Scanner<'_> {
         self.spaces();
         if let Expr::Literal(def) = self.literal() {
           def
-        }else {panic!("默认参数只允许字面量")}
+        }else {panic!("默认参数只允许简单字面量")}
       }else {Litr::Uninit};
 
       if self.cur() == b',' {

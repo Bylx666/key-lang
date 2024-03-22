@@ -35,6 +35,8 @@ fn main()-> ExitCode {
   // str::next_char(start)
   // let [] = x
   // let a=0,b=0
+  // prelude mod 让模块本身帮你初始化上下文
+  // 20 |> f1(2,|%|,4) |> 
 
   // call_here call_at_top
   // pub use
@@ -63,10 +65,8 @@ fn main()-> ExitCode {
   // Instance::set_any()
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
-
   intern::init();
   let scanned = scan::scan(&fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
-  // println!("{scanned:?}");
   let exit = runtime::run(&scanned);
   if let scan::literal::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);

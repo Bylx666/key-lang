@@ -77,12 +77,14 @@ pub enum Expr {
   }
 }
 
+/// 使用|>时会将左侧表达式暂存此处, 使用|%|时被取走
+pub static mut ON_PIPE:Option<Expr> = None;
 
 impl Scanner<'_> {
   /// 从self.i直接开始解析一段表达式
   pub fn expr(&self)-> Expr {
     self.spaces();
-    let unary = self.expr_unary();
+    let unary = self.operator_unary();
     self.spaces();
     // 判断开头有无括号
     let left = if self.cur() == b'(' {
@@ -115,7 +117,7 @@ impl Scanner<'_> {
           op_stack.push(last_op);
           break;
         }
-  
+
         let right = expr_stack.pop().unwrap();
         let left = expr_stack.pop().unwrap();
 
@@ -230,6 +232,15 @@ impl Scanner<'_> {
           });
           continue;
         }
+
+        // 管道运算符
+        // 该运算符不是真的运算符, 只是一个语法糖
+        b"|>"=> {
+          unsafe{ ON_PIPE = Some(expr_stack.pop().unwrap()); }
+          // |>的优先级是1,最低的,保证了expr_stack已经被合并成一个Expr了
+          // 此时该函数上下文已经没用了, 可以直接再开始一次expr
+          return self.expr();
+        }
         _=>()
       }
 
@@ -237,19 +248,18 @@ impl Scanner<'_> {
       self.spaces();
 
       // 看看右侧值前有没有一元运算符
-      let mut una = self.expr_unary();
+      let mut una = self.operator_unary();
       unary.append(&mut una);
 
       // 在此之前判断有没有括号来提升优先级
-      if self.cur() == b'(' {
-        let group = self.expr_group();
-        expr_stack.push(group);
+      let right = if self.cur() == b'(' {
+        self.expr_group()
       }else {
-        let litr = self.literal();
-        expr_stack.push(litr);
-      }
+        self.literal()
+      };
+      expr_stack.push(right);
 
-      op_stack.push(op);  
+      op_stack.push(op);
     }
   }
   
@@ -273,8 +283,57 @@ impl Scanner<'_> {
     expr
   }
 
+  /// 检索一段 二元操作符
+  fn operator(&self)-> &[u8] {
+    // 如果第一个字符就是左括号就告诉Expr：这是个函数调用
+    match self.cur() {
+      // 这里不i+=1因为对应的解析函数会自动i+=1
+      b'(' => return b"(",
+      b'[' => return b"[",
+      b'i' => {
+        if self.i() + 1 < self.src.len() && self.src[self.i()+1] == b's' {
+          self.set_i(self.i() + 2);
+          return b"is";
+        }
+      }
+
+      // |开头的运算符只允许|,|>和||,防止和闭包与|%|混淆
+      b'|'=> {
+        self.next();
+        match self.cur() {
+          b'|'=> {
+            self.next();
+            return b"||";
+          }
+          b'>'=> {
+            self.next();
+            return b"|>";
+          }
+          _=> return b"|"
+        }
+      }
+      _=>()
+    }
+
+    let mut i = self.i();
+    let len = self.src.len();
+    while i + 1 < len {
+      let cur = self.src[i];
+      match cur {
+        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b':'=> {
+          i += 1;
+        }
+        _=> break
+      }
+    }
+
+    let op = &self.src[self.i()..i];
+    self.set_i(i);
+    op
+  }
+
   /// 检查有没有一元运算符
-  fn expr_unary(&self)-> Vec<u8> {
+  fn operator_unary(&self)-> Vec<u8> {
     let mut v = Vec::new();
     loop {
       let cur = self.cur();

@@ -487,6 +487,35 @@ impl Scanner<'_> {
 
       // 解析对象
       b'{'=> Expr::Obj(self.obj()),
+
+      // 解析闭包或管道占位符
+      b'|'=> {
+        self.next();
+
+        // 遇到管道占位符时 直接将管道暂存的表达式返回
+        if self.cur()==b'%' {
+          self.next();
+          self.next();
+          return unsafe {
+            super::expr::ON_PIPE.take().expect("管道占位符只能在管道操作符'|>'后使用")
+          };
+        }
+        
+        // 解析闭包参数
+        let args = self.arguments();
+        assert!(self.cur()==b'|', "闭包声明右括号缺失");
+        self.next();
+
+        // 解析闭包内容
+        let stmt = self.stmt();
+        let mut stmts = if let super::Stmt::Block(b) = stmt {
+          b
+        }else {
+          Statements(vec![(unsafe{crate::LINE}, stmt)])
+        };
+
+        Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })
+      }
   
       // 解析字面量或变量
       _=> {

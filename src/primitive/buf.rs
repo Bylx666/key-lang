@@ -26,6 +26,16 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"splice"=> splice(v, args),
     b"fill"=> fill(v, args),
     b"fill_clone"=> fill_clone(v, args),
+    b"expand"=> expand(v, args),
+    b"rotate"=> rotate(v, args),
+    b"concat"=> concat(v, args),
+    b"concat_clone"=> concat_clone(v, args),
+    b"join"=> join(v, args),
+    b"fold"=> fold(v, args, scope),
+    b"slice"=> slice(v, args),
+    b"slice_clone"=> slice_clone(v, args),
+    b"includes"=> includes(v, args),
+    b"index_of"=> index_of(v, args),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -424,9 +434,147 @@ fn fill_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   Litr::Buf(v)
 }
 
+/// 扩大vec容量 如果空间足够可能会不做任何事
+fn expand(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let n = to_usize(args.get(0).expect("buf.expand需要一个整数作为扩大字节数"));
+  v.reserve(n);
+  Litr::Uninit
+}
 
-// fill expand(reserve)
-// rotate
+/// 横向旋转数组, 相当于整体移动并将溢出值移到另一边
+fn rotate(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let mut n = to_usize(args.get(0).expect("buf.rotate需要一个整数代表移动字节数"));
+  // 使旋转大小永小于数组长度
+  n %= v.len();
+  // 如果第二个参数传了true就左移
+  if let Some(arg1) = args.get(1) {
+    if let Litr::Bool(arg1) = &**arg1 {
+      if *arg1 {
+        v.rotate_left(n);
+        return Litr::Uninit;
+      }
+    }
+  }
+  // 否则右移
+  v.rotate_right(n);
+  Litr::Uninit
+}
 
-// concat join join_str join_hex to_str
+/// 将另一个Buf连接到自己后面
+fn concat(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let other_tmp;
+  let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
+    Litr::List(b)=> {
+      other_tmp = b.iter().map(|n|to_u8(n)).collect();
+      &other_tmp
+    }
+    Litr::Buf(b)=> b,
+    n=> {
+      v.push(to_u8(n));
+      return Litr::Uninit;
+    }
+  };
+  v.extend_from_slice(other);
+  Litr::Uninit
+}
 
+/// concat复制版本
+fn concat_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let mut v = v.clone();
+  let other_tmp;
+  let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
+    Litr::List(b)=> {
+      other_tmp = b.iter().map(|n|to_u8(n)).collect();
+      &other_tmp
+    }
+    Litr::Buf(b)=> b,
+    n=> {
+      v.push(to_u8(n));
+      return Litr::Uninit;
+    }
+  };
+  v.extend_from_slice(other);
+  Litr::Buf(v)
+}
+
+/// 将十六进制数以字符的格式渲染, 传入一个分隔符
+fn join(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  if v.len()==0 {return Litr::Str(String::new());}
+
+  let sep = if let Some(s) = args.get(0) {
+    if let Litr::Str(s) = &**s {s}else {
+      panic!("buf.join第一个参数只能是字符")
+    }
+  }else {""};
+
+  use std::fmt::Write;
+  let mut s = String::new();
+  s.write_fmt(format_args!("{:02X}",v[0]));
+  for n in &v[1..] {
+    s.write_fmt(format_args!("{sep}{n:02X}"));
+  }
+  Litr::Str(s)
+}
+
+/// 嘎嘎复制和计算, 将整个数组折叠成一个值
+fn fold(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let mut init = args.get(0).expect("buf.fold需要一个初始值").clone().own();
+  let f = match &**args.get(1).expect("buf.fold需要第二个参数的函数来处理数据") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.fold第二个参数只能是函数")
+  };
+  v.iter().fold(init, |a, b|{
+    scope.call(vec![CalcRef::Own(a), CalcRef::Own(Litr::Uint(*b as usize))], f)
+  })
+}
+
+/// 将自己切成指定范围的数据
+fn slice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let len = v.len();
+  let start = args.get(0).map_or(0, |n|to_usize(n));
+  let end = args.get(0).map_or(len, |n|to_usize(n));
+
+  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
+  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
+
+  v.copy_within(start..end, 0);
+  // SAFETY: end必定小于数组长度, 因此end - start必定小于数组长度
+  unsafe { v.set_len(end - start) }
+  Litr::Uninit
+}
+
+/// slice的复制版本
+fn slice_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let len = v.len();
+  let start = args.get(0).map_or(0, |n|to_usize(n));
+  let end = args.get(0).map_or(len, |n|to_usize(n));
+
+  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
+  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
+
+  Litr::Buf(v[start..end].to_vec())
+}
+
+/// 是否存在一个数
+fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
+  Litr::Bool(match v.iter().position(|n|*n==find) {
+    Some(_)=> true,
+    None=> false
+  })
+}
+
+/// 找数组中第一个所指数字
+fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
+  Litr::Int(match v.iter().position(|n|*n==find) {
+    Some(n)=> n as isize,
+    None=> -1
+  })
+}
+
+/// 传入返回bool的函数, 找第一个得到true的索引
+fn first_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  Litr::Uninit
+}
+// base64 alloc
