@@ -17,14 +17,16 @@ static mut LINE:usize = 0;
 
 fn main()-> ExitCode {
   // 自定义报错
-  std::panic::set_hook(Box::new(|inf| {
-    use crate::utils::date;
-    let line = unsafe{LINE};
-    let s = if let Some(payload) = inf.payload().downcast_ref::<&'static str>() {
-      payload
-    }else {"错误"};
-    println!("\n> {}\n  第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, line, date());
-  }));
+  // std::panic::set_hook(Box::new(|inf| {
+  //   use crate::utils::date;
+  //   let line = unsafe{LINE};
+  //   let s = if let Some(mes) = inf.payload().downcast_ref::<&'static str>() {
+  //     mes
+  //   }else if let Some(mes) = inf.payload().downcast_ref::<String>() {
+  //     mes
+  //   }else{"错误"};
+  //   println!("\n> {}\n  第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, line, date());
+  // }));
 
   // 基本类型的方法，也就是所有litr的prop
   // @index_set @next之类的
