@@ -35,7 +35,13 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"slice"=> slice(v, args),
     b"slice_clone"=> slice_clone(v, args),
     b"includes"=> includes(v, args),
-    b"index_of"=> index_of(v, args),
+    b"index_of"=> index_of(v, args, scope),
+    b"r_index_of"=> r_index_of(v, args, scope),
+    b"all"=> all(v, args, scope),
+    b"min"=> min(v),
+    b"max"=> max(v),
+    b"part"=> part(v, args, scope),
+    b"read"=> read(v, args),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -564,17 +570,120 @@ fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   })
 }
 
-/// 找数组中第一个所指数字
-fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
-  Litr::Int(match v.iter().position(|n|*n==find) {
+/// 找数组中第一个所指数字, 也可以传函数来自定义判断
+fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
+    Litr::Func(f)=> {
+      v.iter().position(|n|
+        match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
+          Litr::Bool(n)=> n,
+          _=> false
+        })
+    }
+    n=> {
+      let find = to_u8(n);
+      v.iter().position(|n|*n==find)
+    }
+  };
+  Litr::Int(match res {
     Some(n)=> n as isize,
     None=> -1
   })
 }
 
-/// 传入返回bool的函数, 找第一个得到true的索引
-fn first_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  Litr::Uninit
+/// index_of的反向版本
+fn r_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
+    Litr::Func(f)=> {
+      v.iter().rev().position(|n|
+        match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
+          Litr::Bool(n)=> n,
+          _=> false
+        })
+    }
+    n=> {
+      let find = to_u8(n);
+      v.iter().rev().position(|n|*n==find)
+    }
+  };
+  Litr::Int(match res {
+    Some(n)=> (v.len() - n) as isize,
+    None=> -1
+  })
 }
+
+/// 测试所有元素是否都能让传入函数返回true
+fn all(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("buf.all需要传入一个函数来判断元素是否所需") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.all第一个参数必须是函数")
+  };
+  let b = v.iter().all(|n|
+    match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
+      Litr::Bool(b)=> b,
+      _=> false
+    });
+  Litr::Bool(b)
+}
+
+/// 找最小值
+fn min(v:&mut Vec<u8>)-> Litr {
+  Litr::Uint(v.iter().min().copied().unwrap_or(0) as _)
+}
+
+/// 找最大值
+fn max(v:&mut Vec<u8>)-> Litr {
+  Litr::Uint(v.iter().max().copied().unwrap_or(0) as _)
+}
+
+/// 像是filter,但自己会变成filter剩下的内容
+fn part(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("buf.part需要传入一个函数来判断元素是否所需") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.part第一个参数必须是函数")
+  };
+  let (ret, this) = v.iter().partition(|n|
+    match scope.call(vec![CalcRef::Own(Litr::Uint(**n as usize))], f) {
+      Litr::Bool(b)=> b,
+      _=> false
+    });
+  *v = this;
+  Litr::Buf(ret)
+}
+
+/// 在指定偏移读取一个Uint, 第三个参数取决于机器的大小端, true不一定指大端序
+fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  let index = args.get(0).map_or(0, |n|to_usize(n));
+  let sz = args.get(1).map_or(8, |n|to_usize(n));
+  let big_endian = args.get(2).map_or(false, |n|
+    match &**n {
+      Litr::Bool(b)=> *b,
+      _=> false
+    });
+  
+  // 访问溢出时直接返回0
+  if sz / 8 + index >= v.len() {
+    return Litr::Uint(0);
+  }
+
+  unsafe {
+    let start = v.as_ptr().add(index);
+    macro_rules! imp {($($n:literal:$t:ty)*)=> {
+      match sz {
+        8=> *start as usize,
+        $(
+          $n=> {
+            let n = (start as *const $t).read_unaligned();
+            (if big_endian {
+              n.swap_bytes()
+            }else {n}) as usize
+          }
+        )*
+        _=> panic!("buf.read第二个参数只允许8,16,32,64")
+      }
+    }}
+    Litr::Uint(imp!(16:u16 32:u32 64:u64))
+  }
+}
+
 // base64 alloc

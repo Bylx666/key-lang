@@ -15,10 +15,6 @@ false.rev == false.rev() == true
 
 唯一属性type, 值是Str: local extern native
 
-## Buf
-
-len ref capacity
-
 ## List
 
 len capacity
