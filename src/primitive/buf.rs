@@ -42,6 +42,8 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"max"=> max(v),
     b"part"=> part(v, args, scope),
     b"read"=> read(v, args),
+    b"as_utf8"=> as_utf8(v),
+    b"as_utf16"=> as_utf16(v),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -683,6 +685,63 @@ fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
       }
     }}
     Litr::Uint(imp!(16:u16 32:u32 64:u64))
+  }
+}
+
+/// 以utf8解码
+fn as_utf8(v:&mut Vec<u8>)-> Litr {
+  Litr::Str(String::from_utf8_lossy(v).into_owned())
+}
+
+/// 以utf16解码
+fn as_utf16(v:&mut Vec<u8>)-> Litr {
+  let s = unsafe {
+    let ptr = v.as_ptr() as *const u16;
+    // 无符号数除2会自动向下取整
+    let len = v.len() / 2;
+    std::slice::from_raw_parts(ptr, len)
+  };
+  Litr::Str(String::from_utf16_lossy(s))
+}
+
+
+// - statics -
+pub fn statics()-> Vec<(Interned, NativeFn)> {
+  vec![
+    (intern(b"new"), s_new),
+    (intern(b"new_uninit"), s_new_uninit)
+  ]
+}
+
+/// 创建n长度的Buf
+fn s_new(args:Vec<CalcRef>, cx:Scope)-> Litr {
+  // 如果传入了大小就按大小分配
+  if let Some(n) = args.get(0) {
+    let n = to_usize(n);
+
+    unsafe {
+      let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
+      let alc = unsafe {std::alloc::alloc_zeroed(layout)};
+      Litr::Buf(Vec::from_raw_parts(alc, n, n))
+    }
+  }else {
+    Litr::Buf(Vec::new())
+  }
+}
+
+/// 创建n长度未初始化数组
+fn s_new_uninit(args:Vec<CalcRef>, cx:Scope)-> Litr {
+  // 如果传入了大小就按大小分配
+  if let Some(n) = args.get(0) {
+    let n = to_usize(n);
+
+    unsafe {
+      let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
+      let alc = unsafe {std::alloc::alloc(layout)};
+      Litr::Buf(Vec::from_raw_parts(alc, n, n))
+    }
+  }else {
+    Litr::Buf(Vec::new())
   }
 }
 
