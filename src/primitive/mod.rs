@@ -14,6 +14,7 @@ use crate::intern::{Interned, intern};
 pub mod kstd;
 
 pub mod buf;
+pub mod list;
 pub mod int;
 pub mod sym;
 pub mod obj;

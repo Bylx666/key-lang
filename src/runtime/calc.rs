@@ -337,55 +337,15 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
     }
   }
 
-  /// 寻找引用和引用本体所在的作用域
-  fn get_ref_with_scope(mut this: Scope, e: &Expr)-> (CalcRef, Scope) {
-    match e {
-      Expr::Kself=> {
-        let v = CalcRef::Ref(unsafe{&mut *this.kself});
-        let mut scope = this;
-        let kself = this.kself;
-        while let Some(prt) = scope.parent {
-          // 如果self是顶级作用域的self就返回顶级作用域
-          if prt.kself == kself {
-            return (v, prt);
-          }
-          scope = prt;
-        }
-        (v, this)
-      }
-      Expr::Property(e, find)=> {
-        let (from, scope) = get_ref_with_scope(this, &e);
-        let p = get_prop_ref(this, from, find);
-        (p, scope)
-      }
-      Expr::Variant(id)=> {
-        let (rf, scope) = this.var_with_scope(*id);
-        (CalcRef::Ref(rf), scope)
-      }
-      Expr::Index{left, i}=> {
-        let (mut left, scope) = get_ref_with_scope(this, &left);
-        let i = this.calc_ref(i);
-        (index(left, i), scope)
-      }
-      _=> {
-        let v = this.calc(e);
-        // 如果是需要计算的量，就代表其作用域就在this
-        (CalcRef::Own(v), this)
-      }
-    }
-  }
-  use outlive::may_add_ref;
-
   match left {
     // 捕获native instance的setter
     Expr::Property(e, find)=> {
-      let (mut left, scope) = get_ref_with_scope(this, &e);
+      let left = this.calc_ref(e);
       // 如果左值不是引用就没必要继续运行
       let left = match left {
         CalcRef::Ref(p)=> unsafe {&mut*p},
         _=> return
       };
-      may_add_ref(&right, scope);
       match left {
         Litr::Ninst(inst)=> {
           let cls = unsafe {&*inst.cls};
@@ -400,14 +360,13 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
 
     // 捕获index_set
     Expr::Index{left,i}=> {
-      let (mut left, scope) = get_ref_with_scope(this, &left);
+      let left = this.calc_ref(left);
       // 如果左值不是引用就没必要继续运行
       let left = match left {
         CalcRef::Ref(p)=> unsafe {&mut*p},
         _=> return
       };
       let i = this.calc_ref(i);
-      may_add_ref(&right, scope);
       match left {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
@@ -435,8 +394,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
     }
 
     _=>{
-      let (mut left, scope) = get_ref_with_scope(this, left);
-      may_add_ref(&right, scope);
+      let mut left = this.calc_ref(left);
       *left = right;
     }
   }

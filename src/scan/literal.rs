@@ -1,14 +1,12 @@
-use super::{
-  charts, expr::*, intern, stmt::{ClassDef, ClassFunc, Statements}, Scanner
-};
-
+use super::*;
 use crate::{
   native::NativeInstance, 
-  runtime::{calc::CalcRef, Module, Scope}
+  runtime::{calc::CalcRef, Module, Scope},
+  intern::Interned,
+  scan::stmt::ClassDef
 };
-use crate::intern::Interned;
 
-use std::collections::HashMap;
+pub use crate::runtime::outlive::LocalFunc;
 
 #[derive(Debug, Clone)]
 pub enum Litr {
@@ -147,30 +145,6 @@ pub struct ArgDecl {
 pub struct LocalFuncRaw {
   pub argdecl: Vec<ArgDecl>, 
   pub stmts: Statements
-}
-
-/// 本地函数指针
-#[derive(Debug, Clone)]
-pub struct LocalFunc {
-  /// pointer
-  pub ptr:*const LocalFuncRaw,
-  /// 来自的作用域
-  pub scope: Scope,
-}
-impl LocalFunc {
-  /// 将本地函数定义和作用域绑定
-  pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
-    LocalFunc{
-      ptr,
-      scope
-    }
-  }
-}
-impl std::ops::Deref for LocalFunc {
-  type Target = LocalFuncRaw;
-  fn deref(&self) -> &Self::Target {
-    unsafe {&*self.ptr}
-  }
 }
 
 /// 插件只有一个Native类型

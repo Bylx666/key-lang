@@ -744,5 +744,3 @@ fn s_new_uninit(args:Vec<CalcRef>, cx:Scope)-> Litr {
     Litr::Buf(Vec::new())
   }
 }
-
-// base64 alloc

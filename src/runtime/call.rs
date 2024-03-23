@@ -130,7 +130,7 @@ impl Scope {
       vars,
       imports: f.scope.imports,
       exports: f.scope.exports,
-      outlives: Outlives::new(),
+      outlives: AtomicUsize::new(0),
       ended: false
     });
     scope.run(&f.stmts);

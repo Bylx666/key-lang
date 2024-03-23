@@ -2,57 +2,89 @@
 //! 
 //! 具体思路见Outlives结构
 
-use super::{LocalFuncRaw, LocalFunc};
+use super::LocalFuncRaw;
 use std::sync::atomic::Ordering;
 
 
 use std::sync::atomic::AtomicUsize;
 use super::Scope;
+fn ln()->usize{unsafe{crate::LINE}}
 
-/// 作用域的outlive引用计数系统
-#[derive(Debug, Default)]
-pub struct Outlives {
-  /// 该作用域定义函数生命周期被延长(被outlive)的次数
-  /// 
-  /// 若作用域结束时该值大于0就会等被延长函数生命周期结束后再回收
-  count: AtomicUsize,
-  /// 该作用域得到的延长了生命周期的函数列表
-  /// 
-  /// 在该作用域结束时会为列表中所有函数减少一层`count`
-  to_drop: Vec<LocalFunc>
+/// 本地函数指针
+#[derive(Debug)]
+pub struct LocalFunc {
+  /// pointer
+  pub ptr:*const LocalFuncRaw,
+  /// 来自的作用域
+  pub scope: Scope,
 }
-impl Outlives {
-  pub fn new()-> Self {
-    Outlives {
-      count:AtomicUsize::new(0),
-      to_drop:Vec::new()
+
+impl LocalFunc {
+  /// 将本地函数定义和作用域绑定
+  pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
+    // 创建时加一层, 对应作用域结束时的减一层
+    // println!("{:02}: func new : {:p}",ln(),ptr);
+    increase_scope_count(scope);
+    LocalFunc{
+      ptr,
+      scope
     }
   }
 }
 
-/// 将函数生命周期延长至目标作用域结束
-/// 
-/// 目标作用域如果在函数定义处的作用域内就无效果(因为生命周期根本不会变长)
-/// 
-/// 为此函数定义处的作用域和其所有父作用域增加一次引用计数
-/// 
-/// 并为outlive的目标作用域托付管理一层该函数的引用计数
-pub fn outlive_to(f:LocalFunc, mut to:Scope) {
-  if to.subscope_of(f.scope) {
-    return;
-  };
-  outlive_static(f.scope);
-  to.outlives.to_drop.push(f);
+impl std::ops::Deref for LocalFunc {
+  type Target = LocalFuncRaw;
+  fn deref(&self) -> &Self::Target {
+    unsafe {&*self.ptr}
+  }
 }
 
-/// 将作用域生命周期延长至永久
-/// 
-/// 只会增加一层作用域的引用计数，但不会托付to_drop
-/// 
-/// 程序期间不会回收此作用域，目前只用于ks模块导出函数
-pub fn outlive_static(mut scope:Scope) {
+impl Clone for LocalFunc {
+  fn clone(&self) -> Self {
+    let scope = self.scope;
+    // println!("{:02}: func clone : {:p}",ln(), self.ptr);
+    // 只要复制就加一次函数定义处作用域引用计数
+    increase_scope_count(scope);
+    LocalFunc {ptr: self.ptr, scope}
+  }
+}
+
+// 因为Drop只有ks作用域释放才会触发, 所以必须把Drop手动实现在ks作用域结束的地方
+// 但不是所有的LocalFunc都会被作用域持有
+// 像是a=||{};0+a的写法会复制一遍a函数但被复制的部分无处持有,会被直接rust drop
+// 或者a=||{};a=0的时候,此函数会直接原地drop
+impl Drop for LocalFunc {
+  fn drop(&mut self) {
+    let count = &self.scope.outlives;
+    if !self.scope.ended {
+      // println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
+      count.fetch_sub(1, Ordering::Relaxed);
+    }
+  }
+}
+
+
+/// 增加一层作用域的引用计数
+pub fn increase_scope_count(mut scope:Scope) {
   loop {
-    scope.outlives.count.fetch_add(1, Ordering::Relaxed);
+    scope.outlives.fetch_add(1, Ordering::Relaxed);
+    if let Some(prt) = scope.parent {
+      scope = prt;
+    }else {
+      break;
+    }
+  }
+}
+
+/// 作用域减少一层引用计数
+/// 需要保证scope.outlive大于0
+pub fn decrease_scope_count(mut scope: Scope) {
+  loop {
+    let prev = scope.outlives.fetch_sub(1, Ordering::Relaxed);
+    if prev == 1 && scope.ended {
+      // println!("{:02}: scope drop by func: {:p}",ln(), scope.ptr);
+      unsafe{ std::ptr::drop_in_place(scope.ptr) }
+    }
     if let Some(prt) = scope.parent {
       scope = prt;
     }else {
@@ -62,53 +94,36 @@ pub fn outlive_static(mut scope:Scope) {
 }
 
 
-/// 作用域结束时使用此函数来回收作用域中引用到的所有函数
+/// 作用域结束时使用此函数来回收作用域中持有的所有函数
 /// 
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
+  scope.ended = true;
   // 回收作用域本身
-  if scope.outlives.count.load(Ordering::Relaxed) == 0 {
+  if scope.outlives.load(Ordering::Relaxed) == 0 {
+    // println!("{:02}: scope drop by end: {:p}",ln(), scope.ptr);
     unsafe { std::ptr::drop_in_place(scope.ptr) }
   }
-
-  /// 作用域减少一层引用计数
-  #[inline]
-  fn sub_count(mut scope: Scope) {
-    loop {
-      let prev = scope.outlives.count.fetch_sub(1, Ordering::Relaxed);
-      if prev == 1 && scope.ended {
-        unsafe{ std::ptr::drop_in_place(scope.ptr) }
-      }
-      if let Some(prt) = scope.parent {
-        scope = prt;
-      }else {
-        break;
-      }
-    }
-  }
-
-  let mut to_drop = std::mem::take(&mut scope.outlives.to_drop);
-  for f in to_drop.into_iter() {
-    let scope = f.scope;
-    sub_count(scope);
+  
+  for (_, v) in &scope.vars {
+    drop_func(v);
   }
 }
 
 
-/// 如果值包含本地函数就为函数定义处增加一层引用计数
-pub fn may_add_ref(v:&crate::scan::literal::Litr, target_scope: Scope) {
+/// 为一个Litr中所有LocalFunc减一层引用计数
+pub fn drop_func(v:&crate::scan::literal::Litr) {
   use crate::scan::literal::{Litr, Function};
   match v {
     Litr::Func(f)=> {
       if let Function::Local(f) = f {
-        outlive_to(f.clone(),target_scope);
+        // println!("{:02}: func drop by end : {:p}",ln(), f.ptr);
+        decrease_scope_count(f.scope);
       }
     }
-    Litr::List(l)=> 
-      l.iter().for_each(|item|may_add_ref(item, target_scope)),
-    Litr::Inst(inst)=> 
-      inst.v.iter().for_each(|item|may_add_ref(item, target_scope)),
-    Litr::Obj(map)=> map.values().for_each(|item|may_add_ref(item, target_scope)),
+    Litr::List(l)=> l.iter().for_each(|item|drop_func(item)),
+    Litr::Inst(inst)=> inst.v.iter().for_each(|item|drop_func(item)),
+    Litr::Obj(map)=> map.values().for_each(|item|drop_func(item)),
     _=> ()
   }
 }

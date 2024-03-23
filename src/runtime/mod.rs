@@ -15,8 +15,7 @@ use crate::scan::{
 use crate::native::{NativeClassDef, NativeMod};
 use self::calc::CalcRef;
 
-mod outlive;
-pub use outlive::Outlives;
+pub mod outlive;
 
 mod evil;
 pub mod calc;
@@ -58,7 +57,7 @@ pub struct ScopeInner {
   /// ks本身作为模块导出的指针
   pub exports: *mut LocalMod,
   /// 该作用域生命周期会被outlive的函数延长
-  pub outlives: outlive::Outlives,
+  pub outlives: AtomicUsize,
   /// 遇到return时会提前变为true
   /// 用于标识return. break有自己的判断方法
   pub ended: bool
@@ -88,9 +87,9 @@ impl std::ops::DerefMut for Scope {
 
 impl Scope {
   pub fn new(s:ScopeInner)-> Self {
-    Scope {
-      ptr: Box::into_raw(Box::new(s))
-    }
+    let ptr = Box::into_raw(Box::new(s));
+    // println!("{:02}: scope new : {:p}",unsafe{LINE},ptr);
+    Scope {ptr}
   }
 
   /// 确认此作用域是否为一个作用域的子作用域
@@ -120,7 +119,7 @@ impl Scope {
       vars: Vec::with_capacity(16),
       imports: self.imports,
       exports: self.exports,
-      outlives: Outlives::new(),
+      outlives: AtomicUsize::new(0),
       ended: false
     })
   }
@@ -140,7 +139,6 @@ impl Scope {
         return;
       }
     }
-    self.ended = true;
     outlive::scope_end(self);
   }
 
@@ -159,22 +157,6 @@ impl Scope {
     None
   }
 
-  /// 在作用域找一个变量并返回其所在作用域
-  pub fn var_with_scope(&mut self, s:Interned)-> (&mut Litr, Scope) {
-    let scope = self.clone();
-    let inner = &mut (**self);
-    for (p, v) in inner.vars.iter_mut().rev() {
-      if *p == s {
-        return (v,scope);
-      }
-    }
-
-    if let Some(parent) = &mut inner.parent {
-      return parent.var_with_scope(s);
-    }
-    panic!("无法找到变量 '{}'", s.str());
-  }
-
 
   /// 在当前use过的类声明中找对应的类
   pub fn find_class(&self, s:Interned)-> Option<Class> {
@@ -188,6 +170,7 @@ impl Scope {
     }
     None
   }
+
   /// 在一个模块中找一个类声明
   pub fn find_class_in(&self, modname:Interned, s: Interned)-> Class {
     let module = self.find_mod(modname);
@@ -264,7 +247,7 @@ pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<(Interned, Module)>, expo
     imports,
     exports,
     vars, 
-    outlives: Outlives::new(),
+    outlives: AtomicUsize::new(0),
     ended: false
   })
 }

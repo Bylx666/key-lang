@@ -67,7 +67,7 @@ impl Scope {
         let func_raw = Box::leak(Box::new(f.clone()));
         let f = LocalFunc::new(func_raw, *self);
         // 将函数定义处的作用域生命周期永久延长
-        outlive::outlive_static(f.scope);
+        outlive::increase_scope_count(f.scope);
         self.vars.push((*id, Litr::Func(Function::Local(f.clone()))));
         unsafe{(*self.exports).funcs.push((*id,f))}
       }
@@ -81,7 +81,7 @@ impl Scope {
           ClassFunc { name: v.name, f: LocalFunc::new(ptr, *self), public: v.public}
         };
         // 延长作用域生命周期
-        outlive::outlive_static(*self);
+        outlive::increase_scope_count(*self);
 
         let methods:Vec<_> = raw.methods.iter().map(binder).collect();
         let statics:Vec<_> = raw.statics.iter().map(binder).collect();
@@ -162,7 +162,6 @@ impl Scope {
           Stmt::Break=> panic!("不允许`for v:iter break`的写法"),
           Stmt::Continue=> panic!("不允许`for v:iter continue`的写法`"),
         }
-        scope.ended = true;
         outlive::scope_end(scope);
       },
 
@@ -201,7 +200,6 @@ fn start_loop(mut this:Scope, mut condition:impl FnMut()-> bool, exec:&Box<Stmt>
       scope.class_uses.clear();
       loop_run(scope, &mut breaked, exec);
     }
-    scope.ended = true;
     outlive::scope_end(scope);
   // 单语句将由当前作用域代为执行,不再创建新作用域
   }else {
