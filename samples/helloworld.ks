@@ -1,12 +1,16 @@
 
 //mod D:\code\rs\key-native\target\debug\key_native.dll> m
 //mod D:\code\rs\key-lang\samples\testmod.ks> m;
-  let b() {
-    let ba = a;
-  };
+let out;
+let b();
+{
+  let nn = 200;
   let a() {
+    log(nn)
     let ab = b;
   }
-  a()
-  b()
+  out = a;
+}
+out()
+out = 9;
 //gb()

@@ -56,10 +56,8 @@ impl Clone for LocalFunc {
 impl Drop for LocalFunc {
   fn drop(&mut self) {
     let count = &self.scope.outlives;
-    if !self.scope.ended {
-      // println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
-      count.fetch_sub(1, Ordering::Relaxed);
-    }
+    // println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
+    decrease_scope_count(self.scope);
   }
 }
 
@@ -77,8 +75,11 @@ pub fn increase_scope_count(mut scope:Scope) {
 }
 
 /// 作用域减少一层引用计数
-/// 需要保证scope.outlive大于0
 pub fn decrease_scope_count(mut scope: Scope) {
+  // ks作用域结束时会手动减一层引用计数, 回收时又会碰到Drop再减一层
+  // 此判断防止回收时的Drop把0减成u64::MAX
+  if scope.outlives.load(Ordering::Relaxed) == 0 {return;}
+
   loop {
     let prev = scope.outlives.fetch_sub(1, Ordering::Relaxed);
     if prev == 1 && scope.ended {
@@ -98,32 +99,31 @@ pub fn decrease_scope_count(mut scope: Scope) {
 /// 
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
+  /// 为一个Litr中所有LocalFunc减一层引用计数
+  pub fn drop_func(v:&crate::scan::literal::Litr) {
+    use crate::scan::literal::{Litr, Function};
+    match v {
+      Litr::Func(f)=> {
+        if let Function::Local(f) = f {
+          // println!("{:02}: func drop by end : {:p}",ln(), f.ptr);
+          decrease_scope_count(f.scope);
+        }
+      }
+      Litr::List(l)=> l.iter().for_each(|item|drop_func(item)),
+      Litr::Inst(inst)=> inst.v.iter().for_each(|item|drop_func(item)),
+      Litr::Obj(map)=> map.values().for_each(|item|drop_func(item)),
+      _=> ()
+    }
+  }
+
   scope.ended = true;
+  for (_, v) in &scope.vars {
+    drop_func(v);
+  }
+
   // 回收作用域本身
   if scope.outlives.load(Ordering::Relaxed) == 0 {
     // println!("{:02}: scope drop by end: {:p}",ln(), scope.ptr);
     unsafe { std::ptr::drop_in_place(scope.ptr) }
-  }
-  
-  for (_, v) in &scope.vars {
-    drop_func(v);
-  }
-}
-
-
-/// 为一个Litr中所有LocalFunc减一层引用计数
-pub fn drop_func(v:&crate::scan::literal::Litr) {
-  use crate::scan::literal::{Litr, Function};
-  match v {
-    Litr::Func(f)=> {
-      if let Function::Local(f) = f {
-        // println!("{:02}: func drop by end : {:p}",ln(), f.ptr);
-        decrease_scope_count(f.scope);
-      }
-    }
-    Litr::List(l)=> l.iter().for_each(|item|drop_func(item)),
-    Litr::Inst(inst)=> inst.v.iter().for_each(|item|drop_func(item)),
-    Litr::Obj(map)=> map.values().for_each(|item|drop_func(item)),
-    _=> ()
   }
 }
