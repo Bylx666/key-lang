@@ -1,6 +1,6 @@
 use crate::{
   runtime::{calc::CalcRef, Scope}, 
-  scan::literal::Litr,
+  primitive::litr::Litr,
   intern::{Interned, intern},
   native::NativeFn
 };

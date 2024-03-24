@@ -1,4 +1,4 @@
-use crate::scan::literal::Litr;
+use crate::primitive::litr::Litr;
 use crate::runtime::{calc::CalcRef, Scope};
 
 pub fn log(args:Vec<CalcRef>, _cx:Scope)-> Litr {

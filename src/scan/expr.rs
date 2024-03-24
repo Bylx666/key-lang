@@ -1,5 +1,5 @@
 use super::{Scanner, charts};
-use super::literal::{
+use crate::primitive::litr::{
   KsType, Litr, LocalFuncRaw
 };
 use crate::intern::{intern, Interned};

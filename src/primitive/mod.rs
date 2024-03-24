@@ -2,24 +2,27 @@
 //! 
 //! 和对基本类型方法的实现
 
+pub mod litr;
+
+pub mod kstd;
+
+pub mod buf;
+// pub mod list;
+pub mod int;
+pub mod sym;
+pub mod obj;
+pub mod iter;
+pub mod func;
+
+use litr::Litr;
 use crate::native::{
   NativeClassDef, 
   NativeFn,
   NativeInstance
 };
 use crate::runtime::{calc::CalcRef, Class, Scope};
-use crate::scan::literal::Litr;
 use crate::intern::{Interned, intern};
 
-pub mod kstd;
-
-pub mod buf;
-pub mod list;
-pub mod int;
-pub mod sym;
-pub mod obj;
-pub mod iter;
-pub mod func;
 
 fn getter(_v:*mut NativeInstance, _get:Interned)-> Litr {Litr::Uninit}
 fn setter(_v:*mut NativeInstance, _set:Interned, _to:Litr) {}

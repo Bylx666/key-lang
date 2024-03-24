@@ -1,6 +1,11 @@
 //! Obj基本类型的静态方法
 
-use crate::{intern::{intern, Interned}, native::NativeFn, runtime::{calc::CalcRef, Scope}, scan::literal::Litr};
+use crate::{
+  intern::{intern, Interned}, 
+  native::NativeFn, 
+  runtime::{calc::CalcRef, Scope},
+  primitive::litr::Litr
+};
 use std::collections::HashMap;
 
 pub fn statics()-> Vec<(Interned, NativeFn)> {

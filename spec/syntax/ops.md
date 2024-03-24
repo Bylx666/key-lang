@@ -20,9 +20,6 @@ instance.prop
 Assignments = += -= *= /= %= &= |= ^= <<= >>=
 
 uninit的逻辑(&&||)和false行为相同
-比较数字时会将整数统一为Int
-浮点数和整数会统一为浮点数
-
 buffer比较依赖以下算法，以==为例的源码如下。其他比较运算符可直接原地替换==得到正确的结果。
 ```rust
 fn compare(left: &[u8], right: &[u8]) -> bool {
@@ -40,6 +37,12 @@ fn compare(left: &[u8], right: &[u8]) -> bool {
 ```
 
 Str, Instance, List, Obj也依照以上算法比较。
+
+对于List和Instance,遇到无法比较的类型时会提前返回false
+
+Obj底层是哈希表,由于其无序性,使用大于和小于时一律得到false.
+
+对于Instance, 如果两个实例不属于同一个class的话会直接返回false
 
 赋值就是复制，不太好笑。。
 

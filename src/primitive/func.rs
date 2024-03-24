@@ -2,7 +2,8 @@ use crate::{
   intern::{intern, Interned}, 
   native::{BoundNativeMethod, NaitveInstanceRef, NativeFn}, 
   runtime::{calc::CalcRef, Scope}, 
-  scan::{literal::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, stmt::Statements}
+  primitive::litr::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, 
+  scan::stmt::Statements
 };
 
 pub fn statics()-> Vec<(Interned, NativeFn)> {

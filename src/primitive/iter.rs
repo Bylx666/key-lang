@@ -1,6 +1,11 @@
 use std::cell::UnsafeCell;
 
-use crate::{intern::intern, native::NativeMethod, runtime::calc::CalcRef, scan::literal::{Litr, LocalFunc}};
+use crate::{
+  intern::intern, 
+  native::NativeMethod, 
+  runtime::calc::CalcRef,
+  primitive::litr::{Litr, LocalFunc}
+};
 
 use super::sym::Symbol;
 

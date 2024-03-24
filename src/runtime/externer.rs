@@ -4,11 +4,7 @@ use std::mem::transmute;
 use std::slice::from_raw_parts as raw;
 use crate::intern::Interned;
 use crate::c::{dlopen,dlsym};
-
-
-use crate::scan::literal::{
-  Litr, LocalFunc
-};
+use crate::primitive::litr::*;
 
 static mut EXEC:Option<LocalFunc> = None;
 
@@ -56,7 +52,7 @@ pub fn translate(arg:Litr)-> Result<usize,String> {
     Str(p)=> Ok((*p).as_ptr() as usize),
     Buf(v)=> Ok(v.as_ptr() as usize),
     Func(exec)=> {
-      use crate::scan::literal::Function::*;
+      use Function::*;
       match exec {
         Local(f)=> translate_local_impl! { f 
           0  agent0 ()

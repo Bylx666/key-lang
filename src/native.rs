@@ -1,7 +1,10 @@
 //! 提供Native Module的接口
 
 use crate::{
-  c::Clib, intern::{intern, Interned}, scan::{literal::{Function, Litr}, stmt::LocalMod}
+  c::Clib, 
+  intern::{intern, Interned}, 
+  scan::stmt::LocalMod,
+  primitive::litr::Litr
 };
 use crate::runtime::{calc::CalcRef, Scope};
 

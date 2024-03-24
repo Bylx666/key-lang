@@ -1,7 +1,9 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::{native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance}, primitive};
-
+use crate::{
+  native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance}, 
+  primitive::{self, litr::*}
+};
 use super::*;
 
 /// calc_ref既可能得到引用，也可能得到计算过的值
@@ -609,56 +611,6 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     }};
   }
 
-  /// 比大小宏
-  /// 
-  /// 需要读堆的数据类型都需要以引用进行比较，减少复制开销
-  macro_rules! impl_ord {($o:tt) => {{
-    fn match_basic(l:&Litr,r:&Litr)-> bool {
-      match (l, r) {
-        (Uninit, Uninit)=> 0 $o 0,
-        (Uint(l),Uint(r))=> l $o r,
-        (Uint(l),Int(r))=> l $o &(*r as usize),
-        (Uint(l),Float(r))=> l $o &(*r as usize),
-        (Int(l), Uint(r))=> l $o &(*r as isize),
-        (Int(l), Int(r))=> l $o r,
-        (Int(l), Float(r))=> l $o &(*r as isize),
-        (Float(l), Uint(r))=> l $o &(*r as f64),
-        (Float(l), Int(r))=> l $o &(*r as f64),
-        (Float(l), Float(r))=> l $o r,
-        (Bool(l), Bool(r))=> l $o r,
-        (Str(l), Str(r))=> l $o r,
-        (Buf(l), Buf(r))=> l $o r,
-        (List(l), List(r))=> match_list(l,r),
-        (Obj(l), Obj(r))=> {
-          if l.len() != r.len() {
-            false
-          }else {
-            l.iter().all(|(k, left)| r.get(k).map_or(false, |right| match_basic(left, right)))
-          }
-        },
-        (Inst(l),Inst(r))=> {
-          assert!(l.cls==r.cls, "实例类型不同无法比较");
-          match_list(&*l.v, &*r.v)
-        },
-        (Sym(l), Sym(r))=> l $o r,
-        _=> false
-      }
-    }
-
-    fn match_list(l:&[Litr], r:&[Litr])-> bool {
-      let len = l.len();
-      assert!(len==r.len(), "列表长度不同，无法比较");
-      for i in 0..len {
-        if !match_basic(&l[i],&r[i]) {
-          return false
-        };
-      }
-      true
-    }
-
-    Bool(match_basic(&*left,&*right))
-  }}}
-
   /// 逻辑符
   macro_rules! impl_logic {
     ($o:tt) => {{
@@ -711,12 +663,12 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     b">>=" => impl_unsigned_assign!(>>),
 
     // 比较
-    b"==" => impl_ord!(==),
-    b"!=" => impl_ord!(!=),
-    b">=" => impl_ord!(>=),
-    b"<=" => impl_ord!(<=),
-    b">" => impl_ord!(>),
-    b"<" => impl_ord!(<),
+    b"==" => Bool(&*left == &*right),
+    b"!=" => Bool(&*left != &*right),
+    b">=" => Bool(&*left >= &*right),
+    b"<=" => Bool(&*left <= &*right),
+    b">" => Bool(&*left > &*right),
+    b"<" => Bool(&*left < &*right),
 
     // 逻辑
     b"&&" => impl_logic!(&&),
@@ -725,4 +677,3 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     _=> panic!("未知运算符'{}'", String::from_utf8_lossy(&op))
   }
 }
-

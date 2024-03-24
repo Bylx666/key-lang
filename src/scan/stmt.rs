@@ -3,10 +3,10 @@ use crate::intern::{Interned,intern};
 use crate::native::NativeMod;
 use crate::runtime::{Scope, ScopeInner, Module};
 use crate::LINE;
-use super::{
-  literal::{Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType},
-  expr::Expr
+use crate::primitive::litr::{
+  Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType
 };
+use crate::scan::Expr;
 
 /// 语句列表
 #[derive(Debug, Clone, Default)]

@@ -100,8 +100,8 @@ pub fn decrease_scope_count(mut scope: Scope) {
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
   /// 为一个Litr中所有LocalFunc减一层引用计数
-  pub fn drop_func(v:&crate::scan::literal::Litr) {
-    use crate::scan::literal::{Litr, Function};
+  pub fn drop_func(v:&crate::primitive::litr::Litr) {
+    use crate::primitive::litr::{Litr, Function};
     match v {
       Litr::Func(f)=> {
         if let Function::Local(f) = f {

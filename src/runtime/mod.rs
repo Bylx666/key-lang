@@ -2,6 +2,13 @@
 //! 
 //! 将解析的ast放在实际作用域中运行
 
+pub mod outlive;
+
+mod evil;
+pub mod calc;
+mod call;
+mod externer;
+
 use crate::intern::{intern, Interned};
 use crate::LINE;
 use std::collections::HashMap;
@@ -14,13 +21,7 @@ use crate::scan::{
 };
 use crate::native::{NativeClassDef, NativeMod};
 use self::calc::CalcRef;
-
-pub mod outlive;
-
-mod evil;
-pub mod calc;
-mod call;
-mod externer;
+use crate::primitive::litr::*;
 
 
 #[derive(Debug, Clone)]

@@ -6,6 +6,7 @@ use crate::intern::{
   intern,
   Interned
 };
+use crate::primitive::litr::{Litr, KsType, ArgDecl};
 use crate::runtime::Scope;
 use crate::LINE;
 
@@ -15,7 +16,6 @@ pub mod literal;
 pub mod expr;
 
 use stmt::{Statements, Stmt};
-use literal::{Litr, KsType, ArgDecl};
 use expr::Expr;
 
 /// 将字符扫描为ast
