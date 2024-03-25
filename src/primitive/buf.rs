@@ -1,3 +1,6 @@
+//! buf类型的静态方法和方法
+//! 
+//! 同时包含了一些mem的函数
 
 use super::*;
 
@@ -44,6 +47,7 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"read"=> read(v, args),
     b"as_utf8"=> as_utf8(v),
     b"as_utf16"=> as_utf16(v),
+    b"to_list"=> Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect()),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -252,10 +256,10 @@ fn filter_clone(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 
 /// 在数组范围内进行就地复制
 fn copy_within(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let mut args = args.iter();
-  let start = to_usize(&**next_arg!(args "buf.copy_within需要传入第一个参数作为起始索引"));
-  let end = to_usize(&**next_arg!(args "buf.copy_within需要传入第二个参数作为结束索引"));
-  let dest = to_usize(&**next_arg!(args "buf.copy_within需要传入第三个参数作为复制目标位置索引"));
+  assert!(args.len()>=3, "buf.copy_within需要传入3个参数:起始索引,结束索引,复制目标索引");
+  let start = to_usize(args.get(0).unwrap());
+  let end = to_usize(args.get(1).unwrap());
+  let dest = to_usize(args.get(2).unwrap());
   let len = v.len();
 
   assert!(start <= end, "起始索引{start} 不可大于结束索引{end}");
@@ -709,7 +713,10 @@ fn as_utf16(v:&mut Vec<u8>)-> Litr {
 pub fn statics()-> Vec<(Interned, NativeFn)> {
   vec![
     (intern(b"new"), s_new),
-    (intern(b"new_uninit"), s_new_uninit)
+    (intern(b"new_uninit"), s_new_uninit),
+    (intern(b"from_list"), s_from_list),
+    (intern(b"from_iter"), s_from_iter),
+    (intern(b"from_ptr"), s_from_ptr)
   ]
 }
 
@@ -730,7 +737,7 @@ fn s_new(args:Vec<CalcRef>, cx:Scope)-> Litr {
 }
 
 /// 创建n长度未初始化数组
-fn s_new_uninit(args:Vec<CalcRef>, cx:Scope)-> Litr {
+fn s_new_uninit(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   // 如果传入了大小就按大小分配
   if let Some(n) = args.get(0) {
     let n = to_usize(n);
@@ -742,5 +749,38 @@ fn s_new_uninit(args:Vec<CalcRef>, cx:Scope)-> Litr {
     }
   }else {
     Litr::Buf(Vec::new())
+  }
+}
+
+/// 通过列表创建Buf
+fn s_from_list(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let ls = match &**args.get(0).expect("Buf::from_list需要传入一个列表") {
+    Litr::List(ls)=> ls,
+    _=> panic!("Buf::from_list第一个参数必须是列表")
+  };
+  Litr::Buf(ls.iter().map(|n|to_u8(n)).collect())
+}
+
+/// 通过迭代器创建Buf
+fn s_from_iter(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let from = args.get_mut(0).expect("Buf::from_iter需要一个允许迭代的元素");
+  let itr = iter::LitrIterator::new(&mut **from);
+  Litr::Buf(itr.map(|n|to_u8(&n)).collect())
+}
+
+/// 通过指针和长度创建一个复制版的Buf
+fn s_from_ptr(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  assert!(args.len()>=2, "Buf::from_ptr需要传入一个指针和一个长度");
+  let from = match &*args[0] {
+    Litr::Uint(n)=> {
+      let n = *n;
+      assert!(n!=0, "Buf::from_ptr禁止传入空指针");
+      n
+    }
+    _=> panic!("Buf::from_ptr的指针只允许Uint类型")
+  };
+  let len = to_usize(&*args[1]);
+  unsafe {
+    Litr::Buf(std::slice::from_raw_parts(from as *const u8, len).to_vec())
   }
 }

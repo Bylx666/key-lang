@@ -285,6 +285,8 @@ impl Scanner<'_> {
 
   /// 检索一段 二元操作符
   fn operator(&self)-> &[u8] {
+    let len = self.src.len();
+    if self.i()>=len {return b"";}
     // 如果第一个字符就是左括号就告诉Expr：这是个函数调用
     match self.cur() {
       // 这里不i+=1因为对应的解析函数会自动i+=1
@@ -300,6 +302,9 @@ impl Scanner<'_> {
       // |开头的运算符只允许|,|>和||,防止和闭包与|%|混淆
       b'|'=> {
         self.next();
+        if self.i()>=len {
+          return b"|";
+        }
         match self.cur() {
           b'|'=> {
             self.next();
@@ -316,8 +321,7 @@ impl Scanner<'_> {
     }
 
     let mut i = self.i();
-    let len = self.src.len();
-    while i + 1 < len {
+    while i < len {
       let cur = self.src[i];
       match cur {
         b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b':'=> {

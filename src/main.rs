@@ -28,7 +28,6 @@ fn main()-> ExitCode {
   //   println!("\n> {}\n  第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, line, date());
   // }));
 
-  // 重构outlive
   // 基本类型的方法，也就是所有litr的prop
   // @index_set @next之类的
   // obj之类的to_str

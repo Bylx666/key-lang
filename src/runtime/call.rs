@@ -117,22 +117,31 @@ impl Scope {
       let arg = args.next().unwrap_or(argdecl.default.clone());
       vars.push((argdecl.name, arg));
     }
-    // 如果函数被bound了就用bound值，否则继续沿用上级self
-    let kself = self.kself;
 
     let mut ret = Litr::Uninit;
-    let mut scope = Scope::new(ScopeInner {
-      parent:Some(f.scope),
-      return_to:&mut ret,
-      class_defs:Vec::new(),
-      class_uses:Vec::new(),
-      kself,
-      vars,
-      imports: f.scope.imports,
-      exports: f.scope.exports,
-      outlives: AtomicUsize::new(0),
-      ended: false
-    });
+    let mut scope = f.scope.subscope();
+    scope.return_to = &mut ret;
+    scope.vars = vars;
+    scope.kself = self.kself;
+    scope.run(&f.stmts);
+    ret
+  }
+  
+  /// 实际调用一个local function
+  pub fn call_local_with_self(self, f:&LocalFunc, args:Vec<Litr>, kself:*mut Litr)-> Litr {
+    // 将传入参数按定义参数数量放入作用域
+    let mut vars = Vec::with_capacity(16);
+    let mut args = args.into_iter();
+    for argdecl in f.argdecl.iter() {
+      let arg = args.next().unwrap_or(argdecl.default.clone());
+      vars.push((argdecl.name, arg));
+    }
+
+    let mut ret = Litr::Uninit;
+    let mut scope = f.scope.subscope();
+    scope.return_to = &mut ret;
+    scope.vars = vars;
+    scope.kself = kself;
     scope.run(&f.stmts);
     ret
   }

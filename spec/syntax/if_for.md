@@ -1,6 +1,6 @@
 if cond
 if cond {} else {}
-!{if cond:0 else:1}
+let n = ||{if cond:0 else:1}()
 
 
 for 200 {} // 循环200次(本质上是把200变成一个200次的迭代器)

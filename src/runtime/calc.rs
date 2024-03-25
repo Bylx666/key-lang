@@ -20,7 +20,15 @@ impl CalcRef {
       CalcRef::Own(v)=> v
     }
   }
-  pub fn uninit()-> Self {
+  /// 拿走Calcref可变引用的所有权
+  pub fn take(&mut self)-> Litr {
+    std::mem::swap(&mut Self::uninit(), self);
+    match self {
+      CalcRef::Ref(p)=> unsafe {(**p).clone()},
+      CalcRef::Own(v)=> v.clone()
+    }
+  }
+  pub const fn uninit()-> Self {
     CalcRef::Own(Litr::Uninit)
   }
 }
@@ -74,7 +82,7 @@ impl Scope {
       Expr::Index { left, i }=> {
         let left = self.calc_ref(left);
         let i = self.calc_ref(i);
-        index(left, i).own()
+        get_index(left, i).own()
       },
 
       Expr::Literal(litr)=> litr.clone(),
@@ -241,7 +249,7 @@ impl Scope {
       Expr::Property(e, find)=> {
         let scope = self;
         let from = self.calc_ref(&**e);
-        get_prop(self, from, *find)
+        get_prop(self, from, *find).own()
       }
 
       Expr::Kself => unsafe{(*self.kself).clone()},
@@ -299,10 +307,14 @@ impl Scope {
         let v = unsafe{&mut *self.kself};
         CalcRef::Ref(v)
       }
+      Expr::Property(left, name)=> {
+        let left = self.calc_ref(left);
+        get_prop(self, left, *name)
+      }
       Expr::Index { left, i }=> {
         let left = self.calc_ref(left);
         let i = self.calc_ref(i);
-        index(left, i)
+        get_index(left, i)
       },
       Expr::Variant(id)=> self.var(*id).unwrap_or_else(||panic!("无法找到变量 '{}'", id.str())),
       _=> {
@@ -317,34 +329,11 @@ impl Scope {
 
 /// 在一个作用域设置一个表达式为v
 fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
-  /// 获取属性的引用
-  pub fn get_prop_ref(this: Scope, mut from:CalcRef, find:&Interned)-> CalcRef {
-    match &mut *from {
-      Litr::Obj(map)=> CalcRef::Ref(map.get_mut(find).unwrap_or_else(||panic!("Obj中没有'{}'", find))),
-      Litr::Inst(inst)=> {
-        let cls = unsafe {&*inst.cls};
-        let can_access_private = unsafe {(*inst.cls).module} == this.exports;
-        let props = &cls.props;
-        for (n, prop) in props.iter().enumerate() {
-          if prop.name == *find {
-            assert!(prop.public || can_access_private,
-              "'{}'类型的成员属性'{}'是私有的", cls.name, find);
-            return CalcRef::Ref(&mut inst.v[n]);
-          }
-        }
-        panic!("'{}'类型上没有'{}'属性", cls.name, find)
-      }
-      // native instance有自己的setter和getter,引用传递不了的
-      _=> CalcRef::Own(Litr::Uninit)
-    }
-  }
-
   match left {
     // 捕获native instance的setter
     Expr::Property(e, find)=> {
-      let left = this.calc_ref(e);
       // 如果左值不是引用就没必要继续运行
-      let left = match left {
+      let left = match this.calc_ref(e) {
         CalcRef::Ref(p)=> unsafe {&mut*p},
         _=> return
       };
@@ -355,8 +344,22 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
         }
         Litr::Obj(o)=> {
           o.insert(*find, right);
-        },
-        _=> *get_prop_ref(this, CalcRef::Ref(left), find) = right
+        }
+        Litr::Inst(inst)=> {
+          let cls = unsafe {&*inst.cls};
+          let can_access_private = unsafe {(*inst.cls).module} == this.exports;
+          let props = &cls.props;
+          for (n, prop) in props.iter().enumerate() {
+            if prop.name == *find {
+              assert!(prop.public || can_access_private,
+                "'{}'类型的成员属性'{}'是私有的", cls.name, find);
+              inst.v[n] = right;
+              return;
+            }
+          }
+          panic!("'{}'类型上没有'{}'属性", cls.name, find)
+        }
+        _=> ()
       }
     }
 
@@ -391,7 +394,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
             map.insert(intern(s.as_bytes()), right);
           }else {panic!("Obj索引必须是Str")}
         }
-        _=> *index(CalcRef::Ref(left), i) = right
+        _=> *get_index(CalcRef::Ref(left), i) = right
       }
     }
 
@@ -404,7 +407,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
 
 
 /// 在作用域中从Litr中找'.'属性运算符指向的东西
-fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
+fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
@@ -417,7 +420,7 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
         if prop.name == find {
           assert!(prop.public || can_access_private,
             "'{}'类型的成员属性'{}'是私有的", cls.name, find);
-          return inst.v[n].clone();
+          return CalcRef::Ref(&mut inst.v[n]);
         }
       }
 
@@ -427,55 +430,56 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> Litr {
     // 原生类的实例
     Litr::Ninst(inst)=> {
       let cls = unsafe {&*inst.cls};
-      (cls.getter)(inst, find)
+      CalcRef::Own((cls.getter)(inst, find))
     }
 
     // 哈希表
     // 直接clone是防止Obj作为临时变量使map引用失效
-    Litr::Obj(map)=> 
-      map.get_mut(&find).unwrap_or(&mut Litr::Uninit).clone(),
+    Litr::Obj(map)=> map.get_mut(&find)
+      .map_or(CalcRef::uninit(), |r|CalcRef::Ref(r)),
 
     // 以下都是对基本类型的getter行为
-    Litr::Bool(v)=> match find.vec() {
+    Litr::Bool(v)=> CalcRef::Own(match find.vec() {
       b"rev"=> Litr::Bool(!*v),
       _=> Litr::Uninit
-    },
+    }),
 
-    Litr::Buf(v)=> match find.vec() {
+    Litr::Buf(v)=> CalcRef::Own(match find.vec() {
       b"len"=> Litr::Uint(v.len()),
-      b"ref"=> Litr::Uint(v.as_mut_ptr() as usize),
+      b"ptr"=> Litr::Uint(v.as_mut_ptr() as usize),
       b"capacity"=> Litr::Uint(v.capacity()),
       _=> Litr::Uninit
-    },
+    }),
 
-    Litr::Func(f)=> if find.vec() == b"type" {
+    Litr::Func(f)=> CalcRef::Own(if find.vec() == b"type" {
       match f {
         Function::Local(_)=> Litr::Str("local".to_owned()),
         Function::Extern(_)=> Litr::Str("extern".to_owned()),
         Function::Native(_)=> Litr::Str("native".to_owned())
       }
-    }else {Litr::Uninit}
+    }else {Litr::Uninit}),
 
-    Litr::List(v)=> match find.vec() {
+    Litr::List(v)=> CalcRef::Own(match find.vec() {
       b"len"=> Litr::Uint(v.len()),
       b"capacity"=> Litr::Uint(v.capacity()),
       _=> Litr::Uninit
-    },
+    }),
 
-    Litr::Str(s)=> match find.vec() {
+    Litr::Str(s)=> CalcRef::Own(match find.vec() {
       b"len"=> Litr::Uint(s.len()),
       b"char_len"=> Litr::Uint(s.chars().count()),
       b"lines"=> Litr::Uint(s.lines().count()),
       b"capacity"=> Litr::Uint(s.capacity()),
       _=> Litr::Uninit
-    },
+    }),
 
-    _=> Litr::Uninit
+    _=> CalcRef::uninit()
   }
 }
 
 
-fn index(mut left:CalcRef, i:CalcRef)-> CalcRef {
+/// 获取一个ks值索引处的值
+fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   // 先判断Obj
   if let Litr::Obj(map) = &mut *left {
     if let Litr::Str(s) = &*i {

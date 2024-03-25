@@ -233,10 +233,7 @@ pub fn run(s:&Statements)-> RunResult {
 /// 
 /// 自定义此函数可添加初始函数和变量
 pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<(Interned, Module)>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
-  let mut vars = Vec::<(Interned, Litr)>::with_capacity(16);
-  vars.push((intern(b"log"), 
-    Litr::Func(Function::Native(crate::primitive::kstd::log)))
-  );
+  let vars = crate::primitive::kstd::prelude();
   let mut class_uses = crate::primitive::classes();
 
   Scope::new(ScopeInner {

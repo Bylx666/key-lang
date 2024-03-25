@@ -60,7 +60,7 @@ impl Scanner<'_> {
   /// 获取当前字符(ascii u8)
   #[inline]
   fn cur(&self)-> u8 {
-    unsafe { *self.src.get_unchecked(*self.i) }
+    unsafe { *self.src.get(*self.i).unwrap() }
   }
 
   /// 使i += 1
@@ -80,7 +80,7 @@ impl Scanner<'_> {
   /// 跳过一段空格,换行符和注释
   fn spaces(&self) {
     let len = self.src.len();
-    loop {
+    while self.i()<len {
       let c = self.cur();
       if c == b'\n' {
         unsafe{LINE += 1;}
@@ -109,7 +109,7 @@ impl Scanner<'_> {
             // 多行
             else if nc == b'\'' {
               self.set_i(next + 1);
-              loop {
+              while self.i()+1 < len {
                 self.next();
                 if self.cur() == b'\n' {
                   unsafe{LINE += 1;}

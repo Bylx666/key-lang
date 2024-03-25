@@ -7,7 +7,7 @@ pub mod litr;
 pub mod kstd;
 
 pub mod buf;
-// pub mod list;
+pub mod list;
 pub mod int;
 pub mod sym;
 pub mod obj;
@@ -58,23 +58,3 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     classes()
   }
 }}
-
-/// 从args迭代器中获取下一个参数
-macro_rules! next_arg {
-  ($args:ident $($err:literal)+)=> {
-    match $args.next() {
-      Some(v)=> v,
-      None=> panic!($($err,)+)
-    }
-  };
-  ($args:ident $t:ty:$e:ident:$($t_err:literal)+; $($err:literal)+)=> {
-    match $args.next() {
-      Some(v)=> match v {
-        Litr::$t(v)=> v,
-        _=> panic!($($t_err,)+)
-      },
-      None=> panic!($($err,)+)
-    }
-  }
-}
-pub(self) use next_arg;
