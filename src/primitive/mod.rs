@@ -51,10 +51,11 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     cls.iter_mut().map(|(name, f)|(*name, Class::Native(f))).collect()
   }else {
     let buf_c = new_class(b"Buf", buf::statics());
+    let list_c = new_class(b"List", list::statics());
     let obj_c = new_class(b"Obj", obj::statics());
     let sym_c = new_class(b"Sym", sym::statics());
     let func_c = new_class(b"Func", func::statics());
-    CLASSES = Some(vec![buf_c, obj_c, sym_c, func_c]);
+    CLASSES = Some(vec![buf_c, list_c, obj_c, sym_c, func_c]);
     classes()
   }
 }}

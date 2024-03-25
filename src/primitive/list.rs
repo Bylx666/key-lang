@@ -13,36 +13,34 @@ pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)->
     b"pop"=> pop(v, args),
     b"pop_front"=> pop_front(v, args),
     b"rev"=> rev(v),
-    // b"filter"=> filter(v, args, scope),
-    // b"filter_clone"=> filter_clone(v, args, scope),
-    // b"last"=> last(v),
-    // b"repeat"=> repeat(v, args),
-    // b"repeat_clone"=> repeat_clone(v, args),
-    // b"insert"=> insert(v, args),
-    // b"insert_clone"=> insert_clone(v, args),
-    // b"remove"=> remove(v, args),
-    // b"splice"=> splice(v, args),
-    // b"fill"=> fill(v, args),
-    // b"fill_clone"=> fill_clone(v, args),
-    // b"expand"=> expand(v, args),
-    // b"rotate"=> rotate(v, args),
-    // b"concat"=> concat(v, args),
-    // b"concat_clone"=> concat_clone(v, args),
-    // b"join"=> join(v, args),
-    // b"fold"=> fold(v, args, scope),
-    // b"slice"=> slice(v, args),
-    // b"slice_clone"=> slice_clone(v, args),
-    // b"includes"=> includes(v, args),
-    // b"index_of"=> index_of(v, args, scope),
-    // b"r_index_of"=> r_index_of(v, args, scope),
-    // b"all"=> all(v, args, scope),
-    // b"min"=> min(v),
-    // b"max"=> max(v),
-    // b"part"=> part(v, args, scope),
-    // b"read"=> read(v, args),
-    // b"as_utf8"=> as_utf8(v),
-    // b"as_utf16"=> as_utf16(v),
-    _=> panic!("Buf没有{}方法",name)
+    b"filter"=> filter(v, args, scope),
+    b"filter_clone"=> filter_clone(v, args, scope),
+    b"last"=> last(v),
+    b"insert"=> insert(v, args),
+    b"insert_many"=> insert_many(v, args),
+    b"insert_many_clone"=> insert_many_clone(v, args),
+    b"remove"=> remove(v, args),
+    b"splice"=> splice(v, args),
+    b"fill"=> fill(v, args),
+    b"fill_clone"=> fill_clone(v, args),
+    b"expand"=> expand(v, args),
+    b"rotate"=> rotate(v, args),
+    b"concat"=> concat(v, args),
+    b"concat_clone"=> concat_clone(v, args),
+    b"join"=> join(v, args),
+    b"fold"=> fold(v, args, scope),
+    b"slice"=> slice(v, args),
+    b"slice_clone"=> slice_clone(v, args),
+    b"includes"=> includes(v, args),
+    b"index_of"=> index_of(v, args, scope),
+    b"r_index_of"=> r_index_of(v, args, scope),
+    b"find"=> find(v, args, scope),
+    b"r_find"=> r_find(v, args, scope),
+    b"all"=> all(v, args, scope),
+    b"min"=> min(v),
+    b"max"=> max(v),
+    b"to_buf"=> to_buf(v),
+    _=> panic!("List没有{}方法",name)
   }
 }
 
@@ -195,461 +193,405 @@ fn rev(v:&mut Vec<Litr>)-> Litr {
   Litr::Uninit
 }
 
-// /// 将当前数组按函数过滤
-// fn filter(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.filter需要一个函数作为参数") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.map第一个参数只能传函数")
-//   };
-//   v.retain(|a|match scope.call(
-//     vec![CalcRef::Own(Litr::Uint(*a as usize))], f
-//   ) {
-//     Litr::Bool(b)=> b,
-//     _=> false
-//   });
-//   Litr::Uninit
-// }
+/// 将当前数组按函数过滤
+fn filter(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("list.filter需要一个函数作为参数") {
+    Litr::Func(f)=> f,
+    _=> panic!("list.map第一个参数只能传函数")
+  };
+  v.retain_mut(|a|match scope.call(
+    vec![CalcRef::Ref(a)], f
+  ) {
+    Litr::Bool(b)=> b,
+    _=> false
+  });
+  Litr::Uninit
+}
 
-// /// filter的复制版本
-// fn filter_clone(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.filter需要一个函数作为参数") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.map第一个参数只能传函数")
-//   };
+/// filter的复制版本
+fn filter_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("list.filter需要一个函数作为参数") {
+    Litr::Func(f)=> f,
+    _=> panic!("list.map第一个参数只能传函数")
+  };
 
-//   Litr::Buf(v.iter().filter_map(|&a|match scope.call(
-//     vec![CalcRef::Own(Litr::Uint(a as usize))], f
-//   ) {
-//     Litr::Bool(b)=> b.then(||a),
-//     _=> None
-//   }).collect::<Vec<u8>>())
-// }
+  Litr::List(v.iter_mut().filter_map(|a|match scope.call(
+    vec![CalcRef::Ref(a)], f
+  ) {
+    Litr::Bool(b)=> b.then(||a.clone()),
+    _=> None
+  }).collect())
+}
 
-// /// 获取最后一个数字
-// fn last(v:&mut Vec<u8>)-> Litr {
-//   v.last().map_or(Litr::Uninit, |v|Litr::Uint(*v as usize))
-// }
+/// 获取最后一个数字
+fn last(v:&mut Vec<Litr>)-> Litr {
+  v.last().map_or(Litr::Uninit, |v|v.clone())
+}
 
-// /// 将已有数组重复n次
-// fn repeat(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let n = to_usize(args.get(0).expect("buf.repeat需要传入整数作为重复次数"));
-//   *v = v.repeat(n);
-//   Litr::Uninit
-// }
+/// 插入单个元素
+fn insert(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut args = args.into_iter();
+  let index = to_usize(&*args.next().expect("list.insert需要传入一个数字作为插入位置"));
+  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
 
-// /// repeat的复制版
-// fn repeat_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let n = to_usize(args.get(0).expect("buf.repeat需要传入整数作为重复次数"));
-//   Litr::Buf(v.repeat(n))
-// }
+  let to_insert = args.next().expect("list.insert需要传入第二个参数作为插入内容").own();
+  v.insert(index, to_insert);
+  Litr::Uninit
+}
 
-// /// 插入单数字或数组
-// fn insert(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut args = args.iter();
-//   let index = to_usize(&**args.next().expect("buf.insert需要传入一个数字作为插入位置"));
-//   assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
+/// 插入多个元素
+fn insert_many(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let index = to_usize(&**args.get(0).expect("list.insert_many需要传入一个数字作为插入位置"));
+  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
 
-//   match &**args.next().expect("buf.insert需要传入第二个参数:整数,列表或数组作为插入内容") {
-//     Litr::Buf(b)=> {
-//       v.splice(index..index, b.iter().copied()).collect::<Vec<_>>();
-//     },
-//     Litr::List(b)=> {
-//       v.splice(index..index, b.iter()
-//         .map(|n|to_u8(n))).collect::<Vec<_>>();
-//     }
-//     n=> v.insert(index, to_u8(n))
-//   }
-//   Litr::Uninit
-// }
+  match &**args.get(0).expect("list.insert_many需要传入第二个参数作为插入内容") {
+    Litr::Buf(b)=> {
+      v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
+    },
+    Litr::List(b)=> {
+      v.splice(index..index, b.iter()
+        .map(|n|n.clone())).collect::<Vec<_>>();
+    }
+    _=> panic!("list.insert_many第二个参数必须是List或Buf")
+  }
+  Litr::Uninit
+}
 
-// /// insert的复制版本
-// fn insert_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut v = v.clone();
-//   let mut args = args.iter();
-//   let index = to_usize(&**args.next().expect("buf.insert需要传入一个数字作为插入位置"));
-//   assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
+/// insert_may的复制版本
+fn insert_many_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut v = v.clone();
+  let index = to_usize(&**args.get(0).expect("list.insert_many_clone需要传入一个数字作为插入位置"));
+  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
 
-//   match &**args.next().expect("buf.insert需要传入第二个参数:整数,列表或数组作为插入内容") {
-//     Litr::Buf(b)=> {
-//       v.splice(index..index, b.iter().copied()).collect::<Vec<_>>();
-//     },
-//     Litr::List(b)=> {
-//       v.splice(index..index, b.iter()
-//         .map(|n|to_u8(n))).collect::<Vec<_>>();
-//     }
-//     n=> v.insert(index, to_u8(n))
-//   }
-//   Litr::Buf(v)
-// }
-
-// /// 删除一个或一段元素
-// fn remove(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let index = to_usize(&**args.get(0).expect("buf.remove需要一个整数作为删除索引"));
-//   assert!(index < v.len(), "删除索引{index}不可大于等于数组长度{}",v.len());
-
-//   // 移除多元素
-//   if let Some(n) = args.get(1) {
-//     // 防止删除索引溢出
-//     let mut rm_end = index + to_usize(&**n);
-//     if rm_end > v.len() {rm_end = v.len()}
-
-//     let removed = v.splice(index..rm_end, []).collect();
-//     return Litr::Buf(removed);
-//   }
-
-//   // 移除单元素
-//   Litr::Uint(v.remove(index) as usize)
-// }
-
-// /// remove+insert
-// fn splice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   assert!(args.len()>=3, "buf.splice需要3个参数:删除起始索引,删除结束索引,要插入的内容(数组或整数)");
-//   let start = to_usize(args.get(0).unwrap());
-//   let end = to_usize(args.get(1).unwrap());
-//   assert!(start<=end, "起始索引{start}不可大于结束索引{end}");
-//   assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
-
-//   match &**args.get(2).unwrap() {
-//     Litr::Buf(b)=> Litr::Buf(
-//       v.splice(start..end, b.iter().copied()).collect()),
-//     Litr::List(b)=> Litr::Buf(
-//       v.splice(start..end, b.iter().map(|n|to_u8(n))).collect()),
-//     n=> {
-//       let n = to_u8(n);
-//       v.splice(start..end, [n]);
-//       Litr::Uint(n as usize)
-//     }
-//   }
-// }
-
-// /// 将一片区域填充为指定值
-// fn fill(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut args = args.iter();
-//   let fill = args.next().map_or(0, |n|to_u8(n));
-//   let start = args.next().map_or(0, |n|to_usize(n));
-//   let end = args.next().map_or(v.len(), |n|to_usize(n));
-
-//   assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
-//   assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
-
-//   v[start..end].fill(fill);
-//   Litr::Uninit
-// }
-
-// /// fill的复制版本
-// fn fill_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut v = v.clone();
-//   let mut args = args.iter();
-//   let fill = args.next().map_or(0, |n|to_u8(n));
-//   let start = args.next().map_or(0, |n|to_usize(n));
-//   let end = args.next().map_or(v.len(), |n|to_usize(n));
-
-//   assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
-//   assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
-
-//   v[start..end].fill(fill);
-//   Litr::Buf(v)
-// }
-
-// /// 扩大vec容量 如果空间足够可能会不做任何事
-// fn expand(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let n = to_usize(args.get(0).expect("buf.expand需要一个整数作为扩大字节数"));
-//   v.reserve(n);
-//   Litr::Uninit
-// }
-
-// /// 横向旋转数组, 相当于整体移动并将溢出值移到另一边
-// fn rotate(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut n = to_usize(args.get(0).expect("buf.rotate需要一个整数代表移动字节数"));
-//   // 使旋转大小永小于数组长度
-//   n %= v.len();
-//   // 如果第二个参数传了true就左移
-//   if let Some(arg1) = args.get(1) {
-//     if let Litr::Bool(arg1) = &**arg1 {
-//       if *arg1 {
-//         v.rotate_left(n);
-//         return Litr::Uninit;
-//       }
-//     }
-//   }
-//   // 否则右移
-//   v.rotate_right(n);
-//   Litr::Uninit
-// }
-
-// /// 将另一个Buf连接到自己后面
-// fn concat(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let other_tmp;
-//   let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
-//     Litr::List(b)=> {
-//       other_tmp = b.iter().map(|n|to_u8(n)).collect();
-//       &other_tmp
-//     }
-//     Litr::Buf(b)=> b,
-//     n=> {
-//       v.push(to_u8(n));
-//       return Litr::Uninit;
-//     }
-//   };
-//   v.extend_from_slice(other);
-//   Litr::Uninit
-// }
-
-// /// concat复制版本
-// fn concat_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let mut v = v.clone();
-//   let other_tmp;
-//   let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
-//     Litr::List(b)=> {
-//       other_tmp = b.iter().map(|n|to_u8(n)).collect();
-//       &other_tmp
-//     }
-//     Litr::Buf(b)=> b,
-//     n=> {
-//       v.push(to_u8(n));
-//       return Litr::Uninit;
-//     }
-//   };
-//   v.extend_from_slice(other);
-//   Litr::Buf(v)
-// }
-
-// /// 将十六进制数以字符的格式渲染, 传入一个分隔符
-// fn join(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   if v.len()==0 {return Litr::Str(String::new());}
-
-//   let sep = if let Some(s) = args.get(0) {
-//     if let Litr::Str(s) = &**s {s}else {
-//       panic!("buf.join第一个参数只能是字符")
-//     }
-//   }else {""};
-
-//   use std::fmt::Write;
-//   let mut s = String::new();
-//   s.write_fmt(format_args!("{:02X}",v[0]));
-//   for n in &v[1..] {
-//     s.write_fmt(format_args!("{sep}{n:02X}"));
-//   }
-//   Litr::Str(s)
-// }
-
-// /// 嘎嘎复制和计算, 将整个数组折叠成一个值
-// fn fold(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let mut init = args.get(0).expect("buf.fold需要一个初始值").clone().own();
-//   let f = match &**args.get(1).expect("buf.fold需要第二个参数的函数来处理数据") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.fold第二个参数只能是函数")
-//   };
-//   v.iter().fold(init, |a, b|{
-//     scope.call(vec![CalcRef::Own(a), CalcRef::Own(Litr::Uint(*b as usize))], f)
-//   })
-// }
-
-// /// 将自己切成指定范围的数据
-// fn slice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let len = v.len();
-//   let start = args.get(0).map_or(0, |n|to_usize(n));
-//   let end = args.get(0).map_or(len, |n|to_usize(n));
-
-//   assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
-//   assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
-
-//   v.copy_within(start..end, 0);
-//   // SAFETY: end必定小于数组长度, 因此end - start必定小于数组长度
-//   unsafe { v.set_len(end - start) }
-//   Litr::Uninit
-// }
-
-// /// slice的复制版本
-// fn slice_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let len = v.len();
-//   let start = args.get(0).map_or(0, |n|to_usize(n));
-//   let end = args.get(0).map_or(len, |n|to_usize(n));
-
-//   assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
-//   assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
-
-//   Litr::Buf(v[start..end].to_vec())
-// }
-
-// /// 是否存在一个数
-// fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
-//   Litr::Bool(match v.iter().position(|n|*n==find) {
-//     Some(_)=> true,
-//     None=> false
-//   })
-// }
-
-// /// 找数组中第一个所指数字, 也可以传函数来自定义判断
-// fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
-//     Litr::Func(f)=> {
-//       v.iter().position(|n|
-//         match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
-//           Litr::Bool(n)=> n,
-//           _=> false
-//         })
-//     }
-//     n=> {
-//       let find = to_u8(n);
-//       v.iter().position(|n|*n==find)
-//     }
-//   };
-//   Litr::Int(match res {
-//     Some(n)=> n as isize,
-//     None=> -1
-//   })
-// }
-
-// /// index_of的反向版本
-// fn r_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
-//     Litr::Func(f)=> {
-//       v.iter().rev().position(|n|
-//         match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
-//           Litr::Bool(n)=> n,
-//           _=> false
-//         })
-//     }
-//     n=> {
-//       let find = to_u8(n);
-//       v.iter().rev().position(|n|*n==find)
-//     }
-//   };
-//   Litr::Int(match res {
-//     Some(n)=> (v.len() - n) as isize,
-//     None=> -1
-//   })
-// }
-
-// /// 测试所有元素是否都能让传入函数返回true
-// fn all(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.all需要传入一个函数来判断元素是否所需") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.all第一个参数必须是函数")
-//   };
-//   let b = v.iter().all(|n|
-//     match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
-//       Litr::Bool(b)=> b,
-//       _=> false
-//     });
-//   Litr::Bool(b)
-// }
-
-// /// 找最小值
-// fn min(v:&mut Vec<u8>)-> Litr {
-//   Litr::Uint(v.iter().min().copied().unwrap_or(0) as _)
-// }
-
-// /// 找最大值
-// fn max(v:&mut Vec<u8>)-> Litr {
-//   Litr::Uint(v.iter().max().copied().unwrap_or(0) as _)
-// }
-
-// /// 像是filter,但自己会变成filter剩下的内容
-// fn part(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.part需要传入一个函数来判断元素是否所需") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.part第一个参数必须是函数")
-//   };
-//   let (ret, this) = v.iter().partition(|n|
-//     match scope.call(vec![CalcRef::Own(Litr::Uint(**n as usize))], f) {
-//       Litr::Bool(b)=> b,
-//       _=> false
-//     });
-//   *v = this;
-//   Litr::Buf(ret)
-// }
-
-// /// 在指定偏移读取一个Uint, 第三个参数取决于机器的大小端, true不一定指大端序
-// fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   let index = args.get(0).map_or(0, |n|to_usize(n));
-//   let sz = args.get(1).map_or(8, |n|to_usize(n));
-//   let big_endian = args.get(2).map_or(false, |n|
-//     match &**n {
-//       Litr::Bool(b)=> *b,
-//       _=> false
-//     });
-  
-//   // 访问溢出时直接返回0
-//   if sz / 8 + index >= v.len() {
-//     return Litr::Uint(0);
-//   }
-
-//   unsafe {
-//     let start = v.as_ptr().add(index);
-//     macro_rules! imp {($($n:literal:$t:ty)*)=> {
-//       match sz {
-//         8=> *start as usize,
-//         $(
-//           $n=> {
-//             let n = (start as *const $t).read_unaligned();
-//             (if big_endian {
-//               n.swap_bytes()
-//             }else {n}) as usize
-//           }
-//         )*
-//         _=> panic!("buf.read第二个参数只允许8,16,32,64")
-//       }
-//     }}
-//     Litr::Uint(imp!(16:u16 32:u32 64:u64))
-//   }
-// }
-
-// /// 以utf8解码
-// fn as_utf8(v:&mut Vec<u8>)-> Litr {
-//   Litr::Str(String::from_utf8_lossy(v).into_owned())
-// }
-
-// /// 以utf16解码
-// fn as_utf16(v:&mut Vec<u8>)-> Litr {
-//   let s = unsafe {
-//     let ptr = v.as_ptr() as *const u16;
-//     // 无符号数除2会自动向下取整
-//     let len = v.len() / 2;
-//     std::slice::from_raw_parts(ptr, len)
-//   };
-//   Litr::Str(String::from_utf16_lossy(s))
-// }
+  match &**args.get(0).expect("list.insert_many_clone需要传入第二个参数作为插入内容") {
+    Litr::Buf(b)=> {
+      v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
+    },
+    Litr::List(b)=> {
+      v.splice(index..index, b.iter()
+        .map(|n|n.clone())).collect::<Vec<_>>();
+    }
+    _=> panic!("list.insert_many_clone第二个参数必须是List或Buf")
+  }
+  Litr::List(v)
+}
 
 
-// // - statics -
-// pub fn statics()-> Vec<(Interned, NativeFn)> {
-//   vec![
-//     (intern(b"new"), s_new),
-//     (from_iter, from_buf
-//   ]
-// }
+/// 删除一个或一段元素
+fn remove(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let index = to_usize(&**args.get(0).expect("list.remove需要一个整数作为删除索引"));
+  assert!(index < v.len(), "删除索引{index}不可大于等于数组长度{}",v.len());
 
-// /// 创建n长度的Buf
-// fn s_new(args:Vec<CalcRef>, cx:Scope)-> Litr {
-//   // 如果传入了大小就按大小分配
-//   if let Some(n) = args.get(0) {
-//     let n = to_usize(n);
+  // 移除多元素
+  if let Some(n) = args.get(1) {
+    // 防止删除索引溢出
+    let mut rm_end = index + to_usize(&**n);
+    if rm_end > v.len() {rm_end = v.len()}
 
-//     unsafe {
-//       let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
-//       let alc = unsafe {std::alloc::alloc_zeroed(layout)};
-//       Litr::Buf(Vec::from_raw_parts(alc, n, n))
-//     }
-//   }else {
-//     Litr::Buf(Vec::new())
-//   }
-// }
+    let removed = v.splice(index..rm_end, []).collect();
+    return Litr::List(removed);
+  }
 
-// /// 创建n长度未初始化数组
-// fn s_new_uninit(args:Vec<CalcRef>, cx:Scope)-> Litr {
-//   // 如果传入了大小就按大小分配
-//   if let Some(n) = args.get(0) {
-//     let n = to_usize(n);
+  // 移除单元素
+  v.remove(index)
+}
 
-//     unsafe {
-//       let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
-//       let alc = unsafe {std::alloc::alloc(layout)};
-//       Litr::Buf(Vec::from_raw_parts(alc, n, n))
-//     }
-//   }else {
-//     Litr::Buf(Vec::new())
-//   }
-// }
+/// remove+insert
+fn splice(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  assert!(args.len()>=3, "list.splice需要3个参数:删除起始索引,删除结束索引,要插入的列表或数组");
+  let start = to_usize(args.get(0).unwrap());
+  let end = to_usize(args.get(1).unwrap());
+  assert!(start<=end, "起始索引{start}不可大于结束索引{end}");
+  assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
+
+  Litr::List(match &**args.get(2).unwrap() {
+    Litr::Buf(b)=>
+      v.splice(start..end, b.iter().map(|n|Litr::Uint(*n as usize))).collect(),
+    Litr::List(b)=> 
+      v.splice(start..end, b.iter().map(|n|n.clone())).collect(),
+    n=> 
+      v.splice(start..end, [n.clone()].into_iter()).collect()
+  })
+}
+
+/// 将一片区域填充为指定值
+fn fill(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut args = args.into_iter();
+  let fill = args.next().map_or(Litr::Uninit, |n|n.own());
+  let start = args.next().map_or(0, |n|to_usize(&n));
+  let end = args.next().map_or(v.len(), |n|to_usize(&n));
+
+  assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
+  assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
+
+  v[start..end].fill(fill);
+  Litr::Uninit
+}
+
+/// fill的复制版本
+fn fill_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut v = v.clone();
+  let mut args = args.into_iter();
+  let fill = args.next().map_or(Litr::Uninit, |n|n.own());
+  let start = args.next().map_or(0, |n|to_usize(&n));
+  let end = args.next().map_or(v.len(), |n|to_usize(&n));
+
+  assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
+  assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
+
+  v[start..end].fill(fill);
+  Litr::List(v)
+}
+
+/// 扩大vec容量 如果空间足够可能会不做任何事
+fn expand(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let n = to_usize(args.get(0).expect("list.expand需要一个整数作为扩大字节数"));
+  v.reserve(n);
+  Litr::Uninit
+}
+
+/// 横向旋转数组, 相当于整体移动并将溢出值移到另一边
+fn rotate(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut n = to_usize(args.get(0).expect("list.rotate需要一个整数代表移动字节数"));
+  // 使旋转大小永小于数组长度
+  n %= v.len();
+  // 如果第二个参数传了true就左移
+  if let Some(arg1) = args.get(1) {
+    if let Litr::Bool(arg1) = &**arg1 {
+      if *arg1 {
+        v.rotate_left(n);
+        return Litr::Uninit;
+      }
+    }
+  }
+  // 否则右移
+  v.rotate_right(n);
+  Litr::Uninit
+}
+
+/// 将另一个Buf连接到自己后面
+fn concat(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut args = args.into_iter();
+  let other:Vec<Litr> = match args.next().expect("list.concat需要传入另一个Buf或数组").own() {
+    Litr::List(b)=> b.into_iter().collect(),
+    Litr::Buf(b)=> b.into_iter().map(|n|Litr::Uint(n as usize)).collect(),
+    n=> {
+      v.push(n);
+      return Litr::Uninit;
+    }
+  };
+  v.extend_from_slice(&*other);
+  Litr::Uninit
+}
+
+/// concat复制版本
+fn concat_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let mut v = v.clone();
+  let mut args = args.into_iter();
+  let other:Vec<Litr> = match args.next().expect("list.concat_clone需要传入另一个Buf或数组").own() {
+    Litr::List(b)=> b.into_iter().collect(),
+    Litr::Buf(b)=> b.into_iter().map(|n|Litr::Uint(n as usize)).collect(),
+    n=> {
+      v.push(n);
+      return Litr::Uninit;
+    }
+  };
+  v.extend_from_slice(&*other);
+  Litr::List(v)
+}
+
+/// 将十六进制数以字符的格式渲染, 传入一个分隔符
+fn join(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  if v.len()==0 {return Litr::Str(String::new());}
+
+  let sep = if let Some(s) = args.get(0) {
+    if let Litr::Str(s) = &**s {s}else {
+      panic!("list.join第一个参数只能是字符")
+    }
+  }else {""};
+
+  use std::fmt::Write;
+  let mut res = String::new();
+  res.write_fmt(format_args!("{}", v[0].str()));
+  for n in &mut v[1..] {
+    if let Litr::Str(s) = n {
+      res.write_fmt(format_args!("{sep}{}",s));
+    }else {
+      res.write_fmt(format_args!("{sep}{}",n.str()));
+    }
+  }
+  Litr::Str(res)
+}
+
+/// 嘎嘎复制和计算, 将整个数组折叠成一个值
+fn fold(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let mut args = args.into_iter();
+  let mut init = args.next().expect("list.fold需要一个初始值").clone().own();
+  let f_ = args.next().expect("list.fold需要第二个参数的函数来处理数据");
+  let f = match &*f_ {
+    Litr::Func(f)=> f,
+    _=> panic!("list.fold第二个参数只能是函数")
+  };
+  v.iter_mut().fold(init, |a, b|{
+    scope.call(vec![CalcRef::Own(a), CalcRef::Ref(b)], f)
+  })
+}
+
+/// 将自己切成指定范围的数据
+fn slice(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let len = v.len();
+  let start = args.get(0).map_or(0, |n|to_usize(n));
+  let end = args.get(0).map_or(len, |n|to_usize(n));
+
+  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
+  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
+
+  *v = v[start..end].to_vec();
+  Litr::Uninit
+}
+
+/// slice的复制版本
+fn slice_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let len = v.len();
+  let start = args.get(0).map_or(0, |n|to_usize(n));
+  let end = args.get(0).map_or(len, |n|to_usize(n));
+
+  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
+  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
+
+  Litr::List(v[start..end].to_vec())
+}
+
+/// 是否存在一个数
+fn includes(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  let find = args.get(0).expect("list.includes需要知道你要找啥");
+  Litr::Bool(match v.iter().find(|&n|n==&**find) {
+    Some(_)=> true,
+    None=> false
+  })
+}
+
+/// 找数组中第一个所指数字, 也可以传函数来自定义判断
+fn index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let find = &**args.get(0).expect("list.index_of需要传入一个值");
+  let res = v.iter().position(|n|n==find);
+  Litr::Int(match res {
+    Some(n)=> n as isize,
+    None=> -1
+  })
+}
+
+/// index_of反向版
+fn r_index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let find = &**args.get(0).expect("list.r_index_of需要传入一个值");
+  let res = v.iter().rev().position(|n|n==find);
+  Litr::Int(match res {
+    Some(n)=> (v.len() - n - 1) as isize,
+    None=> -1
+  })
+}
+
+/// 通过判断函数找到第一个对应值
+fn find(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let find = &**args.get(0).expect("list.find需要传入一个函数");
+  let res = if let Litr::Func(f) = find {
+    v.iter_mut().position(|n|
+      match scope.call(vec![CalcRef::Ref(n)], f) {
+        Litr::Bool(n)=> n,
+        _=> false
+      }
+    )
+  }else {panic!("list.find第一个参数必须是函数")};
+  res.map_or(Litr::Uninit, |n|v[n].clone())
+}
+
+/// 通过判断函数找到第一个对应值
+fn r_find(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let find = &**args.get(0).expect("list.r_find需要传入一个函数");
+  let res = if let Litr::Func(f) = find {
+    v.iter_mut().rev().position(|n|
+      match scope.call(vec![CalcRef::Ref(n)], f) {
+        Litr::Bool(n)=> n,
+        _=> false
+      }
+    )
+  }else {panic!("list.r_find第一个参数必须是函数")};
+  res.map_or(Litr::Uninit, |n|v[v.len() - n - 1].clone())
+}
+
+/// 测试所有元素是否都能让传入函数返回true
+fn all(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("list.all需要传入一个函数来判断元素是否所需") {
+    Litr::Func(f)=> f,
+    _=> panic!("list.all第一个参数必须是函数")
+  };
+  let b = v.iter_mut().all(|n|
+    match scope.call(vec![CalcRef::Ref(n)], f) {
+      Litr::Bool(b)=> b,
+      _=> false
+    });
+  Litr::Bool(b)
+}
+
+/// 找最小值
+fn min(v:&mut Vec<Litr>)-> Litr {
+  v.iter().cloned().min_by(|a,b|a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(Litr::Uninit)
+}
+
+/// 找最大值
+fn max(v:&mut Vec<Litr>)-> Litr {
+  v.iter().cloned().max_by(|a,b|a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(Litr::Uninit)
+}
+
+/// List转Buf
+fn to_buf(v:&mut Vec<Litr>)-> Litr {
+  Litr::Buf(v.iter().map(|n|match n {
+    Litr::Int(n)=> *n as u8,
+    Litr::Uint(n)=> *n as u8,
+    _=> 0
+  }).collect())
+}
+
+// - statics -
+pub fn statics()-> Vec<(Interned, NativeFn)> {
+  vec![
+    (intern(b"new"), s_new),
+    (intern(b"from_iter"), s_from_iter),
+    (intern(b"from_buf"), s_from_buf)
+  ]
+}
+
+/// 创建n长度的List, 可传入初始值
+fn s_new(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let mut args = args.into_iter();
+  // 如果传入了大小就按大小分配
+  if let Some(n) = args.next() {
+    let init = if let Some(init) = args.next() {
+      init.own()
+    }else {Litr::Uninit};
+
+    let n = to_usize(&n);
+    let mut v = Vec::with_capacity(n);
+    for space in v.spare_capacity_mut() {
+      space.write(init.clone());
+    }
+    unsafe {v.set_len(n)}
+    Litr::List(v)
+  }else {
+    Litr::Buf(Vec::new())
+  }
+}
+
+/// 通过iter创建List
+fn s_from_iter(mut args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let from = args.get_mut(0).expect("List::from_iter需要一个可迭代的元素");
+  Litr::List(iter::LitrIterator::new(&mut **from).collect())
+}
+
+/// 通过buf创建List,相当于buf.to_list
+fn s_from_buf(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let from = args.get(0).expect("List::from_buf需要一个Buf");
+  if let Litr::Buf(v) = &**from {
+    Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect())
+  }else {panic!("List::from_buf第一个参数必须是Buf")}
+}

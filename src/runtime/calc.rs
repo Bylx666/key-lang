@@ -451,13 +451,19 @@ fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
       _=> Litr::Uninit
     }),
 
-    Litr::Func(f)=> CalcRef::Own(if find.vec() == b"type" {
-      match f {
+    Litr::Func(f)=> CalcRef::Own(match find.vec() {
+      b"type"=> match f {
         Function::Local(_)=> Litr::Str("local".to_owned()),
         Function::Extern(_)=> Litr::Str("extern".to_owned()),
         Function::Native(_)=> Litr::Str("native".to_owned())
       }
-    }else {Litr::Uninit}),
+      b"raw"=> match f {
+        Function::Local(f)=> Litr::Uint(f.ptr as _),
+        Function::Native(f)=> Litr::Uint(*f as usize),
+        Function::Extern(e)=> Litr::Uint(e.ptr)
+      }
+      _=> Litr::Uninit
+    }),
 
     Litr::List(v)=> CalcRef::Own(match find.vec() {
       b"len"=> Litr::Uint(v.len()),

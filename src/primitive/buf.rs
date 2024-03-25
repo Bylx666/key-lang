@@ -404,17 +404,16 @@ fn splice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   assert!(start<=end, "起始索引{start}不可大于结束索引{end}");
   assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
 
-  match &**args.get(2).unwrap() {
-    Litr::Buf(b)=> Litr::Buf(
-      v.splice(start..end, b.iter().copied()).collect()),
-    Litr::List(b)=> Litr::Buf(
-      v.splice(start..end, b.iter().map(|n|to_u8(n))).collect()),
+  Litr::Buf(match &**args.get(2).unwrap() {
+    Litr::Buf(b)=> 
+      v.splice(start..end, b.iter().copied()).collect(),
+    Litr::List(b)=> 
+      v.splice(start..end, b.iter().map(|n|to_u8(n))).collect(),
     n=> {
       let n = to_u8(n);
-      v.splice(start..end, [n]);
-      Litr::Uint(n as usize)
+      v.splice(start..end, [n]).collect()
     }
-  }
+  })
 }
 
 /// 将一片区域填充为指定值
@@ -570,7 +569,7 @@ fn slice_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 /// 是否存在一个数
 fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
-  Litr::Bool(match v.iter().position(|n|*n==find) {
+  Litr::Bool(match v.iter().find(|&&n|n==find) {
     Some(_)=> true,
     None=> false
   })
@@ -578,7 +577,7 @@ fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 
 /// 找数组中第一个所指数字, 也可以传函数来自定义判断
 fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
+  let res = match &**args.get(0).expect("buf.index_of需要传入一个数字或判断函数") {
     Litr::Func(f)=> {
       v.iter().position(|n|
         match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
@@ -599,7 +598,7 @@ fn index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 
 /// index_of的反向版本
 fn r_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let res = match &**args.get(0).expect("buf.index_of需要知道你要找啥") {
+  let res = match &**args.get(0).expect("buf.r_index_of需要知道你要找啥") {
     Litr::Func(f)=> {
       v.iter().rev().position(|n|
         match scope.call(vec![CalcRef::Own(Litr::Uint(*n as usize))], f) {
@@ -613,7 +612,7 @@ fn r_index_of(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
     }
   };
   Litr::Int(match res {
-    Some(n)=> (v.len() - n) as isize,
+    Some(n)=> (v.len() - n - 1) as isize,
     None=> -1
   })
 }

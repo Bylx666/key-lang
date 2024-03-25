@@ -13,7 +13,8 @@ false.rev == false.rev() == true
 
 ## Func
 
-唯一属性type, 值是Str: local extern native
+属性type, 值是Str: local extern native
+raw: Uint,代表了未绑定作用域的函数的指针,只可用于比较绑定了不同作用域的同一函数
 
 ## List
 
