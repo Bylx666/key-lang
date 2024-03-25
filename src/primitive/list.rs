@@ -7,12 +7,12 @@ pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)->
     b"push_front"=> push_front(v, args),
     b"dedup"=> dedup(v, args, scope),
     b"sort"=> sort(v, args, scope),
-    // b"for_each"=> for_each(v, args, scope),
-    // b"map_clone"=> map_clone(v, args, scope),
-    // b"map"=> map(v, args, scope),
-    // b"pop"=> pop(v, args),
-    // b"pop_front"=> pop_front(v, args),
-    // b"rev"=> rev(v),
+    b"for_each"=> for_each(v, args, scope),
+    b"map_clone"=> map_clone(v, args, scope),
+    b"map"=> map(v, args, scope),
+    b"pop"=> pop(v, args),
+    b"pop_front"=> pop_front(v, args),
+    b"rev"=> rev(v),
     // b"filter"=> filter(v, args, scope),
     // b"filter_clone"=> filter_clone(v, args, scope),
     // b"last"=> last(v),
@@ -115,96 +115,85 @@ fn sort(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   Litr::Uninit
 }
 
-// /// 循环调用
-// fn for_each(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.foreach需要一个函数作为参数") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.foreach第一个参数只能传函数")
-//   };
-//   v.iter().for_each(|a| {scope.call(vec![
-//     CalcRef::Own(Litr::Uint(*a as usize))
-//   ], f);});
-//   Litr::Uninit
-// }
+/// 循环调用
+fn for_each(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("buf.foreach需要一个函数作为参数") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.foreach第一个参数只能传函数")
+  };
+  v.iter_mut().for_each(|a| {scope.call(vec![
+    CalcRef::Ref(a)
+  ], f);});
+  Litr::Uninit
+}
 
-// /// 映射重构新Buf
-// fn map_clone(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.map第一个参数只能传函数")
-//   };
-//   Litr::Buf(v.iter().map(|a| match scope.call(vec![
-//     CalcRef::Own(Litr::Uint(*a as usize))
-//   ], f) {
-//     Litr::Uint(n)=> n as u8,
-//     Litr::Int(n)=> n as u8,
-//     _=> 0
-//   }).collect())
-// }
+/// 映射重构新Buf
+fn map_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.map第一个参数只能传函数")
+  };
+  Litr::List(v.iter_mut()
+    .map(|a| scope.call(vec![CalcRef::Ref(a)], f) ).collect())
+}
 
-// /// map_clone的原地版本
-// fn map(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-//   let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
-//     Litr::Func(f)=> f,
-//     _=> panic!("buf.map第一个参数只能传函数")
-//   };
-//   *v = v.iter().map(|a| match scope.call(vec![
-//     CalcRef::Own(Litr::Uint(*a as usize))
-//   ], f) {
-//     Litr::Uint(n)=> n as u8,
-//     Litr::Int(n)=> n as u8,
-//     _=> 0
-//   }).collect();
-//   Litr::Uninit
-// }
+/// map_clone的原地版本
+fn map(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+  let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
+    Litr::Func(f)=> f,
+    _=> panic!("buf.map第一个参数只能传函数")
+  };
+  *v = v.iter_mut().map(|a| scope.call(vec![CalcRef::Ref(a)], f)).collect();
+  Litr::Uninit
+}
 
-// /// 从末尾切去一个, 可传一个数字作为切去数量
-// fn pop(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   if let Some(arg0) = args.get(0) {
-//     let at = match &**arg0 {
-//       Litr::Uint(n)=> *n,
-//       Litr::Int(n)=> *n as usize,
-//       _=> panic!("buf.pop的参数必须为整数")
-//     };
-//     if at >= v.len() {
-//       panic!("分界线索引{at}大于数组长度{}", v.len());
-//     }
+/// 从末尾切去一个, 可传一个数字作为切去数量
+fn pop(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  if let Some(arg0) = args.get(0) {
+    let at = match &**arg0 {
+      Litr::Uint(n)=> *n,
+      Litr::Int(n)=> *n as usize,
+      _=> panic!("list.pop的参数必须为整数")
+    };
+    if at >= v.len() {
+      panic!("分界线索引{at}大于数组长度{}", v.len());
+    }
 
-//     Litr::Buf(v.split_off(v.len() - at))
-//   }else {
-//     match v.pop() {
-//       Some(n)=> Litr::Uint(n as usize),
-//       None=> Litr::Uninit
-//     }
-//   }
-// }
+    Litr::List(v.split_off(v.len() - at))
+  }else {
+    match v.pop() {
+      Some(n)=> n,
+      None=> Litr::Uninit
+    }
+  }
+}
 
-// /// 从开头切去一个, 可传一个数字作为切掉数量
-// fn pop_front(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-//   if let Some(arg0) = args.get(0) {
-//     let at = match &**arg0 {
-//       Litr::Uint(n)=> *n,
-//       Litr::Int(n)=> *n as usize,
-//       _=> panic!("buf.pop_front的参数必须为整数")
-//     };
-//     if at >= v.len() {
-//       panic!("分界线索引{at}大于数组长度{}", v.len());
-//     }
+/// 从开头切去一个, 可传一个数字作为切掉数量
+fn pop_front(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
+  if let Some(arg0) = args.get(0) {
+    let at = match &**arg0 {
+      Litr::Uint(n)=> *n,
+      Litr::Int(n)=> *n as usize,
+      _=> panic!("list.pop_front的参数必须为整数")
+    };
+    if at >= v.len() {
+      panic!("分界线索引{at}大于数组长度{}", v.len());
+    }
 
-//     let mut part = v.split_off(at);
-//     std::mem::swap(v, &mut part);
-//     Litr::Buf(part)
-//   }else {
-//     if v.len()==0 {return Litr::Uninit;}
-//     Litr::Uint(v.remove(0) as usize)
-//   }
-// }
+    let mut part = v.split_off(at);
+    std::mem::swap(v, &mut part);
+    Litr::List(part)
+  }else {
+    if v.len()==0 {return Litr::Uninit;}
+    v.remove(0)
+  }
+}
 
-// /// 反转Buf
-// fn rev(v:&mut Vec<u8>)-> Litr {
-//   v.reverse();
-//   Litr::Uninit
-// }
+/// 反转Buf
+fn rev(v:&mut Vec<Litr>)-> Litr {
+  v.reverse();
+  Litr::Uninit
+}
 
 // /// 将当前数组按函数过滤
 // fn filter(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {

@@ -80,58 +80,48 @@ impl Scanner<'_> {
   /// 跳过一段空格,换行符和注释
   fn spaces(&self) {
     let len = self.src.len();
-    while self.i()<len {
-      let c = self.cur();
-      if c == b'\n' {
-        unsafe{LINE += 1;}
-      }
-      match c {
-        b'\n' | b'\r' | b' ' => {
+    // 跳过空格和换行符
+    while self.i() < len {
+      match self.cur() {
+        b'\n'=> {
+          unsafe {LINE += 1}
           self.next();
-        },
-        // 解析注释
-        b'/' => {
-          let next = self.i() + 1;
-          if next < len {
-            let nc = self.src[next];
-            // 单行
-            if nc == b'/' {
-              self.set_i(next + 1);
-              while self.cur() != b'\n' {
-                self.next();
-                if self.i() >= len {
-                  return;
-                }
-              }
-              unsafe{LINE += 1;}
-              self.next();
-            }
-            // 多行
-            else if nc == b'\'' {
-              self.set_i(next + 1);
-              while self.i()+1 < len {
-                self.next();
-                if self.cur() == b'\n' {
-                  unsafe{LINE += 1;}
-                }
-                if self.cur() == b'\'' {
-                  let next = self.i() + 1;
-                  if next >= len {
-                    self.set_i(len);
-                    return;
-                  }
-                  if self.src[next] == b'/' {
-                    self.set_i(next + 1);
-                  }
-                }
-              }
-            }
-            // /后面不是注释就直接返回
-            else{return;}
-          }
         }
+        b'\r' | b' '=> self.next(),
         _=> break
       }
+    }
+
+    // 识别注释并跳过
+    if self.i() + 1 >= len || self.cur()!=b'/' {return}
+    match self.src[self.i() + 1] {
+      b'/'=> {
+        self.set_i(self.i()+2);
+        while self.i() < len && self.cur() != b'\n' {
+          self.next();
+        }
+        // 注释结束后继续跳过空格(顺便把上文的\n跳过)
+        self.spaces();
+      }
+      b'\''=> {
+        self.set_i(self.i()+2);
+        while self.i() < len {
+          match self.cur() {
+            b'\n'=> unsafe{LINE += 1},
+            b'\''=> {
+              let next_i = self.i() + 1;
+              if next_i<len && self.src[next_i]==b'/' {
+                self.next();
+                break;
+              }
+            }
+            _=> self.next()
+          }
+        }
+
+        self.spaces();
+      }
+      _=>()
     }
   }
 
@@ -150,7 +140,7 @@ impl Scanner<'_> {
     while i < len {
       let s = self.src[i];
       match s {
-        b'_' | b'$' | b'~' | b'@' |
+        b'_' | b'~' | b'@' |
         b'A'..=b'Z' | b'a'..=b'z' |
         b'0'..=b'9'|
         // utf8双字节以上编码都以0b10xxxxxx开头

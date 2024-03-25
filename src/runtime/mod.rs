@@ -56,6 +56,8 @@ pub struct ScopeInner {
   /// 当前脚本导入的模块
   pub imports: *mut Vec<(Interned, Module)>,
   /// ks本身作为模块导出的指针
+  /// 
+  /// 同一模块中原则上所有scope的exports都相同
   pub exports: *mut LocalMod,
   /// 该作用域生命周期会被outlive的函数延长
   pub outlives: AtomicUsize,

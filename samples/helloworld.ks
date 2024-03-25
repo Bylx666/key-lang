@@ -4,9 +4,9 @@
 
 // log([0,(),20,40,"9ad", "7acd"].sort())
 
-let b = 0;
-{
-  let c = "哈哈哈";
-  b = take(c)
-  log(b,c);
+class A{
+  a,
+  b,
 }
+
+2'3

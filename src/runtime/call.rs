@@ -43,29 +43,31 @@ impl Scope {
         _=> panic!("Bool类型只有'rev'和'then'方法")
       }
       Litr::Buf(v)=> primitive::buf::method(v, self, name, args),
+      Litr::List(v)=> primitive::list::method(v, self, name, args),
+      Litr::Inst(inst)=> {
+        let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
+        let cls = unsafe {&*inst.cls};
+
+        let methods = &cls.methods;
+        for mthd in methods.iter() {
+          if mthd.name == name {
+            if !mthd.public && cannot_access_private {
+              panic!("'{}'类型的成员方法'{}'是私有的", cls.name, name)
+            }
+            let mut f = mthd.f.clone();
+            let args = args.into_iter().map(|e|e.own()).collect();
+            return self.call_local_with_self(&f, args, &mut *targ);
+          }
+        }
+
+        panic!("'{}'类型没有{}方法",cls.name, name)
+      }
       _=> panic!("没有'{}'方法\n  如果你需要调用属性作为函数,请使用(a.b)()的写法", name)
     }
     // let mut left = self.calc_ref(left);
     // // 匹配所有可能使用.运算符得到函数的类型(instance, obj)
     // match &mut *left {
     //   Litr::Inst(inst)=> {
-    //     let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
-    //     let cls = unsafe {&*inst.cls};
-  
-    //     // 先找方法
-    //     let methods = &cls.methods;
-    //     for mthd in methods.iter() {
-    //       if mthd.name == right {
-    //         if !mthd.public && cannot_access_private {
-    //           panic!("'{}'类型的成员方法'{}'是私有的", cls.name, right)
-    //         }
-    //         // 为函数绑定self
-    //         let mut f = mthd.f.clone();
-    //         f.bound = Some(Box::new(left));
-    //         let args = args.into_iter().map(|v|v.own()).collect();
-    //         return self.call_local(&f, args);
-    //       }
-    //     }
   
     //     // 再找属性
     //     let props = &cls.props;

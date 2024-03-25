@@ -163,6 +163,8 @@ impl Scanner<'_> {
         self.next();
         return self.returning();
       }
+      // 修复开头遇到没定义的符号时死循环
+      127..=u8::MAX|b')'|b'}'|b']'|b'?'|b','|b'\\'|b'$'|b'#'=> panic!("需要一个语句或表达式,但你写了'{}'",String::from_utf8_lossy(&[first])),
       _=>{}
     }
   
@@ -190,7 +192,6 @@ impl Scanner<'_> {
       if let Expr::Empty = expr {
         Stmt::Empty
       }else {
-        println!("{expr:?}");
         Stmt::Expression(expr)
       }
     } else {
@@ -372,7 +373,7 @@ impl Scanner<'_> {
         Some(id)=> id,
         None=> break
       };
-  
+
       // 方法或者函数
       if self.cur() == b'(' {
         self.next();
