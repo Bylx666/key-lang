@@ -13,7 +13,20 @@ mod utils;
 mod c;
 mod native;
 
+/// 标志目前走到的行号
 static mut LINE:usize = 0;
+/// 用于标记报错文件
+static mut PLACE:String = String::new();
+
+/// 标志解释器的版本
+static VERSION:usize = 100000;
+
+/// 解释器发行者(用于区分主版本和魔改版)
+/// 
+/// 如果需要自己魔改,且需要考虑和主版本的兼容性可以更改此值
+/// 
+/// 用户可以使用distribution()直接读取此值
+static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
   // 自定义报错
@@ -40,7 +53,7 @@ fn main()-> ExitCode {
 
   // call_here call_at_top
   // pub use
-  // 报错显示文件, 导入文件的路径检测
+  // ERR_PLACE报错显示文件, 导入文件的路径检测
   // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
