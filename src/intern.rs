@@ -6,15 +6,15 @@
 
 use std::collections::HashSet;
 
-static mut POOL:Option<HashSet<Box<[u8]>>> = None;
+static mut POOL:*mut HashSet<Box<[u8]>> = std::ptr::null_mut();
 
 pub fn init() {
-  unsafe{POOL = Some(HashSet::with_capacity(64));}
+  unsafe{POOL = Box::into_raw(Box::new(HashSet::with_capacity(64)));}
 }
 
 /// 将字符串缓存为指针
 pub fn intern(s:&[u8])-> Interned {
-  let p = unsafe{POOL.as_mut().unwrap()};
+  let p = unsafe{&mut *POOL};
   Interned { p:p.get_or_insert(s.into()) as *const Box<[u8]> }
 }
 

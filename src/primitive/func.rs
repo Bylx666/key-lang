@@ -1,6 +1,6 @@
 use crate::{
   intern::{intern, Interned}, 
-  native::{BoundNativeMethod, NaitveInstanceRef, NativeFn}, 
+  native::NativeFn, 
   runtime::{calc::CalcRef, Scope}, 
   primitive::litr::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, 
   scan::stmt::Statements

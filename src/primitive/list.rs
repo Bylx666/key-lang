@@ -115,9 +115,9 @@ fn sort(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 
 /// 循环调用
 fn for_each(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("buf.foreach需要一个函数作为参数") {
+  let f = match &**args.get(0).expect("list.foreach需要一个函数作为参数") {
     Litr::Func(f)=> f,
-    _=> panic!("buf.foreach第一个参数只能传函数")
+    _=> panic!("list.foreach第一个参数只能传函数")
   };
   v.iter_mut().for_each(|a| {scope.call(vec![
     CalcRef::Ref(a)
@@ -127,9 +127,9 @@ fn for_each(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 
 /// 映射重构新Buf
 fn map_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
+  let f = match &**args.get(0).expect("list.map需要一个函数作为参数") {
     Litr::Func(f)=> f,
-    _=> panic!("buf.map第一个参数只能传函数")
+    _=> panic!("list.map第一个参数只能传函数")
   };
   Litr::List(v.iter_mut()
     .map(|a| scope.call(vec![CalcRef::Ref(a)], f) ).collect())
@@ -137,9 +137,9 @@ fn map_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 
 /// map_clone的原地版本
 fn map(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
+  let f = match &**args.get(0).expect("list.map需要一个函数作为参数") {
     Litr::Func(f)=> f,
-    _=> panic!("buf.map第一个参数只能传函数")
+    _=> panic!("list.map第一个参数只能传函数")
   };
   *v = v.iter_mut().map(|a| scope.call(vec![CalcRef::Ref(a)], f)).collect();
   Litr::Uninit
@@ -557,7 +557,8 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
   vec![
     (intern(b"new"), s_new),
     (intern(b"from_iter"), s_from_iter),
-    (intern(b"from_buf"), s_from_buf)
+    (intern(b"from_buf"), s_from_buf),
+    (intern(b"concat"), s_concat)
   ]
 }
 
@@ -594,4 +595,20 @@ fn s_from_buf(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   if let Litr::Buf(v) = &**from {
     Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect())
   }else {panic!("List::from_buf第一个参数必须是Buf")}
+}
+
+/// List::concat拼接两个List,允许传Buf自动转换
+fn s_concat(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  assert!(args.len()>=2, "List::concat需要左右两个List作参数");
+  let mut left = match &**args.get(0).unwrap() {
+    Litr::List(v)=> v.iter().cloned().collect(),
+    Litr::Buf(v)=> v.iter().map(|n|Litr::Uint(*n as usize)).collect(),
+    n=> vec![n.clone()]
+  };
+  match &**args.get(1).unwrap() {
+    Litr::List(v)=> left.extend(v.iter().cloned()),
+    Litr::Buf(v)=> left.extend(v.iter().map(|n|Litr::Uint(*n as usize))),
+    n=> left.push(n.clone())
+  };
+  Litr::List(left)
 }

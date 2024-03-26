@@ -44,6 +44,7 @@ impl Scope {
       }
       Litr::Buf(v)=> primitive::buf::method(v, self, name, args),
       Litr::List(v)=> primitive::list::method(v, self, name, args),
+      Litr::Obj(o)=> primitive::obj::method(o, self, name, args),
       Litr::Inst(inst)=> {
         let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
         let cls = unsafe {&*inst.cls};
@@ -60,7 +61,13 @@ impl Scope {
           }
         }
 
-        panic!("'{}'类型没有{}方法",cls.name, name)
+        panic!("'{}'类型没有'{}'方法\n  你需要用(x.{})()的写法吗?",cls.name, name, name)
+      }
+      Litr::Ninst(inst)=> {
+        let cls = unsafe{&*inst.cls};
+        let (_,f) = cls.methods.iter()
+          .find(|(find,_)|name==*find).unwrap_or_else(||panic!("'{}'原生类型中没有'{}'方法\n  你需要用(x.{})()的写法吗?", cls.name, name, name));
+        (*f)(inst, args, self)
       }
       _=> panic!("没有'{}'方法\n  如果你需要调用属性作为函数,请使用(a.b)()的写法", name)
     }

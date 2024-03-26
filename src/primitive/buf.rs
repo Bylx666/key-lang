@@ -715,7 +715,8 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
     (intern(b"new_uninit"), s_new_uninit),
     (intern(b"from_list"), s_from_list),
     (intern(b"from_iter"), s_from_iter),
-    (intern(b"from_ptr"), s_from_ptr)
+    (intern(b"from_ptr"), s_from_ptr),
+    (intern(b"concat"), s_concat)
   ]
 }
 
@@ -782,4 +783,20 @@ fn s_from_ptr(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   unsafe {
     Litr::Buf(std::slice::from_raw_parts(from as *const u8, len).to_vec())
   }
+}
+
+/// Buf::concat拼接两个Buf,允许传List自动转换
+fn s_concat(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  assert!(args.len()>=2, "Buf::concat需要左右两个buf作参数");
+  let mut left = match &**args.get(0).unwrap() {
+    Litr::List(v)=> v.iter().map(|n|to_u8(n)).collect(),
+    Litr::Buf(v)=> v.clone(),
+    n=> vec![to_u8(n)]
+  };
+  match &**args.get(1).unwrap() {
+    Litr::List(v)=> left.extend(v.iter().map(|n|to_u8(n))),
+    Litr::Buf(v)=> left.extend_from_slice(v),
+    n=> left.push(to_u8(n))
+  };
+  Litr::Buf(left)
 }

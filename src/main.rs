@@ -58,7 +58,8 @@ fn main()-> ExitCode {
   // 传进Native的struct怎么处理？
   // for i {func(){i}}内部的i是否正确
   // func bind (nativemethod 禁止bind)
-  // Native outlive api
+  // Native outlive api, @display,@to_str
+  // key intern
   // 本地函数字面量的call行为 ||{}() ||:20;()
   // ^ 或许还能开一个强制分号模式
   // !{}

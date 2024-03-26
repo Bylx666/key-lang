@@ -9,9 +9,7 @@ use crate::{
 use crate::runtime::{calc::CalcRef, Scope};
 
 pub type NativeFn = fn(Vec<CalcRef>, Scope)-> Litr;
-pub type NativeMethod = fn(NaitveInstanceRef, args:Vec<CalcRef>, Scope)-> Litr;
-pub type Getter = fn(*mut NativeInstance, get:Interned)-> Litr;
-pub type Setter = fn(*mut NativeInstance, set:Interned, to:Litr);
+pub type NativeMethod = fn(&mut NativeInstance, args:Vec<CalcRef>, Scope)-> Litr;
 
 #[derive(Debug, Clone)]
 pub struct NativeMod {
@@ -25,13 +23,13 @@ pub struct NativeClassDef {
   pub name: Interned,
   pub statics: Vec<(Interned, NativeFn)>,
   pub methods: Vec<(Interned, NativeMethod)>,
-  pub getter: Getter,
-  pub setter: Setter,
-  pub index_get: fn(*mut NativeInstance, CalcRef)-> Litr,
-  pub index_set: fn(*mut NativeInstance, CalcRef, Litr),
-  pub next: fn(*mut NativeInstance)-> Litr,
-  pub onclone: fn(*mut NativeInstance)-> NativeInstance,
-  pub ondrop: fn(*mut NativeInstance)
+  pub getter: fn(&NativeInstance, get:Interned)-> Litr,
+  pub setter: fn(&mut NativeInstance, set:Interned, to:Litr),
+  pub index_get: fn(&NativeInstance, CalcRef)-> Litr,
+  pub index_set: fn(&mut NativeInstance, CalcRef, Litr),
+  pub next: fn(&mut NativeInstance)-> Litr,
+  pub onclone: fn(&NativeInstance)-> NativeInstance,
+  pub ondrop: fn(&mut NativeInstance)
 }
 
 /// 传进main里的东西，作为与原生的接口
@@ -48,14 +46,14 @@ struct NativeInterface {
 #[derive(Debug)]
 #[repr(C)]
 pub struct NativeInstance {
-  pub v1: usize,
-  pub v2: usize,
+  pub v: usize,
+  pub w: usize,
   pub cls: *mut NativeClassDef,
 }
 impl Clone for NativeInstance {
   /// 调用自定义clone (key-native库中的默认clone行为也可用)
   fn clone(&self) -> Self {
-    (unsafe{&*self.cls}.onclone)(self as *const NativeInstance as *mut NativeInstance)
+    (unsafe{&*self.cls}.onclone)(self)
   }
 }
 impl Drop for NativeInstance {
@@ -63,37 +61,6 @@ impl Drop for NativeInstance {
   fn drop(&mut self) {
     (unsafe{&*self.cls}.ondrop)(self)
   }
-}
-
-/// 针对NativeMethod设计的Native Instance版的CalcRef
-#[derive(Debug, Clone)]
-pub enum NaitveInstanceRef {
-  Ref(*mut NativeInstance),
-  Own(NativeInstance)
-}
-impl std::ops::Deref for NaitveInstanceRef {
-  type Target = NativeInstance;
-  fn deref(&self) -> &Self::Target {
-    match self {
-      NaitveInstanceRef::Ref(p)=> unsafe{&**p}
-      NaitveInstanceRef::Own(v)=> v
-    }
-  }
-}
-impl std::ops::DerefMut for NaitveInstanceRef {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    match self {
-      NaitveInstanceRef::Ref(p)=> unsafe{&mut**p}
-      NaitveInstanceRef::Own(v)=> v
-    }
-  }
-}
-
-/// Litr中使用的NativeMethod类型
-#[derive(Debug, Clone)]
-pub struct BoundNativeMethod {
-  pub bound: NaitveInstanceRef,
-  pub f: NativeMethod
 }
 
 fn err(s:&str)->! {

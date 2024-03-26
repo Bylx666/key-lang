@@ -1,7 +1,7 @@
 //! 注释都在mod.rs里，这没有注解
 
 use crate::{
-  native::{BoundNativeMethod, NaitveInstanceRef, NativeInstance}, 
+  native::NativeInstance, 
   primitive::{self, litr::*}
 };
 use super::*;

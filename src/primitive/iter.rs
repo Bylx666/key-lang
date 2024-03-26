@@ -1,10 +1,7 @@
 use std::cell::UnsafeCell;
 
 use crate::{
-  intern::intern, 
-  native::NativeMethod, 
-  runtime::calc::CalcRef,
-  primitive::litr::{Litr, LocalFunc}
+  intern::intern, native::{NativeInstance, NativeMethod}, primitive::litr::{Litr, LocalFunc}, runtime::calc::CalcRef
 };
 
 use super::sym::Symbol;
@@ -18,6 +15,24 @@ impl Iterator for InstanceIter<'_> {
   type Item = Litr;
   fn next(&mut self) -> Option<Self::Item> {
     let r = self.f.scope.call_local_with_self(self.f, vec![], self.kself);
+    if let Litr::Sym(s) = &r {
+      if let Symbol::IterEnd = s {
+        return None;
+      }
+    }
+    Some(r)
+  }
+}
+
+/// native instance专用的iter
+struct NativeInstanceIter<'a> {
+  f: fn(&mut NativeInstance)-> Litr,
+  kself: &'a mut NativeInstance
+}
+impl Iterator for NativeInstanceIter<'_> {
+  type Item = Litr;
+  fn next(&mut self) -> Option<Self::Item> {
+    let r = (self.f)(self.kself);
     if let Litr::Sym(s) = &r {
       if let Symbol::IterEnd = s {
         return None;
@@ -44,13 +59,17 @@ impl<'a> LitrIterator<'a> {
           .expect("迭代class需要定义'.@next()'方法").f;
         Box::new(InstanceIter { f, kself:v })
       }
-      Litr::Uninit => todo!(),
-      Litr::Float(_) => todo!(),
-      Litr::Bool(_) => todo!(),
-      Litr::Func(_) => todo!(),
-      Litr::Obj(_) => todo!(),
-      Litr::Ninst(_) => todo!(),
-      Litr::Sym(_) => todo!(),
+      Litr::Ninst(inst) => {
+        let f = unsafe {&*inst.cls}.next;
+        Box::new(NativeInstanceIter {f, kself:inst})
+      },
+      Litr::Obj(o) => Box::new(o.keys()
+        .map(|n|Litr::Str(unsafe{String::from_utf8_unchecked(n.vec().to_vec())}))),
+      Litr::Bool(_) => panic!("Bool无法迭代"),
+      Litr::Func(_) => panic!("Func无法迭代"),
+      Litr::Float(_) => panic!("Float无法迭代"),
+      Litr::Sym(_) => panic!("Sym无法迭代"),
+      Litr::Uninit => panic!("给uninit迭代?死刑!"),
       // Litr::Ninst(inst)=> {
       //   let next = unsafe {(*inst.cls).next};
       //   let res = next(inst);
