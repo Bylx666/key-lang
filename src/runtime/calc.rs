@@ -487,6 +487,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Int(l),Uint(r))=> Int(l $op *r as isize),
         (Float(l),Float(r))=> Float(l $op r),
         (Float(l),Int(r))=> Float(l $op *r as f64),
+        (Int(l),Float(r))=> Float(*l as f64 $op r),
         _=> panic!($pan)
       }
     }};
@@ -498,6 +499,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
       match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
         (Uint(l), Int(r))=> Uint(l $op *r as usize),
+        (Int(l), Uint(r))=> Uint((*l as usize) $op r),
         _=> panic!($pan)
       }
     }};
@@ -509,10 +511,11 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
       // 将Int自动转为对应类型
       let n = match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $o r),
-        (Uint(l), Int(r))=> Uint(l $o *r as usize),
+        (Uint(l), Int(r))=> Uint(*l $o *r as usize),
         (Int(l), Int(r))=> Int(l $o r),
-        (Float(l), Float(r))=> Float(l $o r),
-        (Float(l), Int(r))=> Float(l $o *r as f64),
+        (Float(l), Float(r))=> Float(*l $o r),
+        (Float(l), Int(r))=> Float(*l $o *r as f64),
+        (Int(l), Float(r))=> Float((*l as f64) $o *r),
         _=> panic!("运算并赋值的左右类型不同")
       };
       *left = n;
@@ -526,8 +529,9 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
       // 数字默认为Int，所以所有数字类型安置Int自动转换
       let n = match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
-        (Uint(l), Int(r))=> Uint(l $op *r as usize),
-        _=> panic!("按位运算并赋值只允许无符号数")
+        (Uint(l), Int(r))=> Uint(*l $op *r as usize),
+        (Int(l), Uint(r))=> Uint((*l as usize) $op r),
+        _=> panic!("按位运算并赋值只允许Uint")
       };
       *left = n;
       Uninit

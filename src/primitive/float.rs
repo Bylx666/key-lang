@@ -92,7 +92,7 @@ pub fn method(n:f64, name:Interned, args:Vec<CalcRef>)-> Litr {
       unsafe{std::mem::transmute(b)}
     }),
     b"is_nan"=> Litr::Bool(n.is_nan()),
-    b"is_infinite"=> Litr::Bool(n.is_infinite()),
+    b"is_inf"=> Litr::Bool(n.is_infinite()),
 
     // string 字符
     b"to_str"=> Litr::Str(n.to_string()),
