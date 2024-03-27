@@ -490,15 +490,6 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         _=> panic!($pan)
       }
     }};
-    ($pan:literal $op:tt $n:tt)=> {{
-      if match &*right {
-        Int(r) => *r == 0,
-        Uint(r) => *r == 0,
-        Float(r) => *r == 0.0,
-        _=> false
-      } {panic!("除数必须非0")}
-      impl_num!($pan $op)
-    }};
   }
 
   /// 二元运算中无符号数的戏份
@@ -571,8 +562,9 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     },
     b"-" => impl_num!("相减类型不同" -),
     b"*" => impl_num!("相乘类型不同" *),
-    b"%" => impl_num!("求余类型不同" % 0),
-    b"/" => impl_num!("相除类型不同" / 0),
+    // 本应该判断非0的,还是让rust帮我报错吧
+    b"%" => impl_num!("求余类型不同" %),
+    b"/" => impl_num!("相除类型不同" /),
 
     // unsigned
     b"<<" => impl_unsigned!("左移需要左值无符号" <<),

@@ -45,7 +45,7 @@ pub fn method_int(n:isize, name:Interned, args:Vec<CalcRef>)-> Litr {
     b"to_hex"=> Litr::Str(format!("{:X}", n)),
     b"min"=> Litr::Int(n.min(get_arg0!(to_isize))),
     b"max"=> Litr::Int(n.max(get_arg0!(to_isize))),
-    _=> panic!("{}上没有{}方法","int",name)
+    _=> panic!("{}上没有{}方法","Int",name)
   }
 }
 
@@ -71,7 +71,7 @@ pub fn method_uint(n:usize, name:Interned, args:Vec<CalcRef>)-> Litr {
     b"to_hex"=> Litr::Str(format!("{:X}", n)),
     b"min"=> Litr::Uint(n.min(get_arg0!(to_usize))),
     b"max"=> Litr::Uint(n.max(get_arg0!(to_usize))),
-    _=> panic!("{}上没有{}方法","int",name)
+    _=> panic!("{}上没有{}方法","Uint",name)
   }
 }
 
@@ -95,4 +95,26 @@ fn s_parse_int(args:Vec<CalcRef>, _cx:Scope)-> Litr {
     }
   }
   Litr::Int(0)
+}
+
+// - statics uint -
+pub fn statics_uint()-> Vec<(Interned, NativeFn)> {
+  vec![
+    (intern(b"parse"), s_parse_uint),
+    (intern(b"max"), |_,_|Litr::Uint(usize::MAX)),
+    (intern(b"min"), |_,_|Litr::Uint(usize::MIN))
+  ]
+}
+
+/// 根据传入的进制解析字符串
+fn s_parse_uint(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let radix = args.get(1).map_or(10, |n|to_u32(&**n));
+  if let Some(s) = args.get(0) {
+    return match &**s {
+      Litr::Str(s)=> Litr::Uint(usize::from_str_radix(s, radix)
+        .unwrap_or_else(|_|panic!("Uint::parse: 数字'{}'解析失败",s))),
+      n=> Litr::Uint(to_usize(n))
+    }
+  }
+  Litr::Uint(0)
 }

@@ -9,6 +9,7 @@ pub mod kstd;
 pub mod buf;
 pub mod list;
 pub mod int;
+pub mod float;
 pub mod sym;
 pub mod obj;
 pub mod iter;
@@ -68,13 +69,15 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
   if let Some(cls) = &mut CLASSES {
     cls.iter_mut().map(|(name, f)|(*name, Class::Native(f))).collect()
   }else {
-    let buf_c = new_static_class(b"Buf", buf::statics());
-    let list_c = new_static_class(b"List", list::statics());
-    let obj_c = new_static_class(b"Obj", obj::statics());
-    let int_c = new_static_class(b"Int", int::statics_int());
-    let sym_c = new_static_class(b"Sym", sym::statics());
-    let func_c = new_static_class(b"Func", func::statics());
-    CLASSES = Some(vec![buf_c, list_c, obj_c, int_c, sym_c, func_c]);
+    CLASSES = Some(vec![
+      new_static_class(b"Buf", buf::statics()),
+      new_static_class(b"List", list::statics()),
+      new_static_class(b"Obj", obj::statics()),
+      new_static_class(b"Int", int::statics_int()),
+      new_static_class(b"Uint", int::statics_uint()),
+      new_static_class(b"Sym", sym::statics()),
+      new_static_class(b"Func", func::statics()),
+    ]);
     classes()
   }
 }}

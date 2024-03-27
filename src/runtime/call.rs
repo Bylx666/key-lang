@@ -46,6 +46,7 @@ impl Scope {
       Litr::List(v)=> primitive::list::method(v, self, name, args),
       Litr::Obj(o)=> primitive::obj::method(o, self, name, args),
       Litr::Int(n)=> primitive::int::method_int(*n, name, args),
+      Litr::Float(n)=> primitive::float::method(*n, name, args),
       Litr::Inst(inst)=> {
         let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
         let cls = unsafe {&*inst.cls};
