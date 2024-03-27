@@ -173,7 +173,12 @@ impl Scanner<'_> {
         while i < len {
           match self.src[i] {
             b'.'=> {
-              if is_float {break;}
+              if is_float ||
+              // 判断下一个字符是否数字
+                (i+1 < len && !(0x30..=0x39).contains(&self.src[i+1]))
+              {
+                break;
+              }
               is_float = true
             },
             0x30..=0x39 | b'e' | b'E' => {}
@@ -203,7 +208,7 @@ impl Scanner<'_> {
         if i < len {
           let cur = self.src[i];
           match cur {
-            b'l' => parsed!(f64, Float),
+            b'f' => parsed!(f64, Float),
             b'u' => parsed!(usize, Uint),
             b'i'=> parsed!(isize, Int),
             _=> {}

@@ -45,6 +45,7 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"max"=> max(v),
     b"part"=> part(v, args, scope),
     b"read"=> read(v, args),
+    b"read_float"=> read(v, args),
     b"as_utf8"=> as_utf8(v),
     b"as_utf16"=> as_utf16(v),
     b"to_list"=> Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect()),
@@ -664,7 +665,8 @@ fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
     match &**n {
       Litr::Bool(b)=> *b,
       _=> false
-    });
+    }
+  );
   
   // 访问溢出时直接返回0
   if sz / 8 + index >= v.len() {
@@ -688,6 +690,26 @@ fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
       }
     }}
     Litr::Uint(imp!(16:u16 32:u32 64:u64))
+  }
+}
+
+/// 在指定偏移读取一个Float, 第二个参数取决于机器的大小端, true不一定指大端序
+fn read_float(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr { 
+  let index = args.get(0).map_or(0, |n|to_usize(n));
+  if index + 8 >= v.len() {
+    return Litr::Float(0.0);
+  }
+  let big_endian = args.get(2).map_or(false, |n|
+    match &**n {
+      Litr::Bool(b)=> *b,
+      _=> false
+    }
+  );
+
+  unsafe {
+    let mut f = (v.as_ptr().add(index) as *mut [u8;8]).read_unaligned();
+    if big_endian {f.reverse()}
+    Litr::Float(f64::from_ne_bytes(f))
   }
 }
 

@@ -71,9 +71,10 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     let buf_c = new_static_class(b"Buf", buf::statics());
     let list_c = new_static_class(b"List", list::statics());
     let obj_c = new_static_class(b"Obj", obj::statics());
+    let int_c = new_static_class(b"Int", int::statics_int());
     let sym_c = new_static_class(b"Sym", sym::statics());
     let func_c = new_static_class(b"Func", func::statics());
-    CLASSES = Some(vec![buf_c, list_c, obj_c, sym_c, func_c]);
+    CLASSES = Some(vec![buf_c, list_c, obj_c, int_c, sym_c, func_c]);
     classes()
   }
 }}
@@ -158,16 +159,18 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
       b"float"=> Litr::Float(*n as _),
       _=> Litr::Uninit
     }),
-    Litr::Int(n)=> CalcRef::Own(match find.vec() {
-      b"int"=> Litr::Int(*n),
-      b"uint"=> Litr::Uint(*n as _),
+
+    Litr::Uint(n)=> CalcRef::Own(match find.vec() {
+      b"int"=> Litr::Int(*n as _),
+      b"uint"=> Litr::Uint(*n),
       b"float"=> Litr::Float(*n as _),
       _=> Litr::Uninit
     }),
-    Litr::Int(n)=> CalcRef::Own(match find.vec() {
-      b"int"=> Litr::Int(*n),
+
+    Litr::Float(n)=> CalcRef::Own(match find.vec() {
+      b"int"=> Litr::Int(*n as _),
       b"uint"=> Litr::Uint(*n as _),
-      b"float"=> Litr::Float(*n as _),
+      b"float"=> Litr::Float(*n),
       _=> Litr::Uninit
     }),
 

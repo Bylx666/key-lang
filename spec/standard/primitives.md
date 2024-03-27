@@ -24,3 +24,7 @@ len capacity
 
 len char_len(低性能) lines(低性能) capacity
 
+## 数字 Int Uint Float
+
+都有int,uint,float属性,你可以在不确定数字类型时统一使用这三种属性
+
