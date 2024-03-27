@@ -14,7 +14,7 @@ pub mod obj;
 pub mod iter;
 pub mod func;
 
-use litr::Litr;
+use litr::{Litr, Function};
 use crate::native::{
   NativeClassDef, 
   NativeFn,
@@ -22,15 +22,6 @@ use crate::native::{
 };
 use crate::runtime::{calc::CalcRef, Class, Scope};
 use crate::intern::{Interned, intern};
-
-
-fn getter(_v:&NativeInstance, _get:Interned)-> Litr {Litr::Uninit}
-fn setter(_v:&mut NativeInstance, _set:Interned, _to:Litr) {}
-fn index_get(_v:&NativeInstance, _get:CalcRef)-> Litr {Litr::Uninit}
-fn index_set(_v:&mut NativeInstance, _set:CalcRef, _to:Litr) {}
-fn next(_v:&mut NativeInstance)-> Litr {Litr::Uninit}
-fn onclone(v:&NativeInstance)-> NativeInstance {unsafe{&*v}.clone()}
-fn ondrop(_v:&mut NativeInstance) {}
 
 static mut CLASSES:Option<Vec<(Interned, NativeClassDef)>> = None;
 
@@ -41,9 +32,13 @@ fn new_static_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeCla
     name,
     methods: Vec::new(),
     statics: f,
-    getter, setter,
-    index_get, index_set,
-    next, onclone, ondrop
+    getter:|_,_|Litr::Uninit,
+    setter:|_,_,_|(),
+    index_get:|_,_|Litr::Uninit, 
+    index_set:|_,_,_|(),
+    next:|_|Litr::Sym(sym::Symbol::IterEnd), 
+    onclone:|v|v.clone(), 
+    ondrop:|_|()
   })
 }
 
@@ -58,13 +53,17 @@ fn new_iter_class(
     name,
     methods: Vec::new(),
     statics: Vec::new(),
-    getter, setter,
-    index_get, index_set,
-    next, ondrop,
+    getter:|_,_|Litr::Uninit, 
+    setter:|_,_,_|(),
+    index_get:|_,_|Litr::Uninit, 
+    index_set:|_,_,_|(),
+    next, 
+    ondrop,
     onclone: |v|panic!("该迭代器{}无法复制. 请考虑用take函数代替", unsafe{&*v.cls}.name)
   }
 }
 
+/// 返回只含有静态函数的内置类
 pub fn classes()-> Vec<(Interned, Class)> {unsafe {
   if let Some(cls) = &mut CLASSES {
     cls.iter_mut().map(|(name, f)|(*name, Class::Native(f))).collect()
@@ -78,3 +77,100 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
     classes()
   }
 }}
+
+
+/// 在作用域中获取Litr的属性
+pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
+  match &mut *from {
+    // 本地class的实例
+    Litr::Inst(inst)=> {
+      let can_access_private = unsafe {(*inst.cls).module} == this.exports;
+      let cls = unsafe {&*inst.cls};
+
+      // 寻找属性
+      let props = &cls.props;
+      for (n, prop) in props.iter().enumerate() {
+        if prop.name == find {
+          assert!(prop.public || can_access_private,
+            "'{}'类型的成员属性'{}'是私有的", cls.name, find);
+          return CalcRef::Ref(&mut inst.v[n]);
+        }
+      }
+
+      panic!("'{}'类型上没有'{}'属性", cls.name, find)
+    },
+
+    // 原生类的实例
+    Litr::Ninst(inst)=> {
+      let cls = unsafe {&*inst.cls};
+      CalcRef::Own((cls.getter)(inst, find))
+    }
+
+    // 哈希表
+    // 直接clone是防止Obj作为临时变量使map引用失效
+    Litr::Obj(map)=> map.get_mut(&find)
+      .map_or(CalcRef::uninit(), |r|CalcRef::Ref(r)),
+
+    // 以下都是对基本类型的getter行为
+    Litr::Bool(v)=> CalcRef::Own(match find.vec() {
+      b"rev"=> Litr::Bool(!*v),
+      _=> Litr::Uninit
+    }),
+
+    Litr::Buf(v)=> CalcRef::Own(match find.vec() {
+      b"len"=> Litr::Uint(v.len()),
+      b"ptr"=> Litr::Uint(v.as_mut_ptr() as usize),
+      b"capacity"=> Litr::Uint(v.capacity()),
+      _=> Litr::Uninit
+    }),
+
+    Litr::Func(f)=> CalcRef::Own(match find.vec() {
+      b"type"=> match f {
+        Function::Local(_)=> Litr::Str("local".to_owned()),
+        Function::Extern(_)=> Litr::Str("extern".to_owned()),
+        Function::Native(_)=> Litr::Str("native".to_owned())
+      }
+      b"raw"=> match f {
+        Function::Local(f)=> Litr::Uint(f.ptr as _),
+        Function::Native(f)=> Litr::Uint(*f as usize),
+        Function::Extern(e)=> Litr::Uint(e.ptr)
+      }
+      _=> Litr::Uninit
+    }),
+
+    Litr::List(v)=> CalcRef::Own(match find.vec() {
+      b"len"=> Litr::Uint(v.len()),
+      b"capacity"=> Litr::Uint(v.capacity()),
+      _=> Litr::Uninit
+    }),
+
+    Litr::Str(s)=> CalcRef::Own(match find.vec() {
+      b"len"=> Litr::Uint(s.len()),
+      b"char_len"=> Litr::Uint(s.chars().count()),
+      b"lines"=> Litr::Uint(s.lines().count()),
+      b"capacity"=> Litr::Uint(s.capacity()),
+      _=> Litr::Uninit
+    }),
+
+    Litr::Int(n)=> CalcRef::Own(match find.vec() {
+      b"int"=> Litr::Int(*n),
+      b"uint"=> Litr::Uint(*n as _),
+      b"float"=> Litr::Float(*n as _),
+      _=> Litr::Uninit
+    }),
+    Litr::Int(n)=> CalcRef::Own(match find.vec() {
+      b"int"=> Litr::Int(*n),
+      b"uint"=> Litr::Uint(*n as _),
+      b"float"=> Litr::Float(*n as _),
+      _=> Litr::Uninit
+    }),
+    Litr::Int(n)=> CalcRef::Own(match find.vec() {
+      b"int"=> Litr::Int(*n),
+      b"uint"=> Litr::Uint(*n as _),
+      b"float"=> Litr::Float(*n as _),
+      _=> Litr::Uninit
+    }),
+
+    _=> CalcRef::uninit()
+  }
+}
