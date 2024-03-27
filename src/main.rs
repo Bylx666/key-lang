@@ -43,6 +43,7 @@ fn main()-> ExitCode {
 
   // 基本类型的方法，也就是所有litr的prop
   // 字符串捕获变量
+  // str的index
   // @index_set @next之类的
   // obj之类的to_str
   // push之类的方法要注意outlive
@@ -80,6 +81,8 @@ fn main()-> ExitCode {
   // Instance::set_any()
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
+  // 科学计数法
+
   intern::init();
   let scanned = scan::scan(&fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());
   let exit = runtime::run(&scanned);

@@ -1,7 +1,5 @@
 use crate::{
-  intern::{Interned,intern}, 
-  runtime::calc::CalcRef,
-  native::NativeFn
+  intern::{intern, Interned}, native::NativeFn, runtime::{calc::CalcRef, Scope}
 };
 use super::litr::Litr;
 
@@ -128,6 +126,40 @@ pub fn method(n:f64, name:Interned, args:Vec<CalcRef>)-> Litr {
 
 // - statics -
 pub fn statics()-> Vec<(Interned, NativeFn)> {
+  use std::f64::consts;
   vec![
+    (intern(b"parse"), s_parse),
+    (intern(b"ln2"), |_,_|Litr::Float(consts::LN_2)),
+    (intern(b"ln10"), |_,_|Litr::Float(consts::LN_10)),
+    (intern(b"log10_e"), |_,_|Litr::Float(consts::LOG10_E)),
+    (intern(b"log10_2"), |_,_|Litr::Float(consts::LOG10_2)),
+    (intern(b"log2_10"), |_,_|Litr::Float(consts::LOG2_10)),
+    (intern(b"log2_e"), |_,_|Litr::Float(consts::LOG2_E)),
+
+    (intern(b"sqrt2"), |_,_|Litr::Float(consts::SQRT_2)),
+    (intern(b"sqrt1_2"), |_,_|Litr::Float(consts::FRAC_1_SQRT_2)),
+    (intern(b"sqrt1_pi"), |_,_|Litr::Float(consts::FRAC_1_PI)),
+
+    (intern(b"pi"), |_,_|Litr::Float(consts::PI)),
+    (intern(b"tau"), |_,_|Litr::Float(consts::TAU)),
+    (intern(b"e"), |_,_|Litr::Float(consts::E)),
+
+    (intern(b"max"), |_,_|Litr::Float(f64::MAX)),
+    (intern(b"min"), |_,_|Litr::Float(f64::MIN)),
+    (intern(b"nan"), |_,_|Litr::Float(f64::NAN)),
+    (intern(b"inf"), |_,_|Litr::Float(f64::INFINITY)),
+    (intern(b"neg_inf"), |_,_|Litr::Float(f64::NEG_INFINITY)),
   ]
+}
+
+/// 解析浮点数
+fn s_parse(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  if let Some(s) = args.get(0) {
+    return match &**s {
+      Litr::Str(s)=> Litr::Float(<f64 as std::str::FromStr>::from_str(s)
+        .unwrap_or_else(|_|panic!("Float::parse: 数字'{}'解析失败",s))),
+      n=> Litr::Float(to_f(n))
+    }
+  }
+  Litr::Float(0.0)
 }

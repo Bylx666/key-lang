@@ -75,6 +75,7 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
       new_static_class(b"Obj", obj::statics()),
       new_static_class(b"Int", int::statics_int()),
       new_static_class(b"Uint", int::statics_uint()),
+      new_static_class(b"Float", float::statics()),
       new_static_class(b"Sym", sym::statics()),
       new_static_class(b"Func", func::statics()),
     ]);
