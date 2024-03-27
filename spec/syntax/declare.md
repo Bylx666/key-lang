@@ -21,7 +21,10 @@ let str = "test";           // Str   (字符串字面量, 所见即所得)
 let str = `\n\rtest"`       // Str   (带转义的字符串, 字面量中有双引号就用这个)
 let vec = [2, 5, 6, 8, ];   // List  (叫作列表，任意类型)
 let vec = [8u, true, 26];   // List 
-let buf = 'Genshin{0F20}';  // Buffer(u8 {}内允许空格换行)
+let buf = 'Genshin{0F20}';  // Buf   (u8 {}内允许空格换行)
+let buf = '{
+  aa ff / ok
+}'                          // Buf的行内注释只允许'/'作为单行注释的开头
 
 ```
 

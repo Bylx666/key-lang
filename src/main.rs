@@ -42,6 +42,7 @@ fn main()-> ExitCode {
   // }));
 
   // 基本类型的方法，也就是所有litr的prop
+  // 字符串捕获变量
   // @index_set @next之类的
   // obj之类的to_str
   // push之类的方法要注意outlive

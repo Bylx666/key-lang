@@ -513,6 +513,7 @@ impl Scanner<'_> {
         Stmt::ForWhile { condition, exec }
       }
       b'!'=> {
+        self.next();
         let exec = Box::new(self.stmt());
         Stmt::ForLoop(exec)
       }

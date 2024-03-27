@@ -58,7 +58,10 @@ impl Scanner<'_> {
                   i += 1;
                   escape_enter!();
                 }
-                b'\n'=> escape_enter!(),
+                b'\n'=> {
+                  unsafe { LINE += 1; }
+                  escape_enter!()
+                },
                 // 非换行符就按转义表转义
                 _=> {
                   let escaped = charts::escape(escaper);
@@ -89,77 +92,65 @@ impl Scanner<'_> {
         Expr::Literal(Litr::Str(str))
       }
   
-      // 解析'buffer'
+      // 解析'buf'
       b'\'' => {
         i += 1;
         let mut start = i; // 开始结算的起点
         let mut vec = Vec::<u8>::new();
-  
-        /// 解析{hex}
-        /// 
-        /// 用宏是因为嵌套太深了看着很难受
-        macro_rules! parse_hex {() => {{
-          // 结算左大括号之前的内容
-          vec.extend_from_slice(&self.src[start..i]);
-          i += 1;
-          let mut braced = i; // 大括号的起点
-          // 以i为界限，把hex部分切出来
-          loop {
-            let char = self.src[i];
-            match char {
-              b'0'..=b'9'|b'a'..=b'f'|b'A'..=b'F'|b'\n'|b'\r'|b' ' => i += 1,
-              b'}' => break,
-              _=> panic!("十六进制非法字符:{}",String::from_utf8_lossy(&[char]))
-            };
-            if i >= len {panic!("未闭合的}}")}
-          };
-  
-          // 结算起点延后到大括号后面
-          start = i + 1;
-  
-          // 处理hex
-          let mut hex = Vec::with_capacity(i-braced);
-          while braced < i {
-            // 清除空格
-            while matches!(self.src[braced],b'\n'|b'\r'|b' ') {
-              braced += 1;
-              if braced >= i {break}
-            };
-            if braced >= i {
-              panic!("未闭合的}}")
-            }
-  
-            let res:Result<u8,_>;
-            let a = self.src[braced];
-            if braced >= i {break;}
-  
-            braced += 1;
-            if braced < i {
-              let b = self.src[braced];
-              braced += 1;
-              res = u8::from_str_radix(&String::from_utf8_lossy(&[a,b]), 16);
-            }else {
-              res = u8::from_str_radix(&String::from_utf8_lossy(&[a]), 16)
-            }
-  
-            match res {
-              Ok(n)=> hex.push(n),
-              Err(_)=> panic!("十六进制解析:不要把一个Byte的两个字符拆开")
-            }
-          }
-          vec.append(&mut hex);
-        }}}
-  
-        loop {
+
+        while i < len {
           let char = self.src[i];
           match char {
             b'\'' => break,
             // 十六进制解析
-            b'{' => parse_hex!(),
+            b'{' => {
+              vec.extend_from_slice(&self.src[start..i]);
+              i += 1;
+              while i < len {
+                match self.src[i] {
+                  // 跳过空格和换行
+                  b'\n'=> {
+                    unsafe{LINE += 1}
+                    i += 1;
+                  }
+                  b'\r'|b' '=> i += 1,
+                  // 跳过注释
+                  b'/'=> while i < len {
+                    if self.src[i]==b'\n' {
+                      unsafe {LINE += 1}
+                      i += 1;
+                      break;
+                    }else {i += 1;}
+                  }
+                  // 遇到}就结束
+                  b'}'=> break,
+                  // 解析数字
+                  c=> match charts::char_to_u8(c) {
+                    Some(first)=> {
+                      i += 1;
+                      if i < len {
+                        if let Some(second) = charts::char_to_u8(self.src[i]) {
+                          vec.push((first<<4)|second);
+                          i += 1;
+                          continue;
+                        }
+                      }
+                      vec.push(first)
+                    }
+                    None=> panic!("buf字面量不允许'{}'字符",String::from_utf8_lossy(&[c]))
+                  }
+                }
+              }
+              if i >= len {panic!("buf字面量中未闭合的'}}'")}
+
+              // 把}跳过去
+              start = i + 1;
+            },
             _=> i += 1
           }
-          if i >= len {panic!("未闭合的'。")}
         }
+        if i >= len {panic!("buf字面量的'''未闭合")}
+
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
   
@@ -187,7 +178,7 @@ impl Scanner<'_> {
           i += 1;
         }
   
-        let str = String::from_utf8(self.src[self.i()..i].to_vec()).unwrap();
+        let str = String::from_utf8_lossy(&self.src[self.i()..i]);
         use Litr::*;
         macro_rules! parsed {
           ($t:ty, $i:ident) => {{
@@ -211,7 +202,7 @@ impl Scanner<'_> {
             b'f' => parsed!(f64, Float),
             b'u' => parsed!(usize, Uint),
             b'i'=> parsed!(isize, Int),
-            _=> {}
+            _=> ()
           }
         }
         self.set_i(i-1);

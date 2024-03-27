@@ -34,7 +34,17 @@ pub const fn escape(c:u8)-> u8 {
     b'\\'=> b'\\',
     b'0'=> 0,
     b'`'=> b'`',
+    b'{'=> b'{',
     _=> 255
   }
 }
 
+/// 将一个u8字符解析为u8
+pub const fn char_to_u8(c:u8)-> Option<u8> {
+  match c {
+    b'0'..=b'9'=> Some(c - b'0'),
+    b'a'..=b'f'=> Some(c - b'a' + 10),
+    b'A'..=b'F'=> Some(c - b'A' + 10),
+    _=> None
+  }
+}
