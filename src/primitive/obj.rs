@@ -105,7 +105,7 @@ fn entries(o:&mut HashMap<Interned, Litr>)-> Litr {
   Litr::Ninst(NativeInstance {cls:unsafe{ITER_ENTRIES},v,w:0})
 }
 
-///
+/// concat内部使用
 fn _concat_extend(o:&mut HashMap<Interned, Litr>, arg:&Litr) {
   match arg {
     Litr::Obj(other)=>
@@ -134,6 +134,8 @@ fn concat_clone(o:&mut HashMap<Interned, Litr>, args:Vec<CalcRef>)-> Litr {
   Litr::Obj(o)
 }
 
+
+// - statics -
 pub fn statics()-> Vec<(Interned, NativeFn)> {
   unsafe {
     use std::collections::hash_map::{Keys, Values, Iter};

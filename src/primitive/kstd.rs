@@ -1,3 +1,5 @@
+//! 定义顶级作用域的函数
+
 use crate::intern::{Interned,intern};
 use crate::primitive::litr::{Litr, Function};
 use crate::runtime::{calc::CalcRef, Scope};

@@ -82,6 +82,8 @@ fn main()-> ExitCode {
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
   // 科学计数法
+  // wasm
+  // 脚本打包exe
 
   intern::init();
   let scanned = scan::scan(&fs::read("D:\\code\\rs\\key-lang\\samples\\helloworld.ks").unwrap());

@@ -10,6 +10,7 @@ pub mod buf;
 pub mod list;
 pub mod int;
 pub mod float;
+pub mod kstr;
 pub mod sym;
 pub mod obj;
 pub mod iter;
@@ -76,6 +77,7 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
       new_static_class(b"Int", int::statics_int()),
       new_static_class(b"Uint", int::statics_uint()),
       new_static_class(b"Float", float::statics()),
+      new_static_class(b"Str", kstr::statics()),
       new_static_class(b"Sym", sym::statics()),
       new_static_class(b"Func", func::statics()),
     ]);
@@ -112,7 +114,6 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
     }
 
     // 哈希表
-    // 直接clone是防止Obj作为临时变量使map引用失效
     Litr::Obj(map)=> map.get_mut(&find)
       .map_or(CalcRef::uninit(), |r|CalcRef::Ref(r)),
 
@@ -150,8 +151,9 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
     }),
 
     Litr::Str(s)=> CalcRef::Own(match find.vec() {
-      b"len"=> Litr::Uint(s.len()),
-      b"char_len"=> Litr::Uint(s.chars().count()),
+      b"ptr"=> Litr::Uint(s.as_mut_ptr() as _),
+      b"byte_len"=> Litr::Uint(s.len()),
+      b"len"=> Litr::Uint(s.chars().count()),
       b"lines"=> Litr::Uint(s.lines().count()),
       b"capacity"=> Litr::Uint(s.capacity()),
       _=> Litr::Uninit

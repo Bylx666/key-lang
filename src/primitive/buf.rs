@@ -550,8 +550,7 @@ fn slice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
 
   v.copy_within(start..end, 0);
-  // SAFETY: end必定小于数组长度, 因此end - start必定小于数组长度
-  unsafe { v.set_len(end - start) }
+  v.truncate(end - start);
   Litr::Uninit
 }
 
