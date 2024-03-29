@@ -21,3 +21,11 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
 fn s_iter_end(_:Vec<CalcRef>, _cx:Scope)-> Litr {
   Litr::Sym(Symbol::IterEnd)
 }
+
+pub fn to_str(s:&Symbol)-> String {
+  let t = match s {
+    Symbol::IterEnd=> "迭代结束",
+    Symbol::Reserved=> "未使用"
+  };
+  format!("Sym {{ {} }}", t)
+}

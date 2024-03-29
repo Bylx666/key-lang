@@ -110,14 +110,7 @@ impl Litr {
         s
       }
       Ninst(inst)=> (unsafe { &*inst.cls }.to_str)(inst),
-      Sym(s)=> {
-        use crate::primitive::sym::Symbol;
-        let t = match s {
-          Symbol::IterEnd=> "迭代结束",
-          Symbol::Reserved=> "未使用"
-        };
-        format!("Sym {{ {} }}", t)
-      }
+      Sym(s)=> super::sym::to_str(s)
     }
   }
 }
@@ -171,8 +164,7 @@ impl Clone for Instance {
     match opt {
       Some(cls_f)=> {
         let f = &mut cls_f.f;
-        todo!();// f.bound = Some(Box::new(CalcRef::Own(Litr::Inst(cloned))));
-        let res = f.scope.call_local(f, vec![]);
+        let res = f.scope.call_local_with_self(f, vec![], &mut Litr::Inst(cloned));
         if let Litr::Inst(v) = res {
           v
         }else {
@@ -194,8 +186,7 @@ impl Drop for Instance {
         let f = &mut cls_f.f;
         // 不要额外调用clone
         let binding = &mut *std::mem::ManuallyDrop::new(Litr::Inst(Instance { cls: self.cls, v: self.v.clone() }));
-        todo!();// f.bound = Some(Box::new(CalcRef::Ref(binding)));
-        f.scope.call_local(f, vec![]);
+        f.scope.call_local_with_self(f, vec![], binding);
       }
       None=> ()
     }

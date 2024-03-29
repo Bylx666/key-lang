@@ -380,8 +380,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
           match opt {
             Some(f)=> {
               let f = &mut f.f;
-              todo!();// f.bound = Some(Box::new(CalcRef::Ref(left)));
-              f.scope.call_local(f, vec![i.own(), right]);
+              f.scope.call_local_with_self(f, vec![i.own(), right], left);
             }
             None=> panic!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
           }
@@ -420,14 +419,14 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   }
 
   // 判断实例index_get
-  if let Litr::Inst(inst) = &mut *left {
+  let left = &mut *left;
+  if let Litr::Inst(inst) = left {
     let fname = intern(b"@index_get");
     let cls = unsafe{&mut *inst.cls};
     let opt = cls.methods.iter_mut().find(|v|v.name == fname);
     if let Some(f) = opt {
       let f = &mut f.f;
-      todo!();// f.bound = Some(Box::new(left));      
-      return CalcRef::Own(f.scope.call_local(f, vec![i.own()]));
+      return CalcRef::Own(f.scope.call_local_with_self(f, vec![i.own()], left));
     }
     panic!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
   }

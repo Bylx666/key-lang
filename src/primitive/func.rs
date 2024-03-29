@@ -6,6 +6,68 @@ use crate::{
   scan::stmt::Statements
 };
 
+pub fn method(f:&Function, name:Interned, cx: Scope, args:Vec<CalcRef>)-> Litr {
+  match name.vec() {
+    b"call"=> kcall(f, args, cx),
+    _=> panic!("func没有{}方法",name)
+    // b"bind"=> if let
+  }
+}
+
+/// 传入self并调用
+pub fn kcall(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+  assert!(args.len()>=1, "func.call必须传入一个值作为self");
+  let trans_args = args.split_off(1);
+  let mut kself = args.pop().unwrap();
+  match f {
+    Function::Local(f)=> cx.call_local_with_self(
+      f, 
+      trans_args.into_iter().map(|v|v.own()).collect(), 
+      &mut *kself
+    ),
+    // 如果不是local就正常调用
+    _=> cx.call(trans_args, f)
+  }
+}
+
+/// 复制一个函数,但上下文在当前作用域
+pub fn clone_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+  Litr::Func(match f {
+    Function::Local(f)=> Function::Local(LocalFunc::new(f.ptr, cx)),
+    // 如果不是local就正常调用
+    _=> f.clone()
+  })
+}
+
+/// 复制一个函数,但上下文在当前作用域
+pub fn call_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+  assert!(args.len()>=1, "func.call_here必须传入一个值作为self");
+  let trans_args = args.split_off(1);
+  let mut kself = args.pop().unwrap();
+  match f {
+    Function::Local(f)=> cx.call_local_with_self(
+      &LocalFunc::new(f.ptr, cx), 
+      trans_args.into_iter().map(|v|v.own()).collect(), 
+      &mut *kself
+    ),
+    // 如果不是local就正常调用
+    _=> cx.call(trans_args, f)
+  }
+}
+
+/// 复制一个函数,但上下文在该模块的顶级作用域
+pub fn clone_top(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+  // 获取顶级作用域
+  while let Some(s) = &cx.parent {
+    cx = s.clone()
+  }
+  Litr::Func(match f {
+    Function::Local(f)=> Function::Local(LocalFunc::new(f.ptr, cx)),
+    // 如果不是local就正常调用
+    _=> f.clone()
+  })
+}
+
 pub fn statics()-> Vec<(Interned, NativeFn)> {
   vec![
     (intern(b"new"), s_new)
