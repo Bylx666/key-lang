@@ -2,6 +2,6 @@
 //mod D:\code\rs\key-native\target\debug\key_native.dll> m
 //mod D:\code\rs\key-lang\samples\testmod.ks> m;
 
-let a = "结城理结城理结城理"
-a.splice(2,5,"雨宫莲")
-log(a)
+let a = '结结结结城理'
+a.replace("结","城理",2)
+log(a.as_utf8())

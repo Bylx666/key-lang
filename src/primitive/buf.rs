@@ -6,21 +6,12 @@ use super::*;
 
 pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Litr {
   match name.vec() {
+    // edit
     b"push"=> push(v, args),
     b"push_front"=> push_front(v, args),
-    b"dedup"=> dedup(v, args, scope),
-    b"sort"=> sort(v, args, scope),
-    b"for_each"=> for_each(v, args, scope),
-    b"map_clone"=> map_clone(v, args, scope),
-    b"map"=> map(v, args, scope),
     b"pop"=> pop(v, args),
     b"pop_front"=> pop_front(v, args),
-    b"rev"=> rev(v),
-    b"filter"=> filter(v, args, scope),
-    b"filter_clone"=> filter_clone(v, args, scope),
     b"copy_within"=> copy_within(v, args),
-    b"write"=> write(v, args),
-    b"last"=> last(v),
     b"repeat"=> repeat(v, args),
     b"repeat_clone"=> repeat_clone(v, args),
     b"insert"=> insert(v, args),
@@ -29,26 +20,49 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"splice"=> splice(v, args),
     b"fill"=> fill(v, args),
     b"fill_clone"=> fill_clone(v, args),
-    b"expand"=> expand(v, args),
     b"rotate"=> rotate(v, args),
+    b"rev"=> rev(v),
     b"concat"=> concat(v, args),
     b"concat_clone"=> concat_clone(v, args),
-    b"join"=> join(v, args),
+    
+    // binary edit
+    b"read"=> read(v, args),
+    b"read_float"=> read(v, args),
+    b"write"=> write(v, args),
+
+    // iter
+    b"for_each"=> for_each(v, args, scope),
+    b"map_clone"=> map_clone(v, args, scope),
+    b"map"=> map(v, args, scope),
     b"fold"=> fold(v, args, scope),
+    b"dedup"=> dedup(v, args, scope),
+    b"sort"=> sort(v, args, scope),
+    b"replace"=> replace(v, args),
+    b"replace_clone"=> replace_clone(v, args),
+
+    // part
+    b"filter"=> filter(v, args, scope),
+    b"filter_clone"=> filter_clone(v, args, scope),
     b"slice"=> slice(v, args),
     b"slice_clone"=> slice_clone(v, args),
+    b"part"=> part(v, args, scope),
+
+    // find
     b"includes"=> includes(v, args),
     b"index_of"=> index_of(v, args, scope),
     b"r_index_of"=> r_index_of(v, args, scope),
-    b"all"=> all(v, args, scope),
     b"min"=> min(v),
     b"max"=> max(v),
-    b"part"=> part(v, args, scope),
-    b"read"=> read(v, args),
-    b"read_float"=> read(v, args),
+    b"all"=> all(v, args, scope),
+
+    // transmute
     b"as_utf8"=> as_utf8(v),
     b"as_utf16"=> as_utf16(v),
     b"to_list"=> Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect()),
+
+    b"last"=> last(v),
+    b"expand"=> expand(v, args),
+    b"join"=> join(v, args),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -728,6 +742,43 @@ fn as_utf16(v:&mut Vec<u8>)-> Litr {
   Litr::Str(String::from_utf16_lossy(s))
 }
 
+/// 替换的内部方法
+fn _replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> String {
+  const fn to_str(s:&[u8])-> &str {
+    // SAFETY: 本方法使用std::str::pattern的实现, 
+    // 其底层依赖字节比较 并不检查字符边界
+    unsafe {std::str::from_utf8_unchecked(s)}
+  }
+  let s = to_str(v);
+
+  let from = match &** args.get(0).expect("str.replace需要一个搜索Buf") {
+    Litr::Str(s)=> s,
+    Litr::Buf(s)=> to_str(s),
+    _=> panic!("str.replace第一个参数必须是Buf或Str")
+  };
+  let to = args.get(1).map_or("", |n| match &**n {
+    Litr::Str(s)=> s,
+    Litr::Buf(s)=> to_str(s),
+    _=> panic!("str.replace第二个参数必须是Buf或Str")
+  });
+
+  if let Some(n) = args.get(2) {
+    s.replacen(from, to, to_usize(n))
+  }else {
+    s.replace(from, to)
+  }
+}
+
+/// 查找替换Buf或Str,可传入整数作为第三个参数作为替换次数
+fn replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  *v = _replace(v, args).into_bytes();
+  Litr::Uninit
+}
+
+/// replace复制版
+fn replace_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
+  Litr::Str(_replace(v, args))
+}
 
 // - statics -
 pub fn statics()-> Vec<(Interned, NativeFn)> {
