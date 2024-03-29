@@ -23,7 +23,7 @@ impl LocalFunc {
   /// 将本地函数定义和作用域绑定
   pub fn new(ptr:*const LocalFuncRaw, scope: Scope)-> Self {
     // 创建时加一层, 对应作用域结束时的减一层
-    // println!("{:02}: func new : {:p}",ln(),ptr);
+    println!("{:02}: func new : {:p}",ln(),ptr);
     increase_scope_count(scope);
     LocalFunc{
       ptr,
@@ -42,7 +42,7 @@ impl std::ops::Deref for LocalFunc {
 impl Clone for LocalFunc {
   fn clone(&self) -> Self {
     let scope = self.scope;
-    // println!("{:02}: func clone : {:p}",ln(), self.ptr);
+    println!("{:02}: func clone : {:p}",ln(), self.ptr);
     // 只要复制就加一次函数定义处作用域引用计数
     increase_scope_count(scope);
     LocalFunc {ptr: self.ptr, scope}
@@ -56,7 +56,7 @@ impl Clone for LocalFunc {
 impl Drop for LocalFunc {
   fn drop(&mut self) {
     let count = &self.scope.outlives;
-    // println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
+    println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
     decrease_scope_count(self.scope);
   }
 }
@@ -83,7 +83,7 @@ pub fn decrease_scope_count(mut scope: Scope) {
   loop {
     let prev = scope.outlives.fetch_sub(1, Ordering::Relaxed);
     if prev == 1 && scope.ended {
-      // println!("{:02}: scope drop by func: {:p}",ln(), scope.ptr);
+      println!("{:02}: scope drop by func: {:p}",ln(), scope.ptr);
       unsafe{ std::ptr::drop_in_place(scope.ptr) }
     }
     if let Some(prt) = scope.parent {

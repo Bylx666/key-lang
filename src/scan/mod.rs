@@ -107,7 +107,10 @@ impl Scanner<'_> {
         self.set_i(self.i()+2);
         while self.i() < len {
           match self.cur() {
-            b'\n'=> unsafe{LINE += 1},
+            b'\n'=> unsafe{
+              LINE += 1;
+              self.next();
+            },
             b'\''=> {
               let next_i = self.i() + 1;
               if next_i<len && self.src[next_i]==b'/' {

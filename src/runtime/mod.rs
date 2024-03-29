@@ -119,7 +119,7 @@ impl Scope {
       class_defs:Vec::new(),
       class_uses:Vec::new(),
       kself: self.kself,
-      vars: Vec::with_capacity(16),
+      vars: Vec::new(),
       imports: self.imports,
       exports: self.exports,
       outlives: AtomicUsize::new(0),

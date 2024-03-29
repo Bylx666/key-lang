@@ -22,10 +22,11 @@ impl CalcRef {
   }
   /// 拿走Calcref可变引用的所有权
   pub fn take(&mut self)-> Litr {
-    std::mem::swap(&mut Self::uninit(), self);
-    match self {
-      CalcRef::Ref(p)=> unsafe {(**p).clone()},
-      CalcRef::Own(v)=> v.clone()
+    let mut v = Self::uninit();
+    std::mem::swap(&mut v, self);
+    match v {
+      CalcRef::Ref(p)=> unsafe {(*p).clone()},
+      CalcRef::Own(v)=> v
     }
   }
   pub const fn uninit()-> Self {

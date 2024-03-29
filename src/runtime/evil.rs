@@ -132,37 +132,56 @@ impl Scope {
       Stmt::ForIter{exec, id, iterator}=> {
         use primitive::iter::LitrIterator;
         let mut calced = self.calc_ref(iterator);
-        let mut scope = self.subscope();
         let mut breaked = false;
+        // 记忆上次运行的作用域的变量数量
+        let mut capa = 0;
         match &**exec {
           Stmt::Block(exec)=> {
-            for v in LitrIterator::new(&mut calced) {
-              if scope.ended || breaked {
+            let mut iter = LitrIterator::new(&mut calced);
+            if let Some(first_var) = iter.next() {
+              // 先运行一次测试出来变量数量
+              {
+                let mut scope = self.subscope();
+                if let Some(id) = id {
+                  scope.vars.push((*id, first_var));
+                }
+                loop_run(scope, &mut breaked, exec);
+                capa = scope.vars.len();
                 outlive::scope_end(scope);
-                return;
               }
-              scope.vars.clear();
-              if let Some(id) = id {
-                scope.vars.push((*id, v));
+
+              for n in iter {
+                let mut scope = self.subscope();
+                scope.vars = Vec::with_capacity(capa);
+                if scope.ended || breaked {
+                  outlive::scope_end(scope);
+                  return;
+                }
+                if let Some(id) = id {
+                  scope.vars.push((*id, n));
+                }
+                loop_run(scope, &mut breaked, exec);
+                outlive::scope_end(scope);
               }
-              scope.class_uses.clear();
-              loop_run(scope, &mut breaked, exec)
             }
           },
-          _=> for v in LitrIterator::new(&mut calced) {
-            if scope.ended {
-              return;
-            }
-            scope.vars.clear();
-            if let Some(id) = id {
-              scope.vars.push((*id, v));
-            }
-            scope.evil(exec);
-          }
+
+          // 禁止单语句直接用循环控制语句
           Stmt::Break=> panic!("不允许`for v:iter break`的写法"),
           Stmt::Continue=> panic!("不允许`for v:iter continue`的写法`"),
+          
+          // 单语句运行
+          _=> if let None = id {
+            let mut scope = self.subscope();
+            for v in LitrIterator::new(&mut calced) {
+              self.evil(exec);
+            }
+            outlive::scope_end(scope);
+          }else {
+            // 指定迭代过程的变量名时不可使用单语句写法
+            panic!("指定了变量名的迭代 不可使用单语句")
+          }
         }
-        outlive::scope_end(scope);
       },
 
       Stmt::Match=>(),
