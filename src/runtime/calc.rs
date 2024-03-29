@@ -324,6 +324,49 @@ impl Scope {
       }
     }
   }
+  
+  /// 遇到locked的变量会报错版的 calc_ref
+  pub fn calc_ref_unlocked(mut self, e:&Expr)-> CalcRef {
+    match e {
+      Expr::Kself=> {
+        let v = unsafe{&mut *self.kself};
+        CalcRef::Ref(v)
+      }
+      Expr::Property(left, name)=> {
+        let left = self.calc_ref_unlocked(left);
+        get_prop(self, left, *name)
+      }
+      Expr::Index { left, i }=> {
+        let left = self.calc_ref_unlocked(left);
+        let i = self.calc_ref(i);
+        get_index(left, i)
+      },
+      Expr::Variant(id)=> {
+        fn var_locked(inner: &mut ScopeInner, id:Interned)-> CalcRef {
+          for Variant { name, v, locked } in inner.vars.iter_mut().rev() {
+            if id == *name {
+              if *locked {
+                panic!("'{name}'已被锁定, 考虑用复制该变量来更改")
+              }
+              return CalcRef::Ref(v);
+            }
+          }
+
+          if let Some(parent) = &mut inner.parent {
+            return var_locked(inner, id);
+          }
+          panic!("无法找到变量 '{}'", id.str());
+        }
+        let inner = &mut (*self);
+        var_locked(inner, *id)
+      },
+      _=> {
+        let v = self.calc(e);
+        CalcRef::Own(v)
+      }
+    }
+  }
+
 }
 
 
@@ -334,7 +377,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
     // 捕获native instance的setter
     Expr::Property(e, find)=> {
       // 如果左值不是引用就没必要继续运行
-      let left = match this.calc_ref(e) {
+      let left = match this.calc_ref_unlocked(e) {
         CalcRef::Ref(p)=> unsafe {&mut*p},
         _=> return
       };
@@ -366,7 +409,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
 
     // 捕获index_set
     Expr::Index{left,i}=> {
-      let left = this.calc_ref(left);
+      let left = this.calc_ref_unlocked(left);
       // 如果左值不是引用就没必要继续运行
       let left = match left {
         CalcRef::Ref(p)=> unsafe {&mut*p},
@@ -399,7 +442,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
     }
 
     _=>{
-      let mut left = this.calc_ref(left);
+      let mut left = this.calc_ref_unlocked(left);
       *left = right;
     }
   }

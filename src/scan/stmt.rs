@@ -21,6 +21,9 @@ pub enum Stmt {
 
   // 赋值
   Let       (AssignDef),
+  Const     (AssignDef),
+  // 锁定变量
+  Lock      (Interned),
 
   // 定义类
   Class     (ClassDefRaw),
@@ -173,6 +176,15 @@ impl Scanner<'_> {
       match &*id.vec() {
         // 如果是关键词，就会让对应函数处理关键词之后的信息
         b"let"=> Stmt::Let(self.letting()),
+        b"const"=> {
+          if self.cur()==b'(' {
+            if let Expr::Variant(n) = self.expr_group() {
+              Stmt::Lock(n)
+            }else {panic!("const()锁定语句只允许传入变量名")}
+          }else {
+            Stmt::Const(self.letting())
+          }
+        },
         b"extern"=> {self.externing();Stmt::Empty},
         b"return"=> self.returning(),
         b"class"=> self.classing(),

@@ -14,12 +14,22 @@ impl Scope {
         }
         self.calc_ref(e);
       }
+
       // let语句
       Stmt::Let(a)=> {
         let mut v = self.calc(&a.val);
         // 不检查变量是否存在是因为寻找变量的行为是反向的
-        self.vars.push((a.id, v));
+        self.vars.push(Variant {name:a.id, v, locked:false});
       }
+      // const语句
+      Stmt::Const(a)=> {
+        let mut v = self.calc(&a.val);
+        // 和let区别就是自动锁上
+        self.vars.push(Variant {name:a.id, v, locked:true});
+      }
+      /// 锁定语句
+      Stmt::Lock(id)=> self.lock(*id),
+
       // 块语句
       Stmt::Block(s)=> self.subscope().run(s),
 
@@ -68,7 +78,9 @@ impl Scope {
         let f = LocalFunc::new(func_raw, *self);
         // 将函数定义处的作用域生命周期永久延长
         outlive::increase_scope_count(f.scope);
-        self.vars.push((*id, Litr::Func(Function::Local(f.clone()))));
+        self.vars.push(Variant {
+          name:*id, v:Litr::Func(Function::Local(f.clone())), locked:false
+        });
         unsafe{(*self.exports).funcs.push((*id,f))}
       }
 
@@ -129,28 +141,34 @@ impl Scope {
       Stmt::ForLoop(exec)=> start_loop(*self, ||true, exec),
 
       // for v:iter语句
-      Stmt::ForIter{exec, id, iterator}=> {
+      Stmt::ForIter{exec, id, iterator: iter}=> {
         use primitive::iter::LitrIterator;
-        let mut calced = self.calc_ref(iterator);
+        // 如果迭代器表达式是变量 就将其锁定
+        if let Expr::Variant(n) = iter {
+          self.lock(*n)
+        }
+
+        let mut iter_ = self.calc_ref(iter);
+        let mut iter = LitrIterator::new(&mut iter_);
         let mut breaked = false;
+
         // 记忆上次运行的作用域的变量数量
         let mut capa = 0;
         match &**exec {
           Stmt::Block(exec)=> {
-            let mut iter = LitrIterator::new(&mut calced);
             if let Some(first_var) = iter.next() {
               // 先运行一次测试出来变量数量
               {
                 let mut scope = self.subscope();
                 if let Some(id) = id {
-                  scope.vars.push((*id, first_var));
+                  scope.vars.push(Variant {name:*id, v:first_var, locked:false});
                 }
                 loop_run(scope, &mut breaked, exec);
                 capa = scope.vars.len();
                 outlive::scope_end(scope);
               }
 
-              for n in iter {
+              for v in iter {
                 let mut scope = self.subscope();
                 scope.vars = Vec::with_capacity(capa);
                 if scope.ended || breaked {
@@ -158,7 +176,7 @@ impl Scope {
                   return;
                 }
                 if let Some(id) = id {
-                  scope.vars.push((*id, n));
+                  scope.vars.push(Variant {name:*id, v, locked:false});
                 }
                 loop_run(scope, &mut breaked, exec);
                 outlive::scope_end(scope);
@@ -173,7 +191,7 @@ impl Scope {
           // 单语句运行
           _=> if let None = id {
             let mut scope = self.subscope();
-            for v in LitrIterator::new(&mut calced) {
+            for v in iter {
               self.evil(exec);
             }
             outlive::scope_end(scope);

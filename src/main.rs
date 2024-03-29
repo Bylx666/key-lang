@@ -41,7 +41,6 @@ fn main()-> ExitCode {
   //   println!("\n> {}\n  第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, line, date());
   // }));
 
-  // 基本类型的方法，也就是所有litr的prop
   // 字符串捕获变量
   // str的index
   // let [] = x

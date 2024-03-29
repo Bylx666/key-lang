@@ -127,7 +127,8 @@ impl Scope {
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
       let arg = args.next().unwrap_or(argdecl.default.clone());
-      vars.push((argdecl.name, arg));
+      let var = Variant {name:argdecl.name, v:arg, locked:false};
+      vars.push(var);
     }
 
     let mut ret = Litr::Uninit;
@@ -146,7 +147,8 @@ impl Scope {
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
       let arg = args.next().unwrap_or(argdecl.default.clone());
-      vars.push((argdecl.name, arg));
+      let var = Variant {name:argdecl.name, v:arg, locked:false};
+      vars.push(var);
     }
 
     let mut ret = Litr::Uninit;

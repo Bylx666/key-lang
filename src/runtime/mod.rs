@@ -37,6 +37,12 @@ pub enum Class {
   Local(*mut ClassDef)
 }
 
+#[derive(Debug, Clone)]
+pub struct Variant {
+  pub name: Interned,
+  pub locked: bool,
+  pub v: Litr
+}
 
 /// 一个运行时作用域
 #[derive(Debug)]
@@ -46,7 +52,7 @@ pub struct ScopeInner {
   /// 返回值指针
   pub return_to: *mut Litr,
   /// (变量名,值)
-  pub vars: Vec<(Interned, Litr)>,
+  pub vars: Vec<Variant>,
   /// 类型声明(和作用域生命周期一致)
   pub class_defs: Vec<ClassDef>,
   /// 类型使用
@@ -148,8 +154,8 @@ impl Scope {
   /// 在作用域找一个变量
   pub fn var(mut self, s:Interned)-> Option<CalcRef> {
     let inner = &mut (*self);
-    for (p, v) in inner.vars.iter_mut().rev() {
-      if *p == s {
+    for Variant { name, v,.. } in inner.vars.iter_mut().rev() {
+      if *name == s {
         return Some(CalcRef::Ref(v));
       }
     }
@@ -158,6 +164,18 @@ impl Scope {
       return parent.var(s);
     }
     None
+  }
+
+  /// 在作用域中找一个变量并锁定
+  pub fn lock(mut self, s:Interned) {
+    for Variant { name, locked, .. } in self.vars.iter_mut().rev() {
+      if *name == s {
+        *locked = true;
+      }
+    }
+    if let Some(parent) = &mut self.parent {
+      return parent.lock(s);
+    }
   }
 
 

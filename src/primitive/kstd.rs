@@ -2,11 +2,15 @@
 
 use crate::intern::{Interned,intern};
 use crate::primitive::litr::{Litr, Function};
-use crate::runtime::{calc::CalcRef, Scope};
+use crate::runtime::{calc::CalcRef, Scope, Variant};
 
-pub fn prelude()-> Vec<(Interned, Litr)> {
+pub fn prelude()-> Vec<Variant> {
   macro_rules! prel {($($name:literal:$f:ident)*)=>{
-    vec![$( (intern($name),Litr::Func(Function::Native($f))), )*]
+    vec![$( Variant {
+      name: intern($name),
+      locked: true,
+      v: Litr::Func(Function::Native($f))
+    }, )*]
   }}
   prel!{
     b"log":log
