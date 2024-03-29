@@ -28,6 +28,7 @@ pub struct NativeClassDef {
   pub index_get: fn(&NativeInstance, CalcRef)-> Litr,
   pub index_set: fn(&mut NativeInstance, CalcRef, Litr),
   pub next: fn(&mut NativeInstance)-> Litr,
+  pub to_str: fn(&NativeInstance)-> String,
   pub onclone: fn(&NativeInstance)-> NativeInstance,
   pub ondrop: fn(&mut NativeInstance)
 }

@@ -27,6 +27,10 @@ use crate::intern::{Interned, intern};
 
 static mut CLASSES:Option<Vec<(Interned, NativeClassDef)>> = None;
 
+pub fn ninst_to_str(inst:&NativeInstance)-> String {
+  format!("{} {{ Builtin }}", &unsafe{&*inst.cls}.name.str())
+}
+
 /// 创建一个只有静态方法的原生类
 fn new_static_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeClassDef) {
   let name = intern(s);
@@ -38,6 +42,7 @@ fn new_static_class(s:&[u8], f:Vec<(Interned, NativeFn)>)-> (Interned, NativeCla
     setter:|_,_,_|(),
     index_get:|_,_|Litr::Uninit, 
     index_set:|_,_,_|(),
+    to_str: ninst_to_str,
     next:|_|Litr::Sym(sym::Symbol::IterEnd), 
     onclone:|v|v.clone(), 
     ondrop:|_|()
@@ -60,6 +65,7 @@ fn new_iter_class(
     index_get:|_,_|Litr::Uninit, 
     index_set:|_,_,_|(),
     next, 
+    to_str: ninst_to_str,
     ondrop,
     onclone: |v|panic!("该迭代器{}无法复制. 请考虑用take函数代替", unsafe{&*v.cls}.name)
   }

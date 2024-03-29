@@ -27,6 +27,7 @@ pub enum Litr {
   Ninst  (NativeInstance),
   Sym    (crate::primitive::sym::Symbol)
 }
+
 impl Litr {
   /// 由Key编译器提供的转字符
   pub fn str(&self)-> String {
@@ -108,8 +109,7 @@ impl Litr {
         s.push_str(" }");
         s
       }
-      Ninst(inst)=> 
-        format!("{} {{ Native }}", &unsafe{&*inst.cls}.name.str()),
+      Ninst(inst)=> (unsafe { &*inst.cls }.to_str)(inst),
       Sym(s)=> {
         use crate::primitive::sym::Symbol;
         let t = match s {

@@ -300,6 +300,10 @@ fn copy_within(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 /// 在指定索引处写入另一个Buf
 fn write(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   let mut args = args.iter();
+  let ori_len = v.len();
+
+  let index = args.next().map(|v|to_usize(&**v)).unwrap_or(0);
+  assert!(index<ori_len, "传入索引{index}不可大于等于数组长度{ori_len}");
 
   let ls_tmp;
   let buf = match &**args.next().expect("buf.write需要一个列表或数组作为写入内容") {
@@ -308,13 +312,9 @@ fn write(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
       &ls_tmp
     },
     Litr::Buf(b)=> b,
-    _=> panic!("buf.write第一个参数必须是列表或数组")
+    _=> panic!("buf.write第二个参数必须是列表或数组")
   };
-  let ori_len = v.len();
   let to_write_len = buf.len();
-
-  let index = args.next().map(|v|to_usize(&**v)).unwrap_or(0);
-  assert!(index<ori_len, "传入索引{index}不可大于等于数组长度{ori_len}");
 
   let max_count = ori_len - index;
   // 如果要写入的数组长度溢出 就改为只写入最大长度
@@ -726,12 +726,12 @@ fn read_float(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   }
 }
 
-/// 以utf8解码
+/// 以utf8解码 错误编码会转成U+FFFD不会报错
 fn as_utf8(v:&mut Vec<u8>)-> Litr {
   Litr::Str(String::from_utf8_lossy(v).into_owned())
 }
 
-/// 以utf16解码
+/// 以utf16解码 错误编码会转成U+FFFD不会报错
 fn as_utf16(v:&mut Vec<u8>)-> Litr {
   let s = unsafe {
     let ptr = v.as_ptr() as *const u16;

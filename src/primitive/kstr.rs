@@ -67,7 +67,7 @@ pub fn method(s:&mut String, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Li
     b"trim"=> void!(*s = s.trim().to_string()),
 
     // transmute
-    b"as_bytes"=> Litr::Buf(s.as_bytes().to_vec()),
+    b"to_buf"=> Litr::Buf(s.as_bytes().to_vec()),
     b"to_utf16"=> to_utf16(s),
 
     b"lines"=> lines(s),
@@ -254,5 +254,36 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
   }
 
   vec![
+    (intern(b"from"), s_from),
+    (intern(b"from_utf8"), s_from_utf8),
+    (intern(b"from_utf16"), s_from_utf16),
   ]
+}
+
+/// 调用Litr::str
+fn s_from(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let s = args.get(0).map_or(&Litr::Uninit, |s|&**s);
+  Litr::Str(s.str())
+}
+
+/// utf8 buf to str 强检查版
+fn s_from_utf8(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  Litr::Str(
+    args.get(0).map_or(String::new(), |s|match &**s {
+      Litr::Buf(s)=> String::from_utf8(s.clone()).expect("Str解析错误非法utf8字符"),
+      _=> panic!("Str::from_utf8第一个参数必须是Buf")
+    })
+  )
+}
+
+/// utf16 buf to str 强检查版
+fn s_from_utf16(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  Litr::Str(
+    args.get(0).map_or(String::new(), |s|match &**s {
+      Litr::Buf(s)=> String::from_utf16(
+        unsafe {std::slice::from_raw_parts(s.as_ptr() as *const u16, s.len() / 2)}
+      ).expect("Str解析错误非法utf16字符"),
+      _=> panic!("Str::from_utf16第一个参数必须是Buf")
+    })
+  )
 }
