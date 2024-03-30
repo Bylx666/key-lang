@@ -29,6 +29,7 @@ static VERSION:usize = 100000;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
+  // unary bug
   // 字符串捕获变量
   // str的index
   // let [] = x
@@ -47,7 +48,7 @@ fn main()-> ExitCode {
   // 参数类型检查
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
-  // 科学计数法
+  // 科学计数法0x 0b
   // wasm版本实现
   // linux macos支持
   // 脚本打包exe
@@ -81,6 +82,7 @@ fn main()-> ExitCode {
   // 运行并返回
   let scanned = scan::scan(&fs::read(&path).unwrap_or_else(|e|
     panic!("无法读取'{}': {}", path, e)));
+  println!("{scanned:?}");
   let exit = runtime::run(&scanned);
   if let primitive::litr::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);

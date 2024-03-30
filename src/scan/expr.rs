@@ -165,15 +165,6 @@ impl Scanner<'_> {
         });
       }
 
-      // 在新运算符加入之前, 合并一元运算符
-      if precedence < charts::PREC_UNARY && unary.len() > 0 {
-        let mut right = expr_stack.pop().unwrap();
-        while let Some(op) = unary.pop() {
-          right = Expr::Unary { right:Box::new(right), op }
-        }
-        expr_stack.push(right);
-      }
-
       // 如果没匹配到运算符就说明匹配结束
       if op.len() == 0 {
         assert_eq!(expr_stack.len(), 1);
@@ -250,6 +241,15 @@ impl Scanner<'_> {
       // 看看右侧值前有没有一元运算符
       let mut una = self.operator_unary();
       unary.append(&mut una);
+
+      // 优先级够的话,合并一元运算符
+      if precedence < charts::PREC_UNARY && unary.len() > 0 {
+        let mut right = expr_stack.pop().unwrap();
+        while let Some(op) = unary.pop() {
+          right = Expr::Unary { right:Box::new(right), op }
+        }
+        expr_stack.push(right);
+      }
 
       // 在此之前判断有没有括号来提升优先级
       let right = if self.cur() == b'(' {
