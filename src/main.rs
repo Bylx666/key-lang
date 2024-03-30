@@ -30,8 +30,6 @@ static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
   // 参数类型检查
-  // 字符串捕获变量
-  // str的index
   // let [] = x
   // let a=0,b=0
   // prelude mod 让模块本身帮你初始化上下文

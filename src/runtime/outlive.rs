@@ -118,12 +118,12 @@ pub fn scope_end(mut scope:Scope) {
     }
   }
 
-  scope.ended = true;
   for Variant { v, .. } in &scope.vars {
     drop_func(v);
   }
 
   // 回收作用域本身
+  scope.ended = true;
   if scope.outlives.load(Ordering::Relaxed) == 0 {
     // println!("{:02}: scope drop by end: {:p}",ln(), scope.ptr);
     unsafe { std::ptr::drop_in_place(scope.ptr) }
