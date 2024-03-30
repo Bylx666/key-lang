@@ -13,6 +13,15 @@ mod utils;
 mod c;
 mod native;
 
+/// 全局选项
+struct GlobalOptions {
+  /// --ast
+  print_ast: bool
+}
+static mut GLOBAL_OPTIONS:GlobalOptions = GlobalOptions {
+  print_ast: false
+};
+
 /// 标志目前走到的行号
 static mut LINE:usize = 1;
 /// 用于标记报错文件
@@ -50,6 +59,7 @@ fn main()-> ExitCode {
   // linux macos支持
   // 脚本打包exe
 
+  
   intern::init();
 
   // 获取路径
@@ -61,6 +71,13 @@ fn main()-> ExitCode {
     panic!("Key暂时不支持REPL, 请先传入一个文件路径运行")
   };
   // let path = "D:\\code\\rs\\key-lang\\samples\\helloworld.ks";
+  while let Some(n) = args.next() {
+    let opts = unsafe {&mut GLOBAL_OPTIONS};
+    match &*n {
+      "--ast"=> opts.print_ast = true,
+      _=>()
+    }
+  }
 
   // 自定义报错
   unsafe {PLACE = path.clone()}
@@ -79,7 +96,8 @@ fn main()-> ExitCode {
   // 运行并返回
   let scanned = scan::scan(&fs::read(&path).unwrap_or_else(|e|
     panic!("无法读取'{}': {}", path, e)));
-  println!("{scanned:?}");
+  if unsafe{GLOBAL_OPTIONS.print_ast} {println!("{scanned:?}")}
+
   let exit = runtime::run(&scanned);
   if let primitive::litr::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);
