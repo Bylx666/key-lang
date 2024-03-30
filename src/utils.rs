@@ -1,6 +1,7 @@
 //! 一些很通用的函数
 
 /// 格式化当前时间
+#[inline]
 pub fn date()-> String {
   #[inline]
   fn is_leap(year: u64)-> bool {
@@ -34,4 +35,17 @@ pub fn date()-> String {
     mon += 1;
   }
   format!("{year}/{mon:02}/{t:02} {hour:02}:{min:02}:{sec:02}")
+}
+
+#[inline]
+pub fn to_absolute_path(s:String)-> String {
+  let p = std::path::Path::new(&s);
+  if p.is_absolute() {
+    s
+  }else {
+    let mut buf = std::path::PathBuf::new();
+    buf.push(std::env::current_dir().expect("无法获取当前文件夹, 请尝试传入绝对路径"));
+    buf.push(s);
+    buf.into_os_string().to_string_lossy().into_owned()
+  }
 }

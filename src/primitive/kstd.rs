@@ -14,6 +14,7 @@ pub fn prelude()-> Vec<Variant> {
   }}
   prel!{
     b"log":log
+    b"throw":throw
     b"run_ks":run_ks
     b"version":version
     b"distribution":distribution
@@ -31,30 +32,45 @@ pub fn log(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   // }
 }
 
+/// 手动报错
+pub fn throw(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let s = args.get(0).map_or("错误".to_string(),|s|s.str());
+  panic!("{s}");
+}
+
 /// 在当前作用域 解析并运行一段String
 pub fn run_ks(args:Vec<CalcRef>, mut cx:Scope)-> Litr {
-  // 设置报错位置到evil
-  use crate::{PLACE, LINE};
-  unsafe{PLACE = format!("{}({}) when eviling", PLACE, LINE);}
-
   let s = args.get(0).expect("evil需要传入一个被解析的字符串或数组");
   let s = match &**s {
     Litr::Str(s)=> s.as_bytes(),
     Litr::Buf(b)=> &**b,
     _=> panic!("evil只能运行字符串或数组")
   };
-  let scanned = crate::scan::scan(s);
 
-  // 运行
-  for (l, sm) in &scanned.0 {
-    unsafe{
-      LINE = *l;
+  unsafe {
+    // 将报错位置写为evil 并保存原先的报错数据
+    let mut place = std::mem::take(&mut crate::PLACE);
+    let line = crate::LINE;
+    crate::PLACE = format!("run_ks: {}({})", place, line);
+    crate::LINE = 1;
+
+    // 解析并运行
+    let scanned = crate::scan::scan(s);
+    for (l, sm) in &scanned.0 {
+      unsafe{
+        println!("{l}");
+        crate::LINE = *l;
+      }
+      cx.evil(sm);
+      // 如果evil到return或break就在这停下
+      if cx.ended {
+        break;
+      }
     }
-    cx.evil(sm);
-    // 如果evil到return或break就在这停下
-    if cx.ended {
-      break;
-    }
+
+    // 还原报错信息
+    crate::PLACE = std::mem::take(&mut place);
+    crate::LINE = line;
   }
   Litr::Uninit
 }

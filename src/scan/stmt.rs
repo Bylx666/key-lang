@@ -133,7 +133,7 @@ impl Scanner<'_> {
       self.next(); // 打破scan函数的while
       return Stmt::Empty;
     }
-  
+
     let first = self.cur();
     match first {
       // 分号开头即为空语句
@@ -170,7 +170,7 @@ impl Scanner<'_> {
       127..=u8::MAX|b')'|b'}'|b']'|b'?'|b','|b'\\'|b'$'|b'#'=> panic!("需要一个语句或表达式,但你写了'{}'",String::from_utf8_lossy(&[first])),
       _=>{}
     }
-  
+
     let ident = self.literal();
     if let Expr::Variant(id) = ident {
       match &*id.vec() {
@@ -474,9 +474,10 @@ impl Scanner<'_> {
       i += 1;
     }
   
-    let path = &self.src[self.i()..i];
+    let path = String::from_utf8_lossy(&self.src[self.i()..i]).into_owned();
+    let path = crate::utils::to_absolute_path(path);
     self.set_i(i + 1);
-  
+
     self.spaces();
     let name = intern(&self.ident().unwrap_or_else(||panic!("需要为模块命名")));
     self.spaces();
@@ -485,17 +486,29 @@ impl Scanner<'_> {
     let suffix = &self.src[dot..i];
     match suffix {
       b".ksm"|b".dll"=> {
-        let module = crate::native::parse(path).unwrap_or_else(|e|
-          panic!("模块解析失败:{}\n  {}",e,String::from_utf8_lossy(path)));
+        let module = crate::native::parse(path.as_bytes()).unwrap_or_else(|e|
+          panic!("模块解析失败:{}\n  {}",e,path));
         Stmt::NativeMod(name, module)
       }
       b".ks"=> {
-        let path = &*String::from_utf8_lossy(path);
-        let file = std::fs::read(path).unwrap_or_else(|e|panic!(
+        let file = std::fs::read(&*path).unwrap_or_else(|e|panic!(
           "无法找到模块'{}'", path
         ));
-        let mut module = crate::runtime::run(&scan(&file)).exports;
-        Stmt::Mod(name, module)
+        unsafe {
+          // 将报错位置写为该模块 并保存原先的报错数据
+          let mut place = std::mem::take(&mut crate::PLACE);
+          crate::PLACE = path.clone();
+          let line = crate::LINE;
+          crate::LINE = 1;
+
+          let mut module = crate::runtime::run(&scan(&file)).exports;
+
+          // 还原报错信息
+          crate::PLACE = std::mem::take(&mut place);
+          crate::LINE = line;
+          
+          Stmt::Mod(name, module)
+        }
       }
       _ => panic!("未知模块类型")
     }
