@@ -35,6 +35,8 @@ impl Scanner<'_> {
         i += 1;
         let mut start = i; // 开始结算的起点
         let mut vec = Vec::<u8>::new();
+        // 给`{}`变量捕获用的
+        let mut expr_catch:Option<Expr> = None;
 
         loop {
           let c = self.src[i];
@@ -76,6 +78,44 @@ impl Scanner<'_> {
               // 更新结算起点
               start = i;
             }
+            // 变量捕获,其实就是自动变成字符串加号
+            b'{'=> {
+              // 结算一次
+              vec.extend_from_slice(&self.src[start..i]);
+              
+              self.set_i(i+1);
+              let this_e = Box::new(self.expr());
+              let part_vec = std::mem::take(&mut vec);
+              assert!(self.cur() == b'}', "转义字符串内的大括号未闭合");
+              self.next();
+              
+              if let Some(last_e) = &mut expr_catch {
+                let mut left = Box::new(Expr::Empty);
+                std::mem::swap(&mut *left, last_e);
+                // 先把原来的left和后来扫上的字符串相加
+                let left = Box::new(Expr::Binary {
+                  left,
+                  right: Box::new(Expr::Literal(
+                    Litr::Str(String::from_utf8(part_vec).expect("字符串含非法字符")))),
+                  op: b"+".to_vec().into()
+                });
+                // 再把上述expr和这次的捕获表达式相加
+                expr_catch = Some(Expr::Binary {
+                  left, 
+                  right: this_e, op: b"+".to_vec().into()
+                });
+              }else {
+                expr_catch = Some(Expr::Binary {
+                  left: Box::new(Expr::Literal(
+                    Litr::Str(String::from_utf8(part_vec).expect("字符串含非法字符")))), 
+                  right: this_e, op: b"+".to_vec().into()
+                });
+              }
+
+              // 更新结算起点
+              i = self.i();
+              start = i;
+            }
             _=> i += 1
           }
           if i >= len {panic!("未闭合的'`'。")}
@@ -83,13 +123,19 @@ impl Scanner<'_> {
   
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
-        let str = match String::from_utf8(vec) {
-          Ok(s)=> s,
-          Err(_)=> panic!("字符串含非法字符")
-        };
 
         self.set_i(i + 1);
-        Expr::Literal(Litr::Str(str))
+        if let Some(e) = &mut expr_catch {
+          let mut left = Box::new(Expr::Empty);
+          std::mem::swap(&mut *left, e);
+          Expr::Binary { left, right: Box::new(Expr::Literal(
+            Litr::Str(String::from_utf8(std::mem::take(&mut vec)).expect("字符串含非法字符")))), 
+            op: b"+".to_vec().into()
+          }
+        }else {
+          let str = String::from_utf8(vec).expect("字符串含非法字符");
+          Expr::Literal(Litr::Str(str))
+        }
       }
   
       // 解析'buf'

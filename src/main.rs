@@ -29,7 +29,7 @@ static VERSION:usize = 100000;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // unary bug
+  // 参数类型检查
   // 字符串捕获变量
   // str的index
   // let [] = x
@@ -45,7 +45,6 @@ fn main()-> ExitCode {
   // ..[参数展开]
   // extern to_raw_args
   // throw catch
-  // 参数类型检查
   // 同名省略struct属性
   // 如果不加分号报错会错行，记得提示用户
   // 科学计数法0x 0b
