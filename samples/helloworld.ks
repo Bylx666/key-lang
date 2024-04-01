@@ -1,4 +1,4 @@
 
 mod samples/testmod.ks> m;
 
-let a = m-:A::{b:9};
+let a = m-.a(0);

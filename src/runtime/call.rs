@@ -86,7 +86,7 @@ impl Scope {
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
       let arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
-      assert!(argdecl.t.is(&arg, self), "函数要求{:?}类型, 但传入了{:?}", argdecl.t, arg);
+      assert!(argdecl.t.is(&arg, f.scope), "函数要求{:?}类型, 但传入了{:?}", argdecl.t, arg);
       let var = Variant {name:argdecl.name, v:arg, locked:false};
       vars.push(var);
     }
@@ -107,6 +107,7 @@ impl Scope {
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
       let arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
+      assert!(argdecl.t.is(&arg, f.scope), "函数要求{:?}类型, 但传入了{:?}", argdecl.t, arg);
       let var = Variant {name:argdecl.name, v:arg, locked:false};
       vars.push(var);
     }
