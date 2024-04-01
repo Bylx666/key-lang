@@ -120,7 +120,7 @@ impl Scanner<'_> {
           }
           if i >= len {panic!("未闭合的'`'。")}
         }
-  
+
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
 
@@ -314,7 +314,10 @@ impl Scanner<'_> {
         let mut stmts = if let super::Stmt::Block(b) = stmt {
           b
         }else {
-          Statements(vec![(unsafe{crate::LINE}, stmt)])
+          Statements {
+            v:vec![(unsafe{crate::LINE}, stmt)],
+            vars:0
+          }
         };
 
         Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })

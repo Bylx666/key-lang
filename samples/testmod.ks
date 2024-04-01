@@ -1,13 +1,14 @@
 
-{
-  let tt = "hhhh"
-  mod:Sample {
-    >a,b
-    f();
-    >.d(){log(self.b)},
-    >new(): Sample::{
-      a:99,b:20
-    }
-  }
-    2/0;
+let ll = 11;
+
+class Priv {
+  b:Int
 }
+mod:A{
+  >a:Priv,>b,>c,
+  .o():self,
+  >ok():A::{
+    a:Priv::{b:ll}
+  },
+}
+mod.a() log(ll)

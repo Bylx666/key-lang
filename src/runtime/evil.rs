@@ -31,22 +31,18 @@ impl Scope {
       Stmt::Lock(id)=> self.lock(*id),
 
       // 块语句
-      Stmt::Block(s)=> self.subscope().run(s),
+      Stmt::Block(s)=> {
+        let mut sub = self.subscope();
+        sub.vars = Vec::with_capacity(s.vars);
+        sub.run(s)
+      },
 
       // 类型声明
-      Stmt::Class(raw)=> {
-        // 为函数声明绑定作用域
-        let binder = |v:&ClassFuncRaw| {
-          ClassFunc { name: v.name, f: LocalFunc::new(&v.f, *self), public: v.public}
-        };
-        let methods:Vec<_> = raw.methods.iter().map(binder).collect();
-        let statics:Vec<_> = raw.statics.iter().map(binder).collect();
-        let props = raw.props.clone();
-        let module = self.exports;
-        let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
-        self.class_defs.push(clsdef);
-        let using = self.class_defs.last_mut().unwrap() as *mut ClassDef;
-        self.class_uses.push((raw.name, Class::Local(using)));
+      Stmt::Class(cls)=> {
+        // SAFETY: 此行为本身会泄露2个指针的内存, 但无伤大雅
+        // 导出的函数或类在引用到该类时至少不会踩到错的指针
+        let clsdef = Box::into_raw(Box::new(ClassDef { p:*cls, cx:self.clone() }));
+        self.class_uses.push((unsafe{(**cls).name}, Class::Local(clsdef)));
       }
 
       Stmt::Using(alia, e)=> {
@@ -74,7 +70,7 @@ impl Scope {
       // 导出函数 mod.
       Stmt::ExportFn(id, f)=> {
         // 将函数本体生命周期拉为static
-        let func_raw = Box::leak(Box::new(f.clone()));
+        let func_raw = Box::into_raw(Box::new(f.clone()));
         let f = LocalFunc::new(func_raw, *self);
         // 将函数定义处的作用域生命周期永久延长
         outlive::increase_scope_count(f.scope);
@@ -85,29 +81,18 @@ impl Scope {
       }
 
       // 导出类 mod:
-      Stmt::ExportCls(raw)=> {
-        // 为函数声明绑定作用域
-        let binder = |v:&ClassFuncRaw| {
-          // 延长函数体生命周期
-          let ptr = Box::leak(Box::new(v.f.clone()));
-          ClassFunc { name: v.name, f: LocalFunc::new(ptr, *self), public: v.public}
-        };
+      Stmt::ExportCls(cls)=> {
+        // 将class的定义复制一份, 因为其scan的结果会在模块运行完被drop
+        let name = unsafe{(**cls).name};
         // 延长作用域生命周期
         outlive::increase_scope_count(*self);
-
-        let methods:Vec<_> = raw.methods.iter().map(binder).collect();
-        let statics:Vec<_> = raw.statics.iter().map(binder).collect();
-        let props = raw.props.clone();
-        let module = self.exports;
-        let clsdef = ClassDef { name:raw.name, props, statics, methods, module };
-        self.class_defs.push(clsdef);
-        let using = self.class_defs.last_mut().unwrap() as *mut ClassDef;
-        self.class_uses.push((raw.name, Class::Local(using)));
-
+        
+        let clsdef = Box::into_raw(Box::new(ClassDef { p:*cls, cx:self.clone() }));
+        self.class_uses.push((name, Class::Local(clsdef)));
+        
         // 将指针推到export
-        let ptr = self.class_defs.last_mut().unwrap() as *mut ClassDef;
         let module = unsafe {&mut*self.exports};
-        module.classes.push((raw.name,ptr))
+        module.classes.push((name, clsdef))
       }
 
       // 返回一个值
@@ -152,35 +137,20 @@ impl Scope {
         let mut iter = LitrIterator::new(&mut iter_);
         let mut breaked = false;
 
-        // 记忆上次运行的作用域的变量数量
-        let mut capa = 0;
         match &**exec {
           Stmt::Block(exec)=> {
-            if let Some(first_var) = iter.next() {
-              // 先运行一次测试出来变量数量
-              {
-                let mut scope = self.subscope();
-                if let Some(id) = id {
-                  scope.vars.push(Variant {name:*id, v:first_var, locked:false});
-                }
-                loop_run(scope, &mut breaked, exec);
-                capa = scope.vars.len();
+            for v in iter {
+              let mut scope = self.subscope();
+              scope.vars = Vec::with_capacity(exec.vars);
+              if scope.ended || breaked {
                 outlive::scope_end(scope);
+                return;
               }
-
-              for v in iter {
-                let mut scope = self.subscope();
-                scope.vars = Vec::with_capacity(capa);
-                if scope.ended || breaked {
-                  outlive::scope_end(scope);
-                  return;
-                }
-                if let Some(id) = id {
-                  scope.vars.push(Variant {name:*id, v, locked:false});
-                }
-                loop_run(scope, &mut breaked, exec);
-                outlive::scope_end(scope);
+              if let Some(id) = id {
+                scope.vars.push(Variant {name:*id, v, locked:false});
               }
+              loop_run(scope, &mut breaked, exec);
+              outlive::scope_end(scope);
             }
           },
 
@@ -223,9 +193,9 @@ fn cond(v:Litr)-> bool {
 
 /// 在一个作用域开始循环
 fn start_loop(mut this:Scope, mut condition:impl FnMut()-> bool, exec:&Box<Stmt>) {
-  // 用重置作用域代替重新创建作用域
   if let Stmt::Block(exec) = &**exec {
     let mut scope = this.subscope();
+    scope.vars = Vec::with_capacity(exec.vars);
     let mut breaked = false;
     while condition() {
       if scope.ended || breaked {
@@ -270,7 +240,7 @@ fn loop_run(mut scope:Scope,breaked:&mut bool,exec:&Statements) {
     };
   }}}
 
-  for (l, sm) in &exec.0 {
+  for (l, sm) in &exec.v {
     // 如果中途遇到return或者break就停止
     if scope.ended || *breaked {
       return;

@@ -31,7 +31,7 @@ pub enum Module {
 }
 
 /// 类声明，分为本地和原生类声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Class {
   Native(*mut NativeClassDef),
   Local(*mut ClassDef)
@@ -53,8 +53,6 @@ pub struct ScopeInner {
   pub return_to: *mut Litr,
   /// (变量名,值)
   pub vars: Vec<Variant>,
-  /// 类型声明(和作用域生命周期一致)
-  pub class_defs: Vec<ClassDef>,
   /// 类型使用
   pub class_uses: Vec<(Interned, Class)>,
   /// self指针
@@ -122,7 +120,6 @@ impl Scope {
     Scope::new(ScopeInner {
       parent:Some(*self),
       return_to: self.return_to,
-      class_defs:Vec::new(),
       class_uses:Vec::new(),
       kself: self.kself,
       vars: Vec::new(),
@@ -137,7 +134,7 @@ impl Scope {
   /// 
   /// 此行为会根据引用计数回收作用域，在run之后再次使用Scope是未定义行为
   pub fn run(mut self, codes:&Statements) {
-    for (l, sm) in &codes.0 {
+    for (l, sm) in &codes.v {
       // 运行一行语句
       unsafe{LINE = *l;}
       self.evil(sm);
@@ -245,7 +242,8 @@ pub fn run(s:&Statements)-> RunResult {
   let mut imports = Vec::new();
   let mut exports = Box::into_raw(Box::new(LocalMod { funcs: Vec::new(), classes: Vec::new() }));
   let mut kself = Litr::Uninit;
-  top_scope(&mut top_ret, &mut imports, exports,&mut kself).run(s);
+  let mut top = top_scope(&mut top_ret, &mut imports, exports,&mut kself);
+  top.run(s);
   RunResult { returned: top_ret, exports, kself }
 }
 
@@ -259,7 +257,6 @@ pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<(Interned, Module)>, expo
   Scope::new(ScopeInner {
     parent: None, 
     return_to, 
-    class_defs:Vec::new(), 
     class_uses,
     kself,
     imports,

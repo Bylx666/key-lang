@@ -1,20 +1,20 @@
 use std::cell::UnsafeCell;
 
 use crate::{
-  intern::intern, native::{NativeInstance, NativeMethod}, primitive::litr::{Litr, LocalFunc}, runtime::calc::CalcRef
+  intern::intern, native::{NativeInstance, NativeMethod}, primitive::litr::{Litr, LocalFunc}, runtime::{calc::CalcRef, Scope}
 };
 
 use super::sym::Symbol;
 
 /// instance类型专用的迭代器
 struct InstanceIter<'a> {
-  f: &'a LocalFunc,
+  f: LocalFunc,
   kself: &'a mut Litr
 }
 impl Iterator for InstanceIter<'_> {
   type Item = Litr;
   fn next(&mut self) -> Option<Self::Item> {
-    let r = self.f.scope.call_local_with_self(self.f, vec![], self.kself);
+    let r = Scope::call_local_with_self(&self.f, vec![], self.kself);
     if let Litr::Sym(s) = &r {
       if let Symbol::IterEnd = s {
         return None;
@@ -57,6 +57,7 @@ impl<'a> LitrIterator<'a> {
         let f = & unsafe{&*inst.cls}.methods.iter()
           .find(|f|f.name == intern(b"@next"))
           .expect("迭代class需要定义'.@next()'方法").f;
+        let f = LocalFunc::new(f, unsafe{&*inst.cls}.cx);
         Box::new(InstanceIter { f, kself:v })
       }
       Litr::Ninst(inst) => {

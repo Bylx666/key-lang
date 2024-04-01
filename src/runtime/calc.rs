@@ -137,7 +137,7 @@ impl Scope {
         Litr::Obj(map)
       }
 
-      // Class {}创建实例
+      // Class::{}创建实例
       Expr::NewInst{cls, val}=> {
         let (cls, clsname) = match &**cls {
           Expr::ModClsAcc(modname, clsname)=> 
@@ -149,13 +149,17 @@ impl Scope {
         if let Class::Local(cls) = cls {
           let cls = unsafe {&mut *cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
-          let can_access_private = self.exports == cls.module;
+          let can_access_private = self.exports == cls.cx.exports;
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
               if prop.name == *id {
                 assert!(prop.public || can_access_private,
                   "成员属性'{}'是私有的",id);
-                v[n] = self.clone().calc(e);
+                // 类型检查
+                let right = self.calc(e);
+                assert!(prop.typ.is(&right, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", id, prop.typ, right);
+                // 写入值
+                unsafe{*v.get_unchecked_mut(n) = right;}
                 continue 'a;
               }
             }
@@ -204,19 +208,23 @@ impl Scope {
           match cls {
             Class::Local(m)=> {
               let cls = unsafe {&*m};
-              let can_access_private = cls.module == this_module;
+              let can_access_private = cls.cx.exports == this_module;
               for func in cls.statics.iter() {
                 if func.name == find {
                   assert!(func.public || can_access_private, 
                     "'{}'类型的静态方法'{}'是私有的。", cls.name, find);
-                  return Litr::Func(Function::Local(func.f.clone()));
+                  
+                  let f = LocalFunc::new(&func.f, cls.cx);
+                  return Litr::Func(Function::Local(f));
                 }
               }
               for func in cls.methods.iter() {
                 if func.name == find {
                   assert!(!func.public || can_access_private,
                     "'{}'类型中的方法'{}'是私有的。", cls.name, find);
-                  return Litr::Func(Function::Local(func.f.clone()));
+                  
+                  let f = LocalFunc::new(&func.f, cls.cx);
+                  return Litr::Func(Function::Local(f));
                 }
               }
               panic!("'{}'类型没有'{}'方法", cls.name, find.str());
@@ -388,13 +396,17 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
         }
         Litr::Inst(inst)=> {
           let cls = unsafe {&*inst.cls};
-          let can_access_private = unsafe {(*inst.cls).module} == this.exports;
+          let can_access_private = unsafe {(*inst.cls).cx.exports} == this.exports;
           let props = &cls.props;
           for (n, prop) in props.iter().enumerate() {
             if prop.name == *find {
               assert!(prop.public || can_access_private,
                 "'{}'类型的成员属性'{}'是私有的", cls.name, find);
-              inst.v[n] = right;
+              
+              // 类型检查
+              assert!(prop.typ.is(&right, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", find, prop.typ, right);
+              // 写入值
+              unsafe{*inst.v.get_unchecked_mut(n) = right;}
               return;
             }
           }
@@ -417,11 +429,11 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
           let cls = unsafe{&mut *inst.cls};
-          let opt = cls.methods.iter_mut().find(|v|v.name == fname);
+          let opt = cls.methods.iter().find(|v|v.name == fname);
           match opt {
             Some(f)=> {
-              let f = &mut f.f;
-              f.scope.call_local_with_self(f, vec![i.own(), right], left);
+              let f = LocalFunc::new(&f.f, cls.cx);
+              Scope::call_local_with_self(&f, vec![i.own(), right], left);
             }
             None=> panic!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
           }
@@ -464,10 +476,10 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   if let Litr::Inst(inst) = left {
     let fname = intern(b"@index_get");
     let cls = unsafe{&mut *inst.cls};
-    let opt = cls.methods.iter_mut().find(|v|v.name == fname);
+    let opt = cls.methods.iter().find(|v|v.name == fname);
     if let Some(f) = opt {
-      let f = &mut f.f;
-      return CalcRef::Own(f.scope.call_local_with_self(f, vec![i.own()], left));
+      let f = LocalFunc::new(&f.f, cls.cx);
+      return CalcRef::Own(Scope::call_local_with_self(&f, vec![i.own()], left));
     }
     panic!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
   }

@@ -80,17 +80,17 @@ fn main()-> ExitCode {
 
   // 自定义报错
   unsafe {PLACE = path.clone()}
-  std::panic::set_hook(Box::new(|inf| {
-    use crate::utils::date;
-    let line = unsafe{LINE};
-    let place = unsafe{&*PLACE};
-    let s = if let Some(mes) = inf.payload().downcast_ref::<&'static str>() {
-      mes
-    }else if let Some(mes) = inf.payload().downcast_ref::<String>() {
-      mes
-    }else{"错误"};
-    println!("\n> {}\n  {}:第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, place, line, date());
-  }));
+  // std::panic::set_hook(Box::new(|inf| {
+  //   use crate::utils::date;
+  //   let line = unsafe{LINE};
+  //   let place = unsafe{&*PLACE};
+  //   let s = if let Some(mes) = inf.payload().downcast_ref::<&'static str>() {
+  //     mes
+  //   }else if let Some(mes) = inf.payload().downcast_ref::<String>() {
+  //     mes
+  //   }else{"错误"};
+  //   println!("\n> {}\n  {}:第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, place, line, date());
+  // }));
 
   // 运行并返回
   let scanned = scan::scan(&fs::read(&path).unwrap_or_else(|e|

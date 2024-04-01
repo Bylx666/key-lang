@@ -53,7 +53,7 @@ impl Scope {
       Litr::Sym(_)=> panic!("Sym没有方法"),
       Litr::Uninit=> panic!("uninit没有方法"),
       Litr::Inst(inst)=> {
-        let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
+        let cannot_access_private = unsafe {(*inst.cls).cx.exports} != self.exports;
         let cls = unsafe {&*inst.cls};
 
         let methods = &cls.methods;
@@ -62,9 +62,9 @@ impl Scope {
             if !mthd.public && cannot_access_private {
               panic!("'{}'类型的成员方法'{}'是私有的", cls.name, name)
             }
-            let mut f = mthd.f.clone();
+            let mut f = LocalFunc::new(&mthd.f, cls.cx);
             let args = args.into_iter().map(|e|e.own()).collect();
-            return self.call_local_with_self(&f, args, &mut *targ);
+            return Scope::call_local_with_self(&f, args, &mut *targ);
           }
         }
 
@@ -82,10 +82,11 @@ impl Scope {
   /// 实际调用一个local function
   pub fn call_local(self, f:&LocalFunc, args:Vec<Litr>)-> Litr {
     // 将传入参数按定义参数数量放入作用域
-    let mut vars = Vec::with_capacity(16);
+    let mut vars = Vec::with_capacity(f.stmts.vars + f.argdecl.len());
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
-      let arg = args.next().unwrap_or(argdecl.default.clone());
+      let arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
+      assert!(argdecl.t.is(&arg, self), "函数要求{:?}类型, 但传入了{:?}", argdecl.t, arg);
       let var = Variant {name:argdecl.name, v:arg, locked:false};
       vars.push(var);
     }
@@ -100,12 +101,12 @@ impl Scope {
   }
   
   /// 实际调用一个local function
-  pub fn call_local_with_self(self, f:&LocalFunc, args:Vec<Litr>, kself:*mut Litr)-> Litr {
+  pub fn call_local_with_self(f:&LocalFunc, args:Vec<Litr>, kself:*mut Litr)-> Litr {
     // 将传入参数按定义参数数量放入作用域
-    let mut vars = Vec::with_capacity(16);
+    let mut vars = Vec::with_capacity(f.stmts.vars + f.argdecl.len());
     let mut args = args.into_iter();
     for argdecl in f.argdecl.iter() {
-      let arg = args.next().unwrap_or(argdecl.default.clone());
+      let arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
       let var = Variant {name:argdecl.name, v:arg, locked:false};
       vars.push(var);
     }

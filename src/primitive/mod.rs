@@ -22,7 +22,7 @@ use crate::native::{
   NativeFn,
   NativeInstance
 };
-use crate::runtime::{calc::CalcRef, Class, Scope};
+use crate::runtime::{calc::CalcRef, Scope, Class};
 use crate::intern::{Interned, intern};
 
 static mut CLASSES:Option<Vec<(Interned, NativeClassDef)>> = None;
@@ -97,7 +97,7 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
   match &mut *from {
     // 本地class的实例
     Litr::Inst(inst)=> {
-      let can_access_private = unsafe {(*inst.cls).module} == this.exports;
+      let can_access_private = unsafe {(*inst.cls).cx.exports} == this.exports;
       let cls = unsafe {&*inst.cls};
 
       // 寻找属性

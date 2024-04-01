@@ -1,6 +1,6 @@
 use super::{Scanner, scan};
 use crate::intern::{Interned,intern};
-use crate::native::NativeMod;
+use crate::native::{NativeClassDef, NativeMod};
 use crate::runtime::{Scope, ScopeInner, Module};
 use crate::LINE;
 use crate::primitive::litr::{
@@ -10,9 +10,11 @@ use crate::scan::Expr;
 
 /// 语句列表
 #[derive(Debug, Clone, Default)]
-pub struct Statements (
-  pub Vec<(usize, Stmt)>
-);
+pub struct Statements {
+  pub v: Vec<(usize, Stmt)>,
+  /// 标注该块的变量数量
+  pub vars: usize
+}
 
 /// 分号分隔的，statement语句
 #[derive(Debug, Clone)]
@@ -22,18 +24,18 @@ pub enum Stmt {
   // 赋值
   Let       (AssignDef),
   Const     (AssignDef),
-  // 锁定变量
+  // 锁定变量 const(var)
   Lock      (Interned),
 
   // 定义类
-  Class     (ClassDefRaw),
+  Class     (*const ClassDefRaw),
   // 类别名
   Using     (Interned, Expr),
 
   Mod       (Interned, *const LocalMod),
   NativeMod (Interned, *const NativeMod),
   ExportFn  (Interned, LocalFuncRaw),
-  ExportCls (ClassDefRaw),
+  ExportCls (*const ClassDefRaw),
 
   Match,     // 模式匹配
 
@@ -54,8 +56,6 @@ pub enum Stmt {
     id: Option<Interned>,
     exec: Box<Stmt>
   },
-  // If       (Statements),   // 条件语句
-  // Loop     (Statements),   // 循环
 
   // 流程控制
   Break,
@@ -92,12 +92,17 @@ pub struct ClassDefRaw {
 /// 绑定作用域的类声明
 #[derive(Debug, Clone)]
 pub struct ClassDef {
-  pub name: Interned,
-  pub props: Vec<ClassProp>,
-  pub statics: Vec<ClassFunc>,
-  pub methods: Vec<ClassFunc>,
-  /// 用来判断是否在模块外
-  pub module: *mut LocalMod
+  pub p: *const ClassDefRaw,
+  /// 代表该本地函数的上下文
+  /// 用来判断是否在模块外,
+  /// 如果属性使用了自定义class, 也会以此作用域寻找该class
+  pub cx: Scope
+}
+impl std::ops::Deref for ClassDef {
+  type Target = ClassDefRaw;
+  fn deref(&self) -> &Self::Target {
+    unsafe{&*self.p}
+  }
 }
 
 /// 类中的属性声明
@@ -155,10 +160,12 @@ impl Scanner<'_> {
           }
           
           let s = self.stmt();
-          if let Stmt::Empty = s {
-            continue;
+          match &s {
+            Stmt::Let(_)|Stmt::Const(_)=> stmts.vars += 1,
+            Stmt::Empty=> continue,
+            _=> ()
           }
-          stmts.0.push((unsafe{LINE}, s));
+          stmts.v.push((unsafe{LINE}, s))
         }
       }
       // 返回语句语法糖
@@ -246,7 +253,10 @@ impl Scanner<'_> {
         let mut stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
-          Statements(vec![(unsafe{LINE}, stmt)])
+          Statements {
+            v: vec![(unsafe{LINE}, stmt)],
+            vars:0
+          }
         };
   
         // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
@@ -399,7 +409,10 @@ impl Scanner<'_> {
         let mut stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
-          Statements(vec![(unsafe{LINE}, stmt)])
+          Statements {
+            v: vec![(unsafe{LINE}, stmt)],
+            vars:0
+          }
         };
   
         let v = ClassFuncRaw {name: intern(id), f:LocalFuncRaw{argdecl:args,stmts}, public};
@@ -427,9 +440,9 @@ impl Scanner<'_> {
     self.spaces();
     assert!(self.cur()==b'}', "class大括号未闭合");
     self.next();
-    Stmt::Class(ClassDefRaw {
+    Stmt::Class(Box::into_raw(Box::new(ClassDefRaw {
       name:intern(id), props, methods, statics
-    })
+    })))
   }
   
   

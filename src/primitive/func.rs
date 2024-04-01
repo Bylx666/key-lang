@@ -1,9 +1,5 @@
 use crate::{
-  intern::{intern, Interned}, 
-  native::NativeFn, 
-  runtime::{calc::CalcRef, Scope}, 
-  primitive::litr::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, 
-  scan::stmt::Statements
+  intern::{intern, Interned}, native::NativeFn, primitive::litr::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, runtime::{calc::CalcRef, Scope}, scan::{expr::Expr, stmt::Statements}
 };
 
 pub fn method(f:&Function, name:Interned, cx: Scope, args:Vec<CalcRef>)-> Litr {
@@ -22,7 +18,7 @@ pub fn kcall(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
   let trans_args = args.split_off(1);
   let mut kself = args.pop().unwrap();
   match f {
-    Function::Local(f)=> cx.call_local_with_self(
+    Function::Local(f)=> Scope::call_local_with_self(
       f, 
       trans_args.into_iter().map(|v|v.own()).collect(), 
       &mut *kself
@@ -47,7 +43,7 @@ pub fn call_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
   let trans_args = args.split_off(1);
   let mut kself = args.pop().unwrap();
   match f {
-    Function::Local(f)=> cx.call_local_with_self(
+    Function::Local(f)=> Scope::call_local_with_self(
       &LocalFunc::new(f.ptr, cx), 
       trans_args.into_iter().map(|v|v.own()).collect(), 
       &mut *kself
@@ -84,15 +80,15 @@ fn s_new(mut s:Vec<CalcRef>, cx:Scope)-> Litr {
       Litr::Buf(b)=> b,
       _=> panic!("Func::new第一个参数必须是Str或Buf, 用来被解析为函数体")
     }),
-    None=> Statements(Vec::new())
+    None=> Statements::default()
   };
 
   let argdecl = match itr.next() {
     Some(arg)=> match &**arg {
       Litr::List(v)=> 
         v.iter().map(|v|match v {
-          Litr::Str(s)=> ArgDecl {default: Litr::Uninit, name: intern(s.as_bytes()), t:KsType::Any},
-          _=> ArgDecl {default: Litr::Uninit, name: intern(b"#ignored"), t:KsType::Any}
+          Litr::Str(s)=> ArgDecl {default: Expr::Literal(Litr::Uninit), name: intern(s.as_bytes()), t:KsType::Any},
+          _=> ArgDecl {default: Expr::Literal(Litr::Uninit), name: intern(b"#ignored"), t:KsType::Any}
         }).collect(),
       _=> panic!("Func::new第二个参数必须是Str组成的List, 用来定义该函数的参数名")
     },

@@ -55,7 +55,7 @@ impl Scanner<'_> {
 
   #[inline]
   fn push(&self, s:Stmt) {
-    unsafe{(*self.sttms).0.push((LINE, s));}
+    unsafe{(*self.sttms).v.push((LINE, s));}
   }
   /// 获取当前字符(ascii u8)
   #[inline]
@@ -175,7 +175,7 @@ impl Scanner<'_> {
           b"Bool"=>Bool,
           b"Func"=>Func, 
           b"Str"=>Str,
-          b"Buffer"=>Buffer,
+          b"Buf"=>Buf,
           b"List"=>List,
           b"Obj"=>Obj,
           _=> Class(intern(decl))
@@ -196,10 +196,13 @@ impl Scanner<'_> {
       let default = if self.cur() == b'=' {
         self.next();
         self.spaces();
-        if let Expr::Literal(def) = self.literal() {
-          def
-        }else {panic!("默认参数只允许简单字面量")}
-      }else {Litr::Uninit};
+        let e = self.expr();
+        if let Expr::Empty = e {
+          panic!("'='后未填写默认参数")
+        }else {
+          e
+        }
+      }else {Expr::Literal(Litr::Uninit)};
 
       if self.cur() == b',' {
         self.next();

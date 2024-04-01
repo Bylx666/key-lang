@@ -2,14 +2,12 @@
 
 use std::collections::HashMap;
 use crate::{
-  intern::{Interned, intern},
-  native::NativeInstance,
-  scan::stmt::{Statements, ClassDef}
+  intern::{intern, Interned}, native::NativeInstance, runtime::Scope, scan::{expr::Expr, stmt::{ClassDef, Statements}}
 };
 
 pub use crate::runtime::outlive::LocalFunc;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Litr {
   Uninit,
 
@@ -115,6 +113,28 @@ impl Litr {
   }
 }
 
+impl std::fmt::Display for Litr {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.str())
+  }
+}
+impl std::fmt::Debug for Litr {
+  /// 此debug只写变体名
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    macro_rules! m {{$($t:ident)*}=> {
+      match self {
+        Litr::Uninit=> "uninit",
+        $(
+          Litr::$t(_)=> stringify!($t),
+        )*
+        Litr::Ninst(inst)=> unsafe{std::str::from_utf8_unchecked((&*inst.cls).name.vec())},
+        Litr::Inst(inst)=> unsafe{std::str::from_utf8_unchecked((&*inst.cls).name.vec())}
+      }
+    }}
+    f.write_str(m!{Buf Bool Float Func Int Uint List Obj Str Sym})
+  }
+}
+
 /// 针对函数的枚举
 #[derive(Debug, Clone)]
 pub enum Function {
@@ -131,7 +151,7 @@ pub enum Function {
 pub struct ArgDecl {
   pub name: Interned,
   pub t: KsType,
-  pub default: Litr
+  pub default: Expr
 }
 
 /// 未绑定作用域的本地定义函数
@@ -159,12 +179,12 @@ impl Clone for Instance {
   /// 为想要管理内存的实例提供@clone方法
   fn clone(&self) -> Self {
     let fname = intern(b"@clone");
-    let opt = unsafe{&mut *self.cls}.methods.iter_mut().find(|f|f.name==fname);
+    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.name==fname);
     let cloned = Instance { cls: self.cls.clone(), v: self.v.clone() };
     match opt {
       Some(cls_f)=> {
-        let f = &mut cls_f.f;
-        let res = f.scope.call_local_with_self(f, vec![], &mut Litr::Inst(cloned));
+        let f = LocalFunc::new(&cls_f.f, unsafe{&*self.cls}.cx);
+        let res = Scope::call_local_with_self(&f, vec![], &mut Litr::Inst(cloned));
         if let Litr::Inst(v) = res {
           v
         }else {
@@ -180,13 +200,13 @@ impl Drop for Instance {
   /// 调用自定义drop
   fn drop(&mut self) {
     let fname = intern(b"@drop");
-    let opt = unsafe{&mut *self.cls}.methods.iter_mut().find(|f|f.name==fname);
+    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.name==fname);
     match opt {
       Some(cls_f)=> {
-        let f = &mut cls_f.f;
+        let f = LocalFunc::new(&cls_f.f, unsafe{&*self.cls}.cx);
         // 不要额外调用clone
         let binding = &mut *std::mem::ManuallyDrop::new(Litr::Inst(Instance { cls: self.cls, v: self.v.clone() }));
-        f.scope.call_local_with_self(f, vec![], binding);
+        Scope::call_local_with_self(&f, vec![], binding);
       }
       None=> ()
     }
@@ -195,9 +215,7 @@ impl Drop for Instance {
 
 
 /// Key语言内的类型声明
-/// 
-/// 模块不能获取程序上下文，因此KsType对Native模块无意义
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum KsType {
   Any,
   Int,
@@ -206,10 +224,56 @@ pub enum KsType {
   Bool,
   Func, 
   Str,
-  Buffer,
+  Buf,
   List,
   Obj,
+  Sym,
   Class(Interned)
+}
+impl KsType {
+  /// 在一个作用域判断这个Litr是不是该类型
+  pub fn is(&self, arg:&Litr, cx: crate::runtime::Scope)-> bool {
+    use crate::runtime::Class;
+    // 类型检查
+    macro_rules! matcher {($($t:ident)*)=> {
+      // uninit可以当任何类型
+      if let Litr::Uninit = &arg {
+        true
+      } else {match self {
+        KsType::Any=> true,
+        $(
+          KsType::$t=> matches!(arg, Litr::$t(_)),
+        )*
+        KsType::Bool=> matches!(arg, Litr::Bool(_)),
+        KsType::Class(cls)=> {
+          let cls = cx.find_class(*cls).unwrap_or_else(||panic!("无法找到'{}'类型",cls));
+          match cls {
+            Class::Local(cls)=> if let Litr::Inst(inst) = &arg {
+              inst.cls == cls
+            }else {false}
+            Class::Native(cls)=> if let Litr::Ninst(inst) = &arg {
+              inst.cls == cls
+            }else {false}
+          }
+        }
+      }}
+    }}
+    matcher!{Buf Bool Float Func Int Uint List Obj Str Sym}
+  }
+}
+
+impl std::fmt::Debug for KsType {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    macro_rules! m {{$($t:ident)*}=> {
+      match self {
+        $(
+          KsType::$t=> stringify!($t),
+        )*
+        KsType::Class(n)=> unsafe{ std::str::from_utf8_unchecked(n.vec()) }
+      }
+    }}
+    f.write_str(m!{Any Buf Bool Float Func Int Uint List Obj Str Sym})
+  }
 }
 
 
