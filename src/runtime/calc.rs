@@ -149,6 +149,9 @@ impl Scope {
         if let Class::Local(cls) = cls {
           let cls = unsafe {&mut *cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
+          /// 记录哪个属性没有写入
+          let mut writen = vec![false; cls.props.len()];
+          /// 确认你在模块内还是模块外
           let can_access_private = self.exports == cls.cx.exports;
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
@@ -159,11 +162,24 @@ impl Scope {
                 let right = self.calc(e);
                 assert!(prop.typ.is(&right, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", id, prop.typ, right);
                 // 写入值
-                unsafe{*v.get_unchecked_mut(n) = right;}
+                unsafe{
+                  *v.get_unchecked_mut(n) = right;
+                  *writen.get_unchecked_mut(n) = true;
+                }
                 continue 'a;
               }
             }
             panic!("'{}'类型不存在'{}'属性", cls.name, id.str())
+          }
+          // 如果你在模块外, 就不能缺省属性
+          if !can_access_private {
+            let strs = writen.iter().enumerate().filter_map(|(n,b)|if !*b {
+              Some(unsafe{cls.props.get_unchecked(n).name}.str())
+            }else {None}).collect::<Vec<String>>();
+            // 如果有一个属性没写就报错
+            if strs.len() > 0 {
+              panic!("正在创建'{}'类型, 但以下属性{}的值未定义", cls.name, strs.join(", "));
+            }
           }
           Litr::Inst(Instance {cls, v:v.into()})
         }else {
