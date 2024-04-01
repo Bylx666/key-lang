@@ -39,12 +39,12 @@ static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
   // 参数类型检查
+  // 模块外newInst如果属性不全不让构造
   // let [] = x
   // let a=0,b=0
   // prelude mod 让模块本身帮你初始化上下文
 
   // pub use
-  // newInst如果属性不全不让构造
   // 传进Native的struct怎么处理？
   // Native outlive api
   // key intern
@@ -59,7 +59,6 @@ fn main()-> ExitCode {
   // linux macos支持
   // 脚本打包exe
 
-  
   intern::init();
 
   // 获取路径

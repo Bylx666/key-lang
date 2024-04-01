@@ -353,17 +353,14 @@ impl Scope {
           }
 
           if let Some(parent) = &mut inner.parent {
-            return var_locked(inner, id);
+            return var_locked(parent, id);
           }
           panic!("无法找到变量 '{}'", id.str());
         }
         let inner = &mut (*self);
         var_locked(inner, *id)
       },
-      _=> {
-        let v = self.calc(e);
-        CalcRef::Own(v)
-      }
+      _=> self.calc_ref(e)
     }
   }
 

@@ -46,8 +46,12 @@ impl Scope {
       Litr::List(v)=> primitive::list::method(v, self, name, args),
       Litr::Obj(o)=> primitive::obj::method(o, self, name, args),
       Litr::Int(n)=> primitive::int::method_int(*n, name, args),
+      Litr::Uint(n)=> primitive::int::method_uint(*n, name, args),
       Litr::Float(n)=> primitive::float::method(*n, name, args),
       Litr::Str(s)=> primitive::kstr::method(s, self, name, args),
+      Litr::Func(f)=> primitive::func::method(f, name, self, args),
+      Litr::Sym(_)=> panic!("Sym没有方法"),
+      Litr::Uninit=> panic!("uninit没有方法"),
       Litr::Inst(inst)=> {
         let cannot_access_private = unsafe {(*inst.cls).module} != self.exports;
         let cls = unsafe {&*inst.cls};
@@ -72,52 +76,7 @@ impl Scope {
           .find(|(find,_)|name==*find).unwrap_or_else(||panic!("'{}'原生类型中没有'{}'方法\n  你需要用(x.{})()的写法吗?", cls.name, name, name));
         (*f)(inst, args, self)
       }
-      _=> panic!("没有'{}'方法\n  如果你需要调用属性作为函数,请使用(a.b)()的写法", name)
     }
-    // let mut left = self.calc_ref(left);
-    // // 匹配所有可能使用.运算符得到函数的类型(instance, obj)
-    // match &mut *left {
-    //   Litr::Inst(inst)=> {
-  
-    //     // 再找属性
-    //     let props = &cls.props;
-    //     for (n, prop) in props.iter().enumerate() {
-    //       if prop.name == right {
-    //         if !prop.public && cannot_access_private {
-    //           panic!("'{}'类型的成员属性'{}'是私有的", cls.name, right)
-    //         }
-    //         return self.call(args, CalcRef::Ref(&mut inst.v[n]));
-    //       }
-    //     }
-    //   }
-    //   Litr::Ninst(inst)=> {
-    //     use crate::native::{NativeInstance, NaitveInstanceRef};
-        
-    //     let cls = unsafe{&*inst.cls};
-    //     let inst: *mut NativeInstance = inst;
-    //     let bound = match left {
-    //       CalcRef::Own(v)=> if let Litr::Ninst(inst_own) = v {
-    //         NaitveInstanceRef::Own(inst_own)
-    //       }else {unreachable!()}
-    //       CalcRef::Ref(_)=> NaitveInstanceRef::Ref(inst)
-    //     };
-
-    //     // 先找方法
-    //     for (name, f) in cls.methods.iter() {
-    //       if *name == right {
-    //         return f(bound, args, self);
-    //       }
-    //     }
-
-    //     // 再找属性
-    //     return self.call(args, CalcRef::Own((cls.getter)(inst, right)));
-    //   }
-    //   Litr::Obj(map)=> return self.call(
-    //     args, CalcRef::Ref(map.get_mut(&right).unwrap_or_else(||panic!("'{}'不是一个函数", right)))),
-    //   Litr::Bool(v)=> panic!("Bool没有方法"),
-    //   Litr::Buf(v)=> return primitive::buf::method(v, right, args),
-    //   _=> ()
-    // }
   }
 
   /// 实际调用一个local function

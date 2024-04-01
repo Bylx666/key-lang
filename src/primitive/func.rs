@@ -9,8 +9,10 @@ use crate::{
 pub fn method(f:&Function, name:Interned, cx: Scope, args:Vec<CalcRef>)-> Litr {
   match name.vec() {
     b"call"=> kcall(f, args, cx),
+    b"clone_here"=> clone_here(f, args, cx),
+    b"call_here"=> call_here(f, args, cx),
+    b"clone_top"=> clone_top(f, args, cx),
     _=> panic!("func没有{}方法",name)
-    // b"bind"=> if let
   }
 }
 

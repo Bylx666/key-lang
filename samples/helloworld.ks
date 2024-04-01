@@ -1,7 +1,19 @@
+let a=0;
+let b=0;
+let initer;
+{ // 模拟作用域变化
+  let a = 99;
+  let b = 32;
+  let f() {
+    a = 20;
+    b = 10;
+  }
+  initer = f;
+}
 
-//mod D:\code\rs\key-native\target\debug\key_native.dll> m;
-//mod samples\testmod.ks> m;
-
-let test() log("ok");
-let o = {f:test};
-(o.f)(); // ok
+// 两种情况下的a,b值
+initer(); // a == (), b == ();
+log(a,b);
+initer.call_here(()) // 第一个参数代表函数内的self, 传个uninit就行
+                     // a == 20, b == 10
+log(a,b)

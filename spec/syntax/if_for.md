@@ -9,6 +9,7 @@ for!{} // 无限循环
 for(a<200) { // 就是while
   a+=1
 }
+for n:xx {list.push(||{log(n)})}
 
 if和for后如果是单语句不是块就会在当前作用域直接执行,包括let和class
 for后不带块使用break和continue会报错
