@@ -128,10 +128,6 @@ impl Scope {
       // for v:iter语句
       Stmt::ForIter{exec, id, iterator: iter}=> {
         use primitive::iter::LitrIterator;
-        // 如果迭代器表达式是变量 就将其锁定
-        if let Expr::Variant(n) = iter {
-          self.lock(*n)
-        }
 
         let mut iter_ = self.calc_ref(iter);
         let mut iter = LitrIterator::new(&mut iter_);
