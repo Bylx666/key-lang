@@ -71,24 +71,6 @@ impl<'a> LitrIterator<'a> {
       Litr::Float(_) => panic!("Float无法迭代"),
       Litr::Sym(_) => panic!("Sym无法迭代"),
       Litr::Uninit => panic!("给uninit迭代?死刑!"),
-      // Litr::Ninst(inst)=> {
-      //   let next = unsafe {(*inst.cls).next};
-      //   let res = next(inst);
-      //   if let Litr::Sym(s) = &res {
-      //     if let Symbol::IterEnd = s {
-      //       return None;
-      //     }
-      //   }
-      //   Some(res)
-      // },
-      // Litr::Obj(o)=> {
-      //   o.iter()
-      // },
-      // Litr::Bool(_)=> panic!("Bool无法迭代"),
-      // Litr::Float(_)=> panic!("Float无法迭代"),
-      // Litr::Func(_)=> panic!("Func无法迭代"),
-      // Litr::Uninit=> panic!("uninit作为迭代器要判死刑的"),
-      // Litr::Sym(_)=> panic!("Sym无法迭代")
     };
     LitrIterator { inner }
   }

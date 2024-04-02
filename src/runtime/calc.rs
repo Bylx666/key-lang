@@ -489,6 +489,123 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
 }
 
 
+/// 先读后写版的expr_set
+fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
+  match left {
+    // 捕获native instance的setter
+    Expr::Property(e, find)=> {
+      // 修改并赋值的定义中是包含读一次数值的行为的
+      // 即使不是引用也要写入
+      let left = &mut *this.calc_ref_unlocked(e);
+      match left {
+        Litr::Ninst(inst)=> {
+          let cls = unsafe {&*inst.cls};
+          let ori = (cls.getter)(inst, *find);
+          let write = f(&ori);
+          (cls.setter)(inst, *find, write)
+        }
+        Litr::Obj(o)=> {
+          let ori = o.get(find).unwrap_or_else(||panic!("该对象没有{}属性",find));
+          let write = f(ori);
+          o.insert(*find, write);
+        }
+        Litr::Inst(inst)=> {
+          let cls = unsafe {&*inst.cls};
+          let can_access_private = unsafe {(*inst.cls).cx.exports} == this.exports;
+          let props = &cls.props;
+          for (n, prop) in props.iter().enumerate() {
+            if prop.name == *find {
+              assert!(prop.public || can_access_private,
+                "'{}'类型的成员属性'{}'是私有的", cls.name, find);
+              
+              let ori = unsafe{inst.v.get_unchecked(n)};
+              let write = f(ori);
+              // 类型检查
+              assert!(prop.typ.is(&write, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", find, prop.typ, write);
+              // 写入值
+              unsafe{*inst.v.get_unchecked_mut(n) = write;}
+              return;
+            }
+          }
+          panic!("'{}'类型上没有'{}'属性", cls.name, find)
+        }
+        _=> ()
+      }
+    }
+
+    // 捕获index_set
+    Expr::Index{left,i}=> {
+      let mut left = this.calc_ref_unlocked(left);
+      let left = &mut*left;
+      let i = this.calc_ref(i);
+      match left {
+        Litr::Inst(inst)=> {
+          let cls = unsafe{&mut *inst.cls};
+          let write = {
+            let fname = intern(b"@index_get");
+            let opt = cls.methods.iter().find(|v|v.name == fname);
+            match opt {
+              Some(func_raw)=> {
+                let ori = Scope::call_local_with_self(&LocalFunc::new(&func_raw.f, cls.cx), vec![i.clone().own()], left);
+                f(&ori)
+              }
+              None=> panic!("读取'{}'实例索引需要定义`.@index_get`方法", cls.name)
+            }
+          };
+          let fname = intern(b"@index_set");
+          let opt = cls.methods.iter().find(|v|v.name == fname);
+          match opt {
+            Some(f)=> {
+              let f = LocalFunc::new(&f.f, cls.cx);
+              Scope::call_local_with_self(&f, vec![i.own(), write], left);
+            }
+            None=> panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name)
+          }
+        },
+        Litr::Ninst(inst)=> {
+          let ori = (unsafe{&*inst.cls}.index_get)(inst, i.clone());
+          let write = f(&ori);
+          (unsafe{&*inst.cls}.index_set)(inst, i, write);
+        },
+        Litr::Obj(map)=> {
+          if let Litr::Str(s) = &*i {
+            let s = intern(s.as_bytes());
+            let ori = map.get(&s).unwrap_or_else(||panic!("该对象没有{}属性",s));
+            let write = f(ori);
+            map.insert(s, write);
+          }else {panic!("Obj索引必须是Str")}
+        }
+        // buf不能*get_index因为u8转uint会丢失引用
+        Litr::Buf(v)=> {
+          let i = match &*i {
+            Litr::Uint(n)=> *n,
+            Litr::Int(n)=> (*n) as usize,
+            _=> panic!("Buf的index必须是整数")
+          };
+          if i<v.len() {
+            let ori = Litr::Uint(v[i] as usize);
+            v[i] = match f(&ori) {
+              Litr::Int(n)=> n as u8,
+              Litr::Uint(n)=> n as u8,
+              _=> 0
+            };
+          }
+        }
+        _=> {
+          let mut ori = get_index(CalcRef::Ref(left), i);
+          *ori = f(&*ori);
+        }
+      }
+    }
+
+    _=>{
+      let mut left = this.calc_ref_unlocked(left);
+      *left = f(&*left);
+    }
+  }
+}
+
+
 /// 获取一个ks值索引处的值
 fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   // 先判断Obj
@@ -552,12 +669,91 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
 
 fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;
-  if &**op == b"=" {
-    let v = this.calc(&right);
-    expr_set(this, &left, v);
-    return Uninit;
+
+  // 先捕获赋值行为
+
+  /// 数字修改并赋值
+  macro_rules! impl_num_assign {
+    ($o:tt) => {{
+      expr_set_diff(this, &left, |left| {
+        let right = this.calc(right);
+        // 将Int自动转为对应类型
+        match (left, right) {
+          (Uint(l), Uint(r))=> Uint(l $o r),
+          (Uint(l), Int(r))=> Uint(*l $o r as usize),
+          (Int(l), Int(r))=> Int(l $o r),
+          (Float(l), Float(r))=> Float(*l $o r),
+          (Float(l), Int(r))=> Float(*l $o r as f64),
+          (Int(l), Float(r))=> Float((*l as f64) $o r),
+          (l,r)=> panic!("无法进行{}=, {:?}和{:?}无法运算",stringify!($o),l,r)
+        }
+      });
+      return Uninit;
+    }};
   }
 
+  // 无符号数修改并赋值
+  macro_rules! impl_unsigned_assign {
+    ($op:tt) => {{
+      expr_set_diff(this, &left, |left| {
+        let right = this.calc(right);
+        // 数字默认为Int，所以弄个Int自动转换
+        match (left, right) {
+          (Uint(l), Uint(r))=> Uint(l $op r),
+          (Uint(l), Int(r))=> Uint(*l $op r as usize),
+          (Int(l), Uint(r))=> Uint((*l as usize) $op r),
+          _=> panic!("按位运算并赋值只允许Uint为左值")
+        }
+      });
+      return Uninit;
+    }};
+  }
+
+  match &**op {
+    b"="=> {
+      let v = this.calc(&right);
+      expr_set(this, &left, v);
+      return Uninit;
+    }
+    b"+=" => {
+      expr_set_diff(this, left, |left|{
+        let right = this.calc_ref(right);
+        if let Str(l) = left {
+          // litr.str()方法会把内部String复制一遍
+          // 直接使用原String的引用可以避免这次复制
+          if let Str(r) = &*right {
+            return Str([l.as_str(),r.as_str()].concat());
+          }
+          let r = right.str();
+          return Str([l.as_str(),r.as_str()].concat());
+        }
+
+        match (left, &*right) {
+          (Uint(l), Uint(r))=> Uint(l + r),
+          (Uint(l), Int(r))=> Uint(*l + *r as usize),
+          (Int(l), Int(r))=> Int(l + r),
+          (Float(l), Float(r))=> Float(*l + r),
+          (Float(l), Int(r))=> Float(*l + *r as f64),
+          (Int(l), Float(r))=> Float((*l as f64) + r),
+          (l,r)=> panic!("无法进行+=, {:?}和{:?}无法运算",l,r)
+        }
+      });
+      return Uninit
+    },
+    b"-=" => impl_num_assign!(-),
+    b"*=" => impl_num_assign!(*),
+    b"/=" => impl_num_assign!(/),
+    b"%=" => impl_num_assign!(%),
+
+    b"&=" => impl_unsigned_assign!(&),
+    b"^=" => impl_unsigned_assign!(^),
+    b"|=" => impl_unsigned_assign!(|),
+    b"<<=" => impl_unsigned_assign!(<<),
+    b">>=" => impl_unsigned_assign!(>>),
+    _=> ()
+  }
+
+  // 不是赋值行为再去正常计算
   let mut left = this.calc_ref(&left);
   let right = this.calc_ref(&right);
   /// 二元运算中普通数字的戏份
@@ -585,39 +781,6 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Int(l), Uint(r))=> Uint((*l as usize) $op r),
         _=> panic!("{}只允许Uint为左值", stringify!($op))
       }
-    }};
-  }
-
-  /// 数字修改并赋值
-  macro_rules! impl_num_assign {
-    ($o:tt) => {{
-      // 将Int自动转为对应类型
-      let n = match (&*left, &*right) {
-        (Uint(l), Uint(r))=> Uint(l $o r),
-        (Uint(l), Int(r))=> Uint(*l $o *r as usize),
-        (Int(l), Int(r))=> Int(l $o r),
-        (Float(l), Float(r))=> Float(*l $o r),
-        (Float(l), Int(r))=> Float(*l $o *r as f64),
-        (Int(l), Float(r))=> Float((*l as f64) $o *r),
-        (l,r)=> panic!("无法进行{}, {:?}和{:?}无法运算",stringify!($o),l,r)
-      };
-      *left = n;
-      Uninit
-    }};
-  }
-
-  // 无符号数修改并赋值
-  macro_rules! impl_unsigned_assign {
-    ($op:tt) => {{
-      // 数字默认为Int，所以所有数字类型安置Int自动转换
-      let n = match (&*left, &*right) {
-        (Uint(l), Uint(r))=> Uint(l $op r),
-        (Uint(l), Int(r))=> Uint(*l $op *r as usize),
-        (Int(l), Uint(r))=> Uint((*l as usize) $op r),
-        _=> panic!("按位运算并赋值只允许Uint")
-      };
-      *left = n;
-      Uninit
     }};
   }
 
@@ -659,19 +822,6 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     b"&" => impl_unsigned!(&),
     b"^" => impl_unsigned!(^),
     b"|" => impl_unsigned!(|),
-
-    // 赋值
-    b"+=" => impl_num_assign!(+),
-    b"-=" => impl_num_assign!(-),
-    b"*=" => impl_num_assign!(*),
-    b"/=" => impl_num_assign!(/),
-    b"%=" => impl_num_assign!(%),
-
-    b"&=" => impl_unsigned_assign!(&),
-    b"^=" => impl_unsigned_assign!(^),
-    b"|=" => impl_unsigned_assign!(|),
-    b"<<=" => impl_unsigned_assign!(<<),
-    b">>=" => impl_unsigned_assign!(>>),
 
     // 比较
     b"==" => Bool(&*left == &*right),

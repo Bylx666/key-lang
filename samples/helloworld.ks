@@ -1,12 +1,18 @@
 
 //mod samples/testmod.ks> m;
 
-let i = 0;
-let next() {
-  i+=1;
-  if i>5:false // 可别加分号
-  else: true
+class A {
+  a:Uint,
+  .@index_get() {
+    :self.a
+  }
+  .@index_set(i,v) {
+    self.a = v
+  }
 }
-for(next()) let inner = 9;
+let a = A::{a:2u};
 
-log(()+2) // 9
+a[0] <<= 2;
+log(a)
+a[0] >>= 3;
+log(a)
