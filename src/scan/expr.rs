@@ -324,7 +324,7 @@ impl Scanner<'_> {
     while i < len {
       let cur = self.src[i];
       match cur {
-        b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b':'=> {
+        b'!'|b'%'|b'&'|b'*'|b'+'|b'-'|b'.'|b'/'|b'<'|b'>'|b'='|b'^'|b':'=> {
           i += 1;
         }
         _=> break
