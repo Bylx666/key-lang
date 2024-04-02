@@ -328,17 +328,13 @@ impl PartialOrd for Litr {
         Some(len_matched)
       }else {
         let len = l.len();
-        let mut eq = true;
         for i in 0..len {
           match match_basic(&l[i],&r[i]) {
-            None=> return None,
-            Some(Less)=> return Some(Less),
-            Some(Greater)=> eq = false,
-            _=>()
-          };
+            Some(Equal)=> (),
+            n=> return n
+          }
         }
-
-        Some(if eq {Equal} else {Greater})
+        Some(Equal)
       }
     }
 

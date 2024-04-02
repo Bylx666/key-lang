@@ -824,6 +824,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
     b"|" => impl_unsigned!(|),
 
     // 比较
+    // eq代码见 primitive/litr.rs
     b"==" => Bool(&*left == &*right),
     b"!=" => Bool(&*left != &*right),
     b">=" => Bool(&*left >= &*right),
