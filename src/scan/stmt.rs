@@ -198,6 +198,7 @@ impl Scanner<'_> {
         b"mod"=> self.moding(),
         b"for"=> self.foring(),
         b"if"=> self.ifing(),
+        b"else"=> panic!("else必须紧接if. 检查一下是不是if后是单语句还用了分号结尾"),
         b"break"=> Stmt::Break,
         b"continue"=> Stmt::Continue,
         b"async"|b"await"=> panic!("异步关键词暂未实现"),
@@ -534,6 +535,7 @@ impl Scanner<'_> {
     if self.cur() == b'e' {
       let else_end = self.i() + 4;
       if else_end <= self.src.len() && &self.src[self.i()..else_end] == b"else" {
+        self.set_i(else_end);
         let els = Some(Box::new(self.stmt()));
         return Stmt::If { condition, exec, els };
       }
