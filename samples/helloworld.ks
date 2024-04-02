@@ -1,7 +1,12 @@
 
 //mod samples/testmod.ks> m;
-let max(a,b) {
-  if a>b return a;
-  else return b
+
+let i = 0;
+let next() {
+  i+=1;
+  if i>5:false // 可别加分号
+  else: true
 }
-log(max(5,2)) // 5
+for(next()) let inner = 9;
+
+log(()+2) // 9

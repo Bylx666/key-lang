@@ -562,7 +562,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
   let right = this.calc_ref(&right);
   /// 二元运算中普通数字的戏份
   macro_rules! impl_num {
-    ($pan:literal $op:tt) => {{
+    ($op:tt) => {{
       match (&*left, &*right) {
         (Int(l),Int(r))=> Int(l $op r),
         (Uint(l),Uint(r))=> Uint(l $op r),
@@ -571,19 +571,19 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Float(l),Float(r))=> Float(l $op r),
         (Float(l),Int(r))=> Float(l $op *r as f64),
         (Int(l),Float(r))=> Float(*l as f64 $op r),
-        _=> panic!($pan)
+        (l,r)=> panic!("{}运算无法应用于{:?}和{:?}", stringify!($op), l, r)
       }
     }};
   }
 
   /// 二元运算中无符号数的戏份
   macro_rules! impl_unsigned {
-    ($pan:literal $op:tt) => {{
+    ($op:tt) => {{
       match (&*left, &*right) {
         (Uint(l), Uint(r))=> Uint(l $op r),
         (Uint(l), Int(r))=> Uint(l $op *r as usize),
         (Int(l), Uint(r))=> Uint((*l as usize) $op r),
-        _=> panic!($pan)
+        _=> panic!("{}只允许Uint为左值", stringify!($op))
       }
     }};
   }
@@ -599,7 +599,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Float(l), Float(r))=> Float(*l $o r),
         (Float(l), Int(r))=> Float(*l $o *r as f64),
         (Int(l), Float(r))=> Float((*l as f64) $o *r),
-        _=> panic!("运算并赋值的左右类型不同")
+        (l,r)=> panic!("无法进行{}, {:?}和{:?}无法运算",stringify!($o),l,r)
       };
       *left = n;
       Uninit
@@ -628,7 +628,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Bool(l), Bool(r))=> Bool(*l $o *r),
         (Bool(l), Uninit)=> Bool(*l $o false),
         (Uninit, Bool(r))=> Bool(false $o *r),
-        _=> panic!("{}两边必须都为Bool或uninit", stringify!($o))
+        (l,r)=> panic!("{}两边必须都为Bool或uninit, 实际为{:?},{:?}", stringify!($o), l, r)
       }
     }};
   }
@@ -645,20 +645,20 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         let r = right.str();
         return Str([l.as_str(),r.as_str()].concat());
       }
-      impl_num!("相加类型不同" +)
+      impl_num!(+)
     },
-    b"-" => impl_num!("相减类型不同" -),
-    b"*" => impl_num!("相乘类型不同" *),
+    b"-" => impl_num!(-),
+    b"*" => impl_num!(*),
     // 本应该判断非0的,还是让rust帮我报错吧
-    b"%" => impl_num!("求余类型不同" %),
-    b"/" => impl_num!("相除类型不同" /),
+    b"%" => impl_num!(%),
+    b"/" => impl_num!(/),
 
     // unsigned
-    b"<<" => impl_unsigned!("左移需要左值无符号" <<),
-    b">>" => impl_unsigned!("右移需要左值无符号" >>),
-    b"&" => impl_unsigned!("&需要左值无符号" &),
-    b"^" => impl_unsigned!("^需要左值无符号" ^),
-    b"|" => impl_unsigned!("|需要左值无符号" |),
+    b"<<" => impl_unsigned!(<<),
+    b">>" => impl_unsigned!(>>),
+    b"&" => impl_unsigned!(&),
+    b"^" => impl_unsigned!(^),
+    b"|" => impl_unsigned!(|),
 
     // 赋值
     b"+=" => impl_num_assign!(+),
