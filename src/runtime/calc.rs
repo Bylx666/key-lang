@@ -451,7 +451,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
               let f = LocalFunc::new(&f.f, cls.cx);
               Scope::call_local_with_self(&f, vec![i.own(), right], left);
             }
-            None=> panic!("为'{}'实例索引赋值需要定义`@index_set`方法", cls.name)
+            None=> panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name)
           }
         },
         Litr::Ninst(inst)=> {
@@ -461,6 +461,21 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
           if let Litr::Str(s) = &*i {
             map.insert(intern(s.as_bytes()), right);
           }else {panic!("Obj索引必须是Str")}
+        }
+        // buf不能*get_index因为u8转uint会丢失引用
+        Litr::Buf(v)=> {
+          let i = match &*i {
+            Litr::Uint(n)=> *n,
+            Litr::Int(n)=> (*n) as usize,
+            _=> panic!("Buf的index必须是整数")
+          };
+          if i<v.len() {
+            v[i] = match right {
+              Litr::Int(n)=> n as u8,
+              Litr::Uint(n)=> n as u8,
+              _=> 0
+            };
+          }
         }
         _=> *get_index(CalcRef::Ref(left), i) = right
       }
@@ -497,7 +512,7 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
       let f = LocalFunc::new(&f.f, cls.cx);
       return CalcRef::Own(Scope::call_local_with_self(&f, vec![i.own()], left));
     }
-    panic!("读取'{}'实例索引需要定义`@index_get`方法", cls.name)
+    panic!("读取'{}'实例索引需要定义`.@index_get`方法", cls.name)
   }
 
   // 判断原生类实例

@@ -100,7 +100,7 @@ impl Scope {
     ret
   }
   
-  /// 实际调用一个local function
+  /// 实际调用一个local function并传入self
   pub fn call_local_with_self(f:&LocalFunc, args:Vec<Litr>, kself:*mut Litr)-> Litr {
     // 将传入参数按定义参数数量放入作用域
     let mut vars = Vec::with_capacity(f.stmts.vars + f.argdecl.len());
