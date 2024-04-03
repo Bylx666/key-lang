@@ -109,6 +109,15 @@ impl Scanner<'_> {
       let op = self.operator();
       let precedence = prec(op);
 
+      // 优先级够的话, 优先合并一元运算符
+      if precedence < charts::PREC_UNARY && unary.len() > 0 {
+        let mut right = expr_stack.pop().unwrap();
+        while let Some(op) = unary.pop() {
+          right = Expr::Unary { right:Box::new(right), op }
+        }
+        expr_stack.push(right);
+      }
+
       // 在新运算符加入之前，根据二元运算符优先级执行合并
       while let Some(last_op) = op_stack.pop() {
         let last_op_prec = prec(last_op);
@@ -241,15 +250,6 @@ impl Scanner<'_> {
       // 看看右侧值前有没有一元运算符
       let mut una = self.operator_unary();
       unary.append(&mut una);
-
-      // 优先级够的话,合并一元运算符
-      if precedence < charts::PREC_UNARY && unary.len() > 0 {
-        let mut right = expr_stack.pop().unwrap();
-        while let Some(op) = unary.pop() {
-          right = Expr::Unary { right:Box::new(right), op }
-        }
-        expr_stack.push(right);
-      }
 
       // 在此之前判断有没有括号来提升优先级
       let right = if self.cur() == b'(' {

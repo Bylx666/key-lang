@@ -23,7 +23,7 @@ macro_rules! translate_local_impl {{
       let args = exec.argdecl.iter().enumerate()
         .map(|(i,_)| Litr::Uint(*args.get(i).unwrap_or(&0))).collect();
       let ret = scope.call_local(exec, args);
-      match translate(ret) {
+      match translate(&ret) {
         Ok(v)=> v,
         Err(e)=> panic!("{}",e)
       }
@@ -41,14 +41,14 @@ macro_rules! translate_local_impl {{
 }}}
 
 /// 将ks参数转为可与C交互的参数
-pub fn translate(arg:Litr)-> Result<usize,String> {
+pub fn translate(arg:&Litr)-> Result<usize,String> {
   use Litr::*;
   match arg {
     Uninit=> Ok(0),
-    Bool(n)=> Ok(n as usize),
-    Int(n)=> Ok(n as usize),
-    Uint(n)=> Ok(n),
-    Float(n)=> (unsafe{Ok(transmute(n))}),
+    Bool(n)=> Ok(*n as usize),
+    Int(n)=> unsafe{Ok(transmute(*n))},
+    Uint(n)=> Ok(*n),
+    Float(n)=> (unsafe{Ok(transmute(*n))}),
     Str(p)=> Ok((*p).as_ptr() as usize),
     Buf(v)=> Ok(v.as_ptr() as usize),
     Func(exec)=> {
@@ -91,9 +91,9 @@ pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
           $n => {
             let callable:extern fn($($arg:usize,)*)-> usize = unsafe {transmute(f.ptr)};
             let mut eargs = [0usize;$n];
-            eargs.iter_mut().enumerate().for_each(|(i,p)| {
+            eargs.iter_mut().for_each(|p| {
               if let Some(v) = args.next() {
-                let transed = translate(v).unwrap_or_else(|e|panic!("{e}"));
+                let transed = translate(&v).unwrap_or_else(|e|panic!("{e}"));
                 *p = transed
               }
             });

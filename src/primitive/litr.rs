@@ -7,7 +7,7 @@ use crate::{
 
 pub use crate::runtime::outlive::LocalFunc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Litr {
   Uninit,
 
@@ -116,22 +116,6 @@ impl Litr {
 impl std::fmt::Display for Litr {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_str(&self.str())
-  }
-}
-impl std::fmt::Debug for Litr {
-  /// 此debug只写变体名
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    macro_rules! m {{$($t:ident)*}=> {
-      match self {
-        Litr::Uninit=> "uninit",
-        $(
-          Litr::$t(_)=> stringify!($t),
-        )*
-        Litr::Ninst(inst)=> unsafe{std::str::from_utf8_unchecked((&*inst.cls).name.vec())},
-        Litr::Inst(inst)=> unsafe{std::str::from_utf8_unchecked((&*inst.cls).name.vec())}
-      }
-    }}
-    f.write_str(m!{Buf Bool Float Func Int Uint List Obj Str Sym})
   }
 }
 

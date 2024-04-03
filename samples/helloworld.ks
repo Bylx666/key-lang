@@ -1,5 +1,16 @@
 
 //mod samples/testmod.ks> m;
 
-class A{}class B{}
-log([2,5,7]<[2,5,6])
+extern kernel32> {
+  std: GetStdHandle(n:Int)
+  write: WriteConsoleW(
+    output:HANDLE,
+    buffer:LPCVOID,
+    charNum:DWORD,
+    written:LPDWORD,
+    rev
+  )
+}
+
+let s = "原神, 启动!";
+write(std(-11), s.to_utf16(), s.len)
