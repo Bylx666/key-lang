@@ -64,7 +64,7 @@ pub fn translate(arg:&Litr)-> Result<usize,String> {
           6  agent6 (a,b,c,d,e,f)
           7  agent7 (a,b,c,d,e,f,g)
         },
-        Extern(f)=> Ok(f.ptr),
+        Extern(f)=> Ok(f.ptr as _),
         _=> Err("将运行时函数传进C函数是未定义行为".to_string())
       }
     }

@@ -145,7 +145,7 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
       b"raw"=> match f {
         Function::Local(f)=> Litr::Uint(f.ptr as _),
         Function::Native(f)=> Litr::Uint(*f as usize),
-        Function::Extern(e)=> Litr::Uint(e.ptr)
+        Function::Extern(e)=> Litr::Uint(e.ptr as _)
       }
       _=> Litr::Uninit
     }),

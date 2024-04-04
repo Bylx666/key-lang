@@ -1,6 +1,6 @@
 [package]
 name = "key-lang"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-description = "Might be the most pretty and easy script language"
+description = "To be the prettiest and simpliest script"
 license = "MPL-2.0"

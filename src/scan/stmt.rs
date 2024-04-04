@@ -290,7 +290,7 @@ impl Scanner<'_> {
     }
   
     let path = &self.src[self.i()..i];
-    let lib = Clib::load(path).unwrap_or_else(|e|panic!("{}",e));
+    let lib = Clib::load(path);
     self.set_i(i + 1);
     self.spaces();
   
@@ -500,8 +500,7 @@ impl Scanner<'_> {
     let suffix = &self.src[dot..i];
     match suffix {
       b".ksm"|b".dll"=> {
-        let module = crate::native::parse(path.as_bytes()).unwrap_or_else(|e|
-          panic!("模块解析失败:{}\n  {}",e,path));
+        let module = crate::native::parse(path.as_bytes());
         Stmt::NativeMod(name, module)
       }
       b".ks"=> {

@@ -33,14 +33,19 @@ pub struct NativeClassDef {
   pub ondrop: fn(&mut NativeInstance)
 }
 
-/// 传进main里的东西，作为与原生的接口
+/// 传进main里的东西，用于原生模块向Key解释器传输模块内容
 #[repr(C)]
 struct NativeInterface {
-  intern: fn(&[u8])-> Interned,
-  err: fn(&str)->!,
-  find_var: fn(Scope, Interned)-> Option<CalcRef>,
   funcs: *mut Vec<(Interned, NativeFn)>,
   classes: *mut Vec<*mut NativeClassDef>
+}
+
+/// 传进premain的函数表, 保证原生模块能使用Key解释器上下文的函数
+#[repr(C)]
+struct PreMain {
+  intern: fn(&[u8])-> Interned,
+  err: fn(&str)-> !,
+  find_var: fn(Scope, Interned)-> Option<CalcRef>,
 }
 
 /// 原生类型实例
@@ -64,21 +69,24 @@ impl Drop for NativeInstance {
   }
 }
 
-fn err(s:&str)->! {
-  panic!("{s}")
-}
-
-pub fn parse(path:&[u8])-> Result<*const NativeMod, String> {
-  let lib = Clib::load(path)?;
+pub fn parse(path:&[u8])-> *const NativeMod {
+  let lib = Clib::load(path);
   let mut m = Box::new(NativeMod {
     funcs: Vec::new(), classes: Vec::new()
   });
   unsafe {
-    let keymain:extern fn(&mut NativeInterface) = std::mem::transmute(lib.get(b"keymain").ok_or("模块需要'KeyMain'作为主运行函数")?);
-    keymain(&mut NativeInterface {
-      intern, err, find_var: Scope::var,
+    // 预备main, 将原生模块需要用的解释器的函数传过去
+    // 没有extern前缀!
+    let premain: fn(&PreMain) = std::mem::transmute(lib.get(b"premain").expect("模块需要'premain'函数初始化Key原生模块函数表"));
+    premain(&PreMain {
+      intern, err:|s|panic!("{}",s), find_var: Scope::var,
+    });
+    
+    // 运行用户函数
+    let main: fn(&mut NativeInterface) = std::mem::transmute(lib.get(b"main").expect("模块需要'main'函数作为主运行函数"));
+    main(&mut NativeInterface {
       funcs: &mut m.funcs, classes: &mut m.classes
     });
   }
-  Ok(Box::into_raw(m))
+  Box::into_raw(m)
 }

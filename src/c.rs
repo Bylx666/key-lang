@@ -1,41 +1,44 @@
 //! 所有跨平台相关的函数都在这
 
+use std::ptr::NonNull;
+
 extern {
-  fn LoadLibraryA(src:*const u8)-> usize;
-  fn GetProcAddress(lib:usize, src:*const u8)-> usize;
+  fn LoadLibraryA(src:*const u8)-> *const ();
+  fn GetProcAddress(lib:*const (), src:*const u8)-> *const ();
 }
 
-pub unsafe fn dlopen(src:*const u8)-> usize {
+pub unsafe fn dlopen(src:*const u8)-> *const () {
   unsafe {LoadLibraryA(src)}
 }
 
-pub unsafe fn dlsym(lib:usize, src:*const u8)-> usize {
+pub unsafe fn dlsym(lib:*const (), src:*const u8)-> *const () {
   unsafe {GetProcAddress(lib, src)}
 }
 
 
-pub struct Clib (usize);
+pub struct Clib (*const ());
 impl Clib {
   /// 加载一个动态库
-  pub fn load(s:&[u8])-> Result<Self, String> {
+  pub fn load(s:&[u8])-> Self {
     unsafe {
       let lib = dlopen([s,&[0]].concat().as_ptr());
-      if lib == 0 {
-        Err(format!("无法找到动态库'{}'",String::from_utf8_lossy(s)))
+      if lib.is_null() {
+        panic!("无法找到动态库'{}'",String::from_utf8_lossy(s))
       }else {
-        Ok(Clib(lib))
+        Clib(lib)
       }
     }
   }
   /// 从动态库中寻找一个函数
-  pub fn get(&self, sym:&[u8])-> Option<usize> {
+  pub fn get(&self, sym:&[u8])-> Option<*const ()> {
     let mut s = [sym,&[0]].concat();
     unsafe {
       let v = dlsym(self.0, s.as_ptr());
-      if v == 0 {
-        return None;
+      if v.is_null() {
+        None
+      }else {
+        Some(v)
       }
-      Some(v)
     }
   }
 }

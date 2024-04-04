@@ -149,7 +149,7 @@ pub struct LocalFuncRaw {
 #[derive(Debug, Clone)]
 pub struct ExternFunc {
   pub argdecl: Vec<ArgDecl>, 
-  pub ptr: usize,
+  pub ptr: *const (),
 }
 
 /// 类实例
