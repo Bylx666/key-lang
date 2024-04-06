@@ -1,3 +1,3 @@
 mod D:\code\rs\tst\target\debug\tstlib.dll> m;
 
-log(m-.牛魔())
+log(m-:A::new().t());

@@ -28,7 +28,7 @@ static mut LINE:usize = 1;
 static mut PLACE:String = String::new();
 
 /// 标志解释器的版本
-static VERSION:usize = 100000;
+static VERSION:usize = 100001;
 
 /// 解释器发行者(用于区分主版本和魔改版)
 /// 
@@ -52,9 +52,7 @@ fn main()-> ExitCode {
   // extern to_raw_args
   // throw catch
   // 同名省略struct属性
-  // 如果不加分号报错会错行，记得提示用户
   // 科学计数法0x 0b
-  // wasm版本实现
   // linux macos支持
   // 脚本打包exe
 

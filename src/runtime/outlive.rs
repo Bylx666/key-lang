@@ -14,6 +14,7 @@ fn ln()->usize{unsafe{crate::LINE}}
 
 /// 本地函数指针
 #[derive(Debug)]
+#[repr(C)]
 pub struct LocalFunc {
   /// pointer
   pub ptr:*const LocalFuncRaw,
