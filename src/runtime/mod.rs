@@ -33,8 +33,8 @@ pub enum Module {
 /// 类声明，分为本地和原生类声明
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Class {
-  Native(*mut NativeClassDef),
-  Local(*mut ClassDef)
+  Native(*const NativeClassDef),
+  Local(*const ClassDef)
 }
 
 #[derive(Debug, Clone)]

@@ -499,8 +499,12 @@ impl Scanner<'_> {
     assert!(dot!=0, "未知模块类型");
     let suffix = &self.src[dot..i];
     match suffix {
-      b".ksm"|b".dll"=> {
+      b".ksm"|b".dll"=> unsafe{
+        /// 让mod过程出错时知道是原生模块的锅
+        let mut place = std::mem::take(&mut crate::PLACE);
+        crate::PLACE = format!("'{}'中:\n  解析原生模块'{}'时出现错误", place, path);
         let module = crate::native::parse(path.as_bytes());
+        crate::PLACE = std::mem::take(&mut place);
         Stmt::NativeMod(name, module)
       }
       b".ks"=> {

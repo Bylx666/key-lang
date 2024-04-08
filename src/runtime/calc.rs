@@ -147,7 +147,7 @@ impl Scope {
           _=> panic!("构建实例::左侧必须是类型名")
         };
         if let Class::Local(cls) = cls {
-          let cls = unsafe {&mut *cls};
+          let cls = unsafe {&*cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
           /// 记录哪个属性没有写入
           let mut writen = vec![false; cls.props.len()];
@@ -444,7 +444,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
       match left {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
-          let cls = unsafe{&mut *inst.cls};
+          let cls = unsafe{&*inst.cls};
           let opt = cls.methods.iter().find(|v|v.name == fname);
           match opt {
             Some(f)=> {
@@ -540,7 +540,7 @@ fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
       let i = this.calc_ref(i);
       match left {
         Litr::Inst(inst)=> {
-          let cls = unsafe{&mut *inst.cls};
+          let cls = unsafe{&*inst.cls};
           let write = {
             let fname = intern(b"@index_get");
             let opt = cls.methods.iter().find(|v|v.name == fname);
@@ -623,7 +623,7 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   let left = &mut *left;
   if let Litr::Inst(inst) = left {
     let fname = intern(b"@index_get");
-    let cls = unsafe{&mut *inst.cls};
+    let cls = unsafe{&*inst.cls};
     let opt = cls.methods.iter().find(|v|v.name == fname);
     if let Some(f) = opt {
       let f = LocalFunc::new(&f.f, cls.cx);
