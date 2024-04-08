@@ -28,7 +28,7 @@ static mut LINE:usize = 1;
 static mut PLACE:String = String::new();
 
 /// 标志解释器的版本
-static VERSION:usize = 100003;
+static VERSION:usize = 100004;
 
 /// 解释器发行者(用于区分主版本和魔改版)
 /// 

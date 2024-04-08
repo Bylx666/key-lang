@@ -1,9 +1,10 @@
 mod D:\code\rs\tst\target\debug\tstlib.dll> m;
 
-let s = "芙
-卡
-洛
-斯";
-for c: s.lines() {
-  log(c)
+let iter;
+{
+  let a = "启动启动启动!";
+  iter = a.lines();
+}
+for l:iter {
+  log(l);
 }

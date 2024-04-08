@@ -52,7 +52,8 @@ struct FuncTable {
   get_self: fn(Scope)-> *mut Litr,
   get_parent: fn(Scope)-> Option<Scope>,
   outlive_inc: fn(Scope),
-  outlive_dec: fn(Scope)
+  outlive_dec: fn(Scope),
+  symcls: fn()-> *mut NativeClassDef
 }
 static FUNCTABLE:FuncTable = FuncTable {
   intern, 
@@ -72,6 +73,7 @@ static FUNCTABLE:FuncTable = FuncTable {
   get_parent: |cx|cx.parent,
   outlive_inc: outlive::increase_scope_count,
   outlive_dec: outlive::decrease_scope_count,
+  symcls: ||unsafe{crate::primitive::sym::SYMBOL_CLASS}
 };
 
 /// 原生类型实例
