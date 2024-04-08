@@ -22,8 +22,7 @@ pub enum Litr {
   List   (Vec<Litr>),
   Obj    (HashMap<Interned, Litr>),
   Inst   (Instance),
-  Ninst  (NativeInstance),
-  Sym    (crate::primitive::sym::Symbol)
+  Ninst  (NativeInstance)
 }
 
 impl Litr {
@@ -107,8 +106,7 @@ impl Litr {
         s.push_str(" }");
         s
       }
-      Ninst(inst)=> (unsafe { &*inst.cls }.to_str)(inst),
-      Sym(s)=> super::sym::to_str(s)
+      Ninst(inst)=> (unsafe { &*inst.cls }.to_str)(inst)
     }
   }
 }
@@ -211,7 +209,6 @@ pub enum KsType {
   Buf,
   List,
   Obj,
-  Sym,
   Class(Interned)
 }
 impl KsType {
@@ -242,7 +239,7 @@ impl KsType {
         }
       }}
     }}
-    matcher!{Buf Bool Float Func Int Uint List Obj Str Sym}
+    matcher!{Buf Bool Float Func Int Uint List Obj Str}
   }
 }
 
@@ -256,7 +253,7 @@ impl std::fmt::Debug for KsType {
         KsType::Class(n)=> unsafe{ std::str::from_utf8_unchecked(n.vec()) }
       }
     }}
-    f.write_str(m!{Any Buf Bool Float Func Int Uint List Obj Str Sym})
+    f.write_str(m!{Any Buf Bool Float Func Int Uint List Obj Str})
   }
 }
 
@@ -300,7 +297,6 @@ impl PartialOrd for Litr {
             match_list(&*l.v, &*r.v)
           }else {None}
         }
-        (Sym(l), Sym(r))=> l.partial_cmp(r),
         _=> None
       }
     }

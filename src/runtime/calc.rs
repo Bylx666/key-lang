@@ -317,7 +317,7 @@ impl Scope {
           }
         }}
         matcher!{
-          Bool Buf Float Func Int List Obj Str Sym Uint
+          Bool Buf Float Func Int List Obj Str Uint
         }
       }
       

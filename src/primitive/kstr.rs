@@ -237,14 +237,13 @@ fn splice(s:&mut String, args:Vec<CalcRef>)-> Litr {
 // - statics -
 pub fn statics()-> Vec<(Interned, NativeFn)> {
   use std::str::Lines;
-  use sym::Symbol;
   unsafe {
     // 初始化lines()迭代器类
     ITER_LINES = Box::into_raw(Box::new(super::new_iter_class(
       b"Str.lines", 
       |v| {
         let itr = v.v as *mut Lines;
-        (*itr).next().map_or(Litr::Sym(Symbol::IterEnd), 
+        (*itr).next().map_or(sym::iter_end(), 
         |v|Litr::Str(v.to_string()))
       }, 
       |v| {

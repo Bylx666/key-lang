@@ -1,31 +1,34 @@
 use crate::{
-  runtime::{calc::CalcRef, Scope}, 
-  primitive::litr::Litr,
-  intern::{Interned, intern},
-  native::NativeFn
+  intern::{intern, Interned}, native::{NativeClassDef, NativeFn, NativeInstance}, primitive::litr::Litr, runtime::{calc::CalcRef, Scope}
 };
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum Symbol {
-  IterEnd,
-  Reserved
+pub const ITER_END:usize = 1;
+
+static mut SYMBOL_CLASS: *mut NativeClassDef = std::ptr::null_mut();
+
+pub fn init()-> (Interned, *mut NativeClassDef) {
+  unsafe {
+    let s = super::new_static_class(b"Sym", 
+      vec![
+        (intern(b"iter_end"), |_,_|iter_end())
+      ]
+    );
+    SYMBOL_CLASS = s.1;
+    s
+  }
 }
 
-
-pub fn statics()-> Vec<(Interned, NativeFn)> {
-  vec![
-    (intern(b"iter_end"), s_iter_end)
-  ]
+pub fn is_sym(v:&NativeInstance)-> bool {
+  unsafe {v.cls == SYMBOL_CLASS}
+}
+pub fn iter_end()-> Litr {
+  unsafe{Litr::Ninst(NativeInstance {v: 1, w:0, cls: SYMBOL_CLASS})}
 }
 
-fn s_iter_end(_:Vec<CalcRef>, _cx:Scope)-> Litr {
-  Litr::Sym(Symbol::IterEnd)
-}
-
-pub fn to_str(s:&Symbol)-> String {
-  let t = match s {
-    Symbol::IterEnd=> "迭代结束",
-    Symbol::Reserved=> "未使用"
+pub fn to_str(s:&NativeInstance)-> String {
+  let t = match s.v {
+    ITER_END=> "迭代结束",
+    _=> "未知"
   };
   format!("Sym {{ {} }}", t)
 }

@@ -3,7 +3,7 @@
 use crate::{
   intern::{intern, Interned}, 
   native::{NativeClassDef, NativeFn, NativeInstance}, 
-  primitive::{litr::Litr, sym::Symbol}, 
+  primitive::{litr::Litr, sym}, 
   runtime::{calc::CalcRef, Scope}
 };
 use std::collections::HashMap;
@@ -145,7 +145,7 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
       b"Obj.keys", 
       |v| {
         let itr = v.v as *mut Keys<'_, Interned, Litr>;
-        (*itr).next().map_or(Litr::Sym(Symbol::IterEnd), 
+        (*itr).next().map_or(sym::iter_end(), 
         |v|Litr::Str(v.str()))
       }, 
       |v| {
@@ -159,7 +159,7 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
       |v| {
         let itr = v.v as *mut Values<'_, Interned, Litr>;
         (*itr).next()
-          .map_or(Litr::Sym(Symbol::IterEnd),|v|v.clone())
+          .map_or(sym::iter_end(),|v|v.clone())
       }, 
       |v| {
         drop(Box::from_raw(v.v as *mut Values<'_, Interned, Litr>))
@@ -171,7 +171,7 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
       b"Obj.entries", 
       |v| {
         let itr = v.v as *mut Iter<'_, Interned, Litr>;
-        (*itr).next().map_or(Litr::Sym(Symbol::IterEnd),|(k,v)|Litr::List(
+        (*itr).next().map_or(sym::iter_end(),|(k,v)|Litr::List(
           vec![Litr::Str(k.str()), v.clone()]
         ))
       }, 

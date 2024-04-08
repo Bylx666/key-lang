@@ -50,7 +50,6 @@ impl Scope {
       Litr::Float(n)=> primitive::float::method(*n, name, args),
       Litr::Str(s)=> primitive::kstr::method(s, self, name, args),
       Litr::Func(f)=> primitive::func::method(f, name, self, args),
-      Litr::Sym(_)=> panic!("Sym没有方法"),
       Litr::Uninit=> panic!("uninit没有方法"),
       Litr::Inst(inst)=> {
         let cannot_access_private = unsafe {(*inst.cls).cx.exports} != self.exports;

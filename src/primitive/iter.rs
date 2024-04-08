@@ -1,10 +1,11 @@
 use std::cell::UnsafeCell;
 
 use crate::{
-  intern::intern, native::{NativeInstance, NativeMethod}, primitive::litr::{Litr, LocalFunc}, runtime::{calc::CalcRef, Scope}
+  intern::intern, 
+  native::{NativeInstance, NativeMethod}, 
+  primitive::litr::{Litr, LocalFunc},
+  runtime::{calc::CalcRef, Scope}
 };
-
-use super::sym::Symbol;
 
 /// instance类型专用的迭代器
 struct InstanceIter<'a> {
@@ -15,8 +16,8 @@ impl Iterator for InstanceIter<'_> {
   type Item = Litr;
   fn next(&mut self) -> Option<Self::Item> {
     let r = Scope::call_local_with_self(&self.f, vec![], self.kself);
-    if let Litr::Sym(s) = &r {
-      if let Symbol::IterEnd = s {
+    if let Litr::Ninst(inst) = &r {
+      if super::sym::is_sym(inst) && inst.v == super::sym::ITER_END {
         return None;
       }
     }
@@ -33,8 +34,8 @@ impl Iterator for NativeInstanceIter<'_> {
   type Item = Litr;
   fn next(&mut self) -> Option<Self::Item> {
     let r = (self.f)(self.kself);
-    if let Litr::Sym(s) = &r {
-      if let Symbol::IterEnd = s {
+    if let Litr::Ninst(inst) = &r {
+      if super::sym::is_sym(inst) && inst.v == super::sym::ITER_END {
         return None;
       }
     }
@@ -69,7 +70,6 @@ impl<'a> LitrIterator<'a> {
       Litr::Bool(_) => panic!("Bool无法迭代"),
       Litr::Func(_) => panic!("Func无法迭代"),
       Litr::Float(_) => panic!("Float无法迭代"),
-      Litr::Sym(_) => panic!("Sym无法迭代"),
       Litr::Uninit => panic!("给uninit迭代?死刑!"),
     };
     LitrIterator { inner }
