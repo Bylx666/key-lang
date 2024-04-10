@@ -1,10 +1,11 @@
 mod D:\code\rs\tst\target\debug\tstlib.dll> m;
 
-let iter;
-{
-  let a = "启动启动启动!";
-  iter = a.lines();
+let f() {
+  a += 2;
+  log(a);
 }
-for l:iter {
-  log(l);
+
+{
+  let a = 3;
+  m-.set_timeout_here(f, 2000);
 }

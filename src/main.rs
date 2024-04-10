@@ -95,6 +95,15 @@ fn main()-> ExitCode {
   if unsafe{GLOBAL_OPTIONS.print_ast} {println!("{scanned:?}")}
 
   let exit = runtime::run(&scanned);
+
+  // 如果原生模块调用了wait_inc就堵住当前线程
+  unsafe {
+    let mut n = native::WAITING.lock().unwrap();
+    while *n > 0 {
+      n = native::WAITING_CVAR.wait(n).unwrap();
+    }
+  }
+
   if let primitive::litr::Litr::Int(code) = exit.returned {
     return ExitCode::from(code as u8);
   }

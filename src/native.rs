@@ -1,5 +1,7 @@
 //! 提供Native Module的接口
 
+use std::sync::{Condvar, Mutex};
+
 use crate::{
   c::Clib, intern::{intern, Interned}, primitive::litr::Litr, runtime::{outlive::{self, LocalFunc}, Variant}, scan::stmt::LocalMod
 };
@@ -53,7 +55,9 @@ struct FuncTable {
   get_parent: fn(Scope)-> Option<Scope>,
   outlive_inc: fn(Scope),
   outlive_dec: fn(Scope),
-  symcls: fn()-> *mut NativeClassDef
+  symcls: fn()-> *mut NativeClassDef,
+  wait_inc: fn(),
+  wait_dec: fn()
 }
 static FUNCTABLE:FuncTable = FuncTable {
   intern, 
@@ -73,7 +77,8 @@ static FUNCTABLE:FuncTable = FuncTable {
   get_parent: |cx|cx.parent,
   outlive_inc: outlive::increase_scope_count,
   outlive_dec: outlive::decrease_scope_count,
-  symcls: ||unsafe{crate::primitive::sym::SYMBOL_CLASS}
+  symcls: ||unsafe{crate::primitive::sym::SYMBOL_CLASS},
+  wait_inc, wait_dec
 };
 
 /// 原生类型实例
@@ -94,6 +99,22 @@ impl Drop for NativeInstance {
   /// 调用自定义drop (key-native的默认drop不做任何事)
   fn drop(&mut self) {
     (unsafe{&*self.cls}.ondrop)(self)
+  }
+}
+
+/// wait_inc和wait_dec的主线程阻塞器
+pub static mut WAITING: Mutex<isize> = Mutex::new(0);
+pub static mut WAITING_CVAR: Condvar = Condvar::new();
+
+/// 增加占用数量
+pub fn wait_inc() {
+  unsafe{*WAITING.lock().unwrap() += 1}
+}
+/// 减少占用数量
+pub fn wait_dec() {
+  unsafe{
+    *WAITING.lock().unwrap() -= 1;
+    WAITING_CVAR.notify_one();
   }
 }
 
