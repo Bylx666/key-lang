@@ -3,34 +3,33 @@ use super::*;
 
 pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Litr {
   match name.vec() {
+    // 增删
     b"push"=> push(v, args),
     b"push_front"=> push_front(v, args),
-    b"dedup"=> dedup(v, args, scope),
-    b"sort"=> sort(v, args, scope),
-    b"for_each"=> for_each(v, args, scope),
-    b"map_clone"=> map_clone(v, args, scope),
-    b"map"=> map(v, args, scope),
     b"pop"=> pop(v, args),
     b"pop_front"=> pop_front(v, args),
-    b"rev"=> rev(v),
-    b"filter"=> filter(v, args, scope),
-    b"filter_clone"=> filter_clone(v, args, scope),
-    b"last"=> last(v),
     b"insert"=> insert(v, args),
     b"insert_many"=> insert_many(v, args),
     b"insert_many_clone"=> insert_many_clone(v, args),
     b"remove"=> remove(v, args),
     b"splice"=> splice(v, args),
-    b"fill"=> fill(v, args),
-    b"fill_clone"=> fill_clone(v, args),
-    b"expand"=> expand(v, args),
-    b"rotate"=> rotate(v, args),
-    b"concat"=> concat(v, args),
-    b"concat_clone"=> concat_clone(v, args),
-    b"join"=> join(v, args),
-    b"fold"=> fold(v, args, scope),
     b"slice"=> slice(v, args),
     b"slice_clone"=> slice_clone(v, args),
+    b"concat"=> concat(v, args),
+    b"concat_clone"=> concat_clone(v, args),
+
+    // 遍历
+    b"for_each"=> for_each(v, args, scope),
+    b"map_clone"=> map_clone(v, args, scope),
+    b"map"=> map(v, args, scope),
+    b"filter"=> filter(v, args, scope),
+    b"filter_clone"=> filter_clone(v, args, scope),
+    b"dedup"=> dedup(v, args, scope),
+    b"fold"=> fold(v, args, scope),
+    b"sort"=> sort(v, args, scope),
+
+    // 搜索
+    b"last"=> last(v),
     b"includes"=> includes(v, args),
     b"index_of"=> index_of(v, args, scope),
     b"r_index_of"=> r_index_of(v, args, scope),
@@ -39,7 +38,17 @@ pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)->
     b"all"=> all(v, args, scope),
     b"min"=> min(v),
     b"max"=> max(v),
+
+    // 转换
+    b"join"=> join(v, args),
     b"to_buf"=> to_buf(v),
+
+    // 本征
+    b"rev"=> rev(v),
+    b"fill"=> fill(v, args),
+    b"fill_clone"=> fill_clone(v, args),
+    b"rotate"=> rotate(v, args),
+    b"expand"=> expand(v, args),
     _=> panic!("List没有{}方法",name)
   }
 }
@@ -232,7 +241,7 @@ fn last(v:&mut Vec<Litr>)-> Litr {
 fn insert(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let mut args = args.into_iter();
   let index = to_usize(&*args.next().expect("list.insert需要传入一个数字作为插入位置"));
-  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
+  assert!(index<=v.len(), "插入索引{index}不可大于数组长度{}",v.len());
 
   let to_insert = args.next().expect("list.insert需要传入第二个参数作为插入内容").own();
   v.insert(index, to_insert);
@@ -242,9 +251,9 @@ fn insert(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 /// 插入多个元素
 fn insert_many(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let index = to_usize(&**args.get(0).expect("list.insert_many需要传入一个数字作为插入位置"));
-  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
+  assert!(index<=v.len(), "插入索引{index}不可大于数组长度{}",v.len());
 
-  match &**args.get(0).expect("list.insert_many需要传入第二个参数作为插入内容") {
+  match &**args.get(1).expect("list.insert_many需要传入第二个参数作为插入内容") {
     Litr::Buf(b)=> {
       v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
     },
@@ -263,7 +272,7 @@ fn insert_many_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let index = to_usize(&**args.get(0).expect("list.insert_many_clone需要传入一个数字作为插入位置"));
   assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
 
-  match &**args.get(0).expect("list.insert_many_clone需要传入第二个参数作为插入内容") {
+  match &**args.get(1).expect("list.insert_many_clone需要传入第二个参数作为插入内容") {
     Litr::Buf(b)=> {
       v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
     },
@@ -432,9 +441,9 @@ fn fold(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
     Litr::Func(f)=> f,
     _=> panic!("list.fold第二个参数只能是函数")
   };
-  v.iter_mut().fold(init, |a, b|{
+  v.iter_mut().fold(init, |a, b|
     scope.call(vec![CalcRef::Own(a), CalcRef::Ref(b)], f)
-  })
+  )
 }
 
 /// 将自己切成指定范围的数据
@@ -475,20 +484,20 @@ fn includes(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 fn index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   let find = &**args.get(0).expect("list.index_of需要传入一个值");
   let res = v.iter().position(|n|n==find);
-  Litr::Int(match res {
-    Some(n)=> n as isize,
-    None=> -1
-  })
+  match res {
+    Some(n)=> Litr::Uint(n),
+    None=> Litr::Uninit
+  }
 }
 
 /// index_of反向版
 fn r_index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   let find = &**args.get(0).expect("list.r_index_of需要传入一个值");
   let res = v.iter().rev().position(|n|n==find);
-  Litr::Int(match res {
-    Some(n)=> (v.len() - n - 1) as isize,
-    None=> -1
-  })
+  match res {
+    Some(n)=> Litr::Uint((v.len() - n - 1)),
+    None=> Litr::Uninit
+  }
 }
 
 /// 通过判断函数找到第一个对应值
@@ -599,16 +608,20 @@ fn s_from_buf(args:Vec<CalcRef>, _cx:Scope)-> Litr {
 
 /// List::concat拼接两个List,允许传Buf自动转换
 fn s_concat(args:Vec<CalcRef>, _cx:Scope)-> Litr {
-  assert!(args.len()>=2, "List::concat需要左右两个List作参数");
-  let mut left = match &**args.get(0).unwrap() {
-    Litr::List(v)=> v.iter().cloned().collect(),
+  assert!(args.len()>=2, "需要左右两个List作参数");
+  let mut args = args.into_iter();
+  let first = args.next().expect("List::concat至少需要一个列表");
+  let mut left = match &*first {
+    Litr::List(v)=> v.clone(),
     Litr::Buf(v)=> v.iter().map(|n|Litr::Uint(*n as usize)).collect(),
     n=> vec![n.clone()]
   };
-  match &**args.get(1).unwrap() {
-    Litr::List(v)=> left.extend(v.iter().cloned()),
-    Litr::Buf(v)=> left.extend(v.iter().map(|n|Litr::Uint(*n as usize))),
-    n=> left.push(n.clone())
-  };
+  while let Some(v) = args.next() {
+    match &*v {
+      Litr::List(v)=> left.extend_from_slice(v),
+      Litr::Buf(v)=> left.extend(v.iter().map(|n|Litr::Uint(*n as usize))),
+      n=> left.push(n.clone())
+    }
+  }
   Litr::List(left)
 }
