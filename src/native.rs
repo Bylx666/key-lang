@@ -3,7 +3,14 @@
 use std::sync::{Condvar, Mutex};
 
 use crate::{
-  c::Clib, intern::{intern, Interned}, primitive::litr::Litr, runtime::{outlive::{self, LocalFunc}, Variant}, scan::stmt::LocalMod
+  c::Clib, 
+  intern::{intern, Interned}, 
+  primitive::{
+    litr::{Instance, Litr}, 
+    planet
+  },
+  runtime::{outlive::{self, LocalFunc}, Variant}, 
+  scan::stmt::LocalMod
 };
 use crate::runtime::{calc::CalcRef, Scope};
 
@@ -57,7 +64,11 @@ struct FuncTable {
   outlive_dec: fn(Scope),
   symcls: fn()-> *mut NativeClassDef,
   wait_inc: fn(),
-  wait_dec: fn()
+  wait_dec: fn(),
+  planet_new: fn()-> (*mut planet::Planet, *mut NativeClassDef),
+  planet_ok: fn(&mut planet::Planet, Litr),
+  local_instance_clone: fn(&Instance)-> Instance,
+  local_instance_drop: fn(&mut Instance),
 }
 static FUNCTABLE:FuncTable = FuncTable {
   intern, 
@@ -78,7 +89,11 @@ static FUNCTABLE:FuncTable = FuncTable {
   outlive_inc: outlive::increase_scope_count,
   outlive_dec: outlive::decrease_scope_count,
   symcls: ||unsafe{crate::primitive::sym::SYMBOL_CLASS},
-  wait_inc, wait_dec
+  wait_inc, wait_dec,
+  planet_new: ||(planet::rust_new(), unsafe{planet::PLANET_CLASS}),
+  planet_ok: planet::rust_ok,
+  local_instance_clone: <Instance as Clone>::clone,
+  local_instance_drop: |v|unsafe{std::ptr::drop_in_place(v)},
 };
 
 /// 原生类型实例

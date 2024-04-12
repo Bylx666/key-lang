@@ -116,6 +116,11 @@ impl std::fmt::Display for Litr {
     f.write_str(&self.str())
   }
 }
+impl Default for Litr {
+  fn default() -> Self {
+    Litr::Uninit
+  }
+}
 
 /// 针对函数的枚举
 #[derive(Debug, Clone)]

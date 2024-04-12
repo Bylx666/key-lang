@@ -34,7 +34,12 @@ pub fn method_int(n:isize, name:Interned, args:Vec<CalcRef>)-> Litr {
     b"rev"=> Litr::Int(n.swap_bytes()),
     b"leading"=> Litr::Uint(n.leading_zeros() as _),
     b"ending"=> Litr::Uint(n.trailing_zeros() as _),
-    b"pow"=> Litr::Int(n.pow(get_arg0!(to_u32))),
+    b"pow"=> args.get(0).map_or(Litr::Int(1), |val|match &**val{
+      Litr::Uint(r)=> Litr::Int(n.pow(*r as _)),
+      Litr::Int(r)=> Litr::Int(n.pow(*r as _)),
+      Litr::Float(r)=> Litr::Float((n as f64).powf(*r)),
+      _=> Litr::Int(1)
+    }),
     b"sqrt"=> Litr::Int(n.pow(2)),
     b"log"=> Litr::Uint(n.ilog(get_arg0!(to_isize)) as _),
     b"log2"=> Litr::Uint(n.ilog2() as _),
@@ -58,7 +63,12 @@ pub fn method_uint(n:usize, name:Interned, args:Vec<CalcRef>)-> Litr {
     b"rev"=> Litr::Uint(n.swap_bytes()),
     b"leading"=> Litr::Uint(n.leading_zeros() as _),
     b"ending"=> Litr::Uint(n.trailing_zeros() as _),
-    b"pow"=> Litr::Uint(n.pow(get_arg0!(to_u32))),
+    b"pow"=> args.get(0).map_or(Litr::Uint(1), |val|match &**val{
+      Litr::Uint(r)=> Litr::Uint(n.pow(*r as _)),
+      Litr::Int(r)=> Litr::Uint(n.pow(*r as _)),
+      Litr::Float(r)=> Litr::Float((n as f64).powf(*r)),
+      _=> Litr::Uint(1)
+    }),
     b"sqrt"=> Litr::Uint(n.pow(2)),
     b"log"=> Litr::Uint(n.ilog(get_arg0!(to_usize)) as _),
     b"log2"=> Litr::Uint(n.ilog2() as _),

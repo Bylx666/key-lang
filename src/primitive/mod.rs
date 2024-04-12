@@ -15,6 +15,7 @@ pub mod sym;
 pub mod obj;
 pub mod iter;
 pub mod func;
+pub mod planet;
 
 use litr::{Litr, Function};
 use crate::native::{
@@ -85,6 +86,7 @@ pub fn classes()-> Vec<(Interned, Class)> {unsafe {
       new_static_class(b"Float", float::statics()),
       new_static_class(b"Str", kstr::statics()),
       sym::init(),
+      planet::init(),
       new_static_class(b"Func", func::statics()),
     ]);
     classes()

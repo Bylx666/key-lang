@@ -25,6 +25,16 @@ pub fn method(n:f64, name:Interned, args:Vec<CalcRef>)-> Litr {
     b"exp"=> Litr::Float(n.exp()),
     b"exp2"=> Litr::Float(n.exp2()),
     b"expm1"=> Litr::Float(n.exp_m1()),
+    b"pow"=> Litr::Float(
+      args.get(0).map_or(0.0, |val|match &**val {
+        Litr::Uint(r)=> n.powi(*r as _),
+        Litr::Int(r)=> n.powi(*r as _),
+        Litr::Float(r)=> n.powf(*r),
+        _=> 1.0
+      })),
+    b"sqrt"=> Litr::Float(n.sqrt()),
+    b"cbrt"=> Litr::Float(n.cbrt()),
+    b"recip"=> Litr::Float(n.recip()),
     b"hypot"=> Litr::Float(n.hypot(get_arg0!(to_f))),
 
     // triangles 三角函数
@@ -45,22 +55,9 @@ pub fn method(n:f64, name:Interned, args:Vec<CalcRef>)-> Litr {
 
     // rounding 四舍五入
     b"ceil"=> Litr::Int(n.ceil() as _),
-    b"floor"=> Litr::Float(n.floor()),
-    b"round"=> Litr::Float(n.round()),
+    b"floor"=> Litr::Int(n.floor() as _),
+    b"round"=> Litr::Int(n.round() as _),
     b"trunc"=> Litr::Int(n.trunc() as _),
-    b"fract"=> Litr::Float(n.fract()),
-
-    // power 次幂
-    b"pow"=> Litr::Float(
-      args.get(0).map_or(0.0, |val|match &**val {
-        Litr::Uint(r)=> n.powi(*r as _),
-        Litr::Int(r)=> n.powi(*r as _),
-        Litr::Float(r)=> n.powf(*r),
-        _=> 1.0
-      })),
-    b"sqrt"=> Litr::Float(n.sqrt()),
-    b"cbrt"=> Litr::Float(n.cbrt()),
-    b"recip"=> Litr::Float(n.recip()),
 
     // compare 比较
     b"max"=> Litr::Float(n.max(get_arg0!(to_f))),
@@ -138,7 +135,7 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
 
     (intern(b"sqrt2"), |_,_|Litr::Float(consts::SQRT_2)),
     (intern(b"sqrt1_2"), |_,_|Litr::Float(consts::FRAC_1_SQRT_2)),
-    (intern(b"sqrt1_pi"), |_,_|Litr::Float(consts::FRAC_1_PI)),
+    (intern(b"frac1_pi"), |_,_|Litr::Float(consts::FRAC_1_PI)),
 
     (intern(b"pi"), |_,_|Litr::Float(consts::PI)),
     (intern(b"tau"), |_,_|Litr::Float(consts::TAU)),

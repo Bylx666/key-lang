@@ -201,7 +201,7 @@ impl Scanner<'_> {
         b"else"=> panic!("else必须紧接if. 检查一下是不是if后是单语句还用了分号结尾"),
         b"break"=> Stmt::Break,
         b"continue"=> Stmt::Continue,
-        b"async"|b"await"=> panic!("异步关键词暂未实现"),
+        b"async"|b"await"=> panic!("异步关键词暂时保留无法使用"),
         _=> {
           let expr = self.expr_with_left(ident, vec![]);
           Stmt::Expression(expr)
