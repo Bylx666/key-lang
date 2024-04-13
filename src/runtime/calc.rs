@@ -767,6 +767,8 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
         (Float(l),Float(r))=> Float(l $op r),
         (Float(l),Int(r))=> Float(l $op *r as f64),
         (Int(l),Float(r))=> Float(*l as f64 $op r),
+        (Float(l),Uint(r))=> Float(l $op *r as f64),
+        (Uint(l),Float(r))=> Float(*l as f64 $op r),
         (l,r)=> panic!("{}运算无法应用于{:?}和{:?}", stringify!($op), l, r)
       }
     }};

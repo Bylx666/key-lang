@@ -6,6 +6,11 @@ use super::*;
 
 pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Litr {
   match name.vec() {
+    // binary edit
+    b"read"=> read(v, args),
+    b"read_float"=> read_float(v, args),
+    b"write"=> write(v, args),
+
     // edit
     b"push"=> push(v, args),
     b"push_front"=> push_front(v, args),
@@ -22,13 +27,9 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"fill_clone"=> fill_clone(v, args),
     b"rotate"=> rotate(v, args),
     b"rev"=> rev(v),
-    b"concat"=> concat(v, args),
-    b"concat_clone"=> concat_clone(v, args),
-    
-    // binary edit
-    b"read"=> read(v, args),
-    b"read_float"=> read(v, args),
-    b"write"=> write(v, args),
+    b"rev_clone"=> rev_clone(v),
+    b"slice"=> slice(v, args),
+    b"slice_clone"=> slice_clone(v, args),
 
     // iter
     b"for_each"=> for_each(v, args, scope),
@@ -37,17 +38,13 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"fold"=> fold(v, args, scope),
     b"dedup"=> dedup(v, args, scope),
     b"sort"=> sort(v, args, scope),
-    b"replace"=> replace(v, args),
-    b"replace_clone"=> replace_clone(v, args),
-
-    // part
     b"filter"=> filter(v, args, scope),
     b"filter_clone"=> filter_clone(v, args, scope),
-    b"slice"=> slice(v, args),
-    b"slice_clone"=> slice_clone(v, args),
     b"part"=> part(v, args, scope),
 
     // find
+    b"replace"=> replace(v, args),
+    b"replace_clone"=> replace_clone(v, args),
     b"includes"=> includes(v, args),
     b"index_of"=> index_of(v, args, scope),
     b"r_index_of"=> r_index_of(v, args, scope),
@@ -59,10 +56,10 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"as_utf8"=> as_utf8(v),
     b"as_utf16"=> as_utf16(v),
     b"to_list"=> Litr::List(v.iter().map(|n|Litr::Uint(*n as usize)).collect()),
+    b"join"=> join(v, args),
 
     b"last"=> last(v),
     b"expand"=> expand(v, args),
-    b"join"=> join(v, args),
     _=> panic!("Buf没有{}方法",name)
   }
 }
@@ -80,6 +77,11 @@ const fn to_usize(v:&Litr)-> usize {
     Litr::Uint(n)=> *n,
     _=> 0
   }
+}
+const fn to_str(s:&[u8])-> &str {
+  // SAFETY: 本方法使用std::str::pattern的实现, 
+  // 其底层依赖字节比较 并不检查字符边界
+  unsafe {std::str::from_utf8_unchecked(s)}
 }
 
 /// 推进数组或者单数字
@@ -199,7 +201,7 @@ fn pop(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
       Litr::Int(n)=> *n as usize,
       _=> panic!("buf.pop的参数必须为整数")
     };
-    if at >= v.len() {
+    if at > v.len() {
       panic!("分界线索引{at}大于数组长度{}", v.len());
     }
 
@@ -220,7 +222,7 @@ fn pop_front(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
       Litr::Int(n)=> *n as usize,
       _=> panic!("buf.pop_front的参数必须为整数")
     };
-    if at >= v.len() {
+    if at > v.len() {
       panic!("分界线索引{at}大于数组长度{}", v.len());
     }
 
@@ -237,6 +239,12 @@ fn pop_front(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 fn rev(v:&mut Vec<u8>)-> Litr {
   v.reverse();
   Litr::Uninit
+}
+/// rev
+fn rev_clone(v:&mut Vec<u8>)-> Litr {
+  let mut v = v.clone();
+  v.reverse();
+  Litr::Buf(v)
 }
 
 /// 将当前数组按函数过滤
@@ -486,43 +494,6 @@ fn rotate(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   Litr::Uninit
 }
 
-/// 将另一个Buf连接到自己后面
-fn concat(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let other_tmp;
-  let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
-    Litr::List(b)=> {
-      other_tmp = b.iter().map(|n|to_u8(n)).collect();
-      &other_tmp
-    }
-    Litr::Buf(b)=> b,
-    n=> {
-      v.push(to_u8(n));
-      return Litr::Uninit;
-    }
-  };
-  v.extend_from_slice(other);
-  Litr::Uninit
-}
-
-/// concat复制版本
-fn concat_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let other_tmp;
-  let other = match &**args.get(0).expect("buf.concat需要传入另一个Buf或数组") {
-    Litr::List(b)=> {
-      other_tmp = b.iter().map(|n|to_u8(n)).collect();
-      &other_tmp
-    }
-    Litr::Buf(b)=> b,
-    n=> {
-      v.push(to_u8(n));
-      return Litr::Uninit;
-    }
-  };
-  v.extend_from_slice(other);
-  Litr::Buf(v)
-}
-
 /// 将十六进制数以字符的格式渲染, 传入一个分隔符
 fn join(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   if v.len()==0 {return Litr::Str(String::new());}
@@ -582,10 +553,16 @@ fn slice_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 
 /// 是否存在一个数
 fn includes(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let find = to_u8(args.get(0).expect("buf.includes需要知道你要找啥"));
-  Litr::Bool(match v.iter().find(|&&n|n==find) {
-    Some(_)=> true,
-    None=> false
+  Litr::Bool(match &**args.get(0).expect("buf.includes需要知道你要找啥") {
+    Litr::Str(s)=> to_str(v).contains(s),
+    Litr::Buf(s)=> to_str(v).contains(to_str(s)),
+    n=> {
+      let find = to_u8(n);
+      match v.iter().find(|&&n|n==find) {
+        Some(_)=> true,
+        None=> false
+      }
+    }
   })
 }
 
@@ -682,7 +659,7 @@ fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   );
   
   // 访问溢出时直接返回0
-  if sz / 8 + index >= v.len() {
+  if sz / 8 + index > v.len() {
     return Litr::Uint(0);
   }
 
@@ -709,10 +686,10 @@ fn read(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 /// 在指定偏移读取一个Float, 第二个参数取决于机器的大小端, true不一定指大端序
 fn read_float(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr { 
   let index = args.get(0).map_or(0, |n|to_usize(n));
-  if index + 8 >= v.len() {
+  if index + 8 > v.len() {
     return Litr::Float(0.0);
   }
-  let big_endian = args.get(2).map_or(false, |n|
+  let big_endian = args.get(1).map_or(false, |n|
     match &**n {
       Litr::Bool(b)=> *b,
       _=> false
@@ -744,22 +721,17 @@ fn as_utf16(v:&mut Vec<u8>)-> Litr {
 
 /// 替换的内部方法
 fn _replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> String {
-  const fn to_str(s:&[u8])-> &str {
-    // SAFETY: 本方法使用std::str::pattern的实现, 
-    // 其底层依赖字节比较 并不检查字符边界
-    unsafe {std::str::from_utf8_unchecked(s)}
-  }
   let s = to_str(v);
 
-  let from = match &** args.get(0).expect("str.replace需要一个搜索Buf") {
+  let from = match &** args.get(0).expect("buf.replace需要一个搜索Buf") {
     Litr::Str(s)=> s,
     Litr::Buf(s)=> to_str(s),
-    _=> panic!("str.replace第一个参数必须是Buf或Str")
+    _=> panic!("buf.replace第一个参数必须是Buf或Str")
   };
   let to = args.get(1).map_or("", |n| match &**n {
     Litr::Str(s)=> s,
     Litr::Buf(s)=> to_str(s),
-    _=> panic!("str.replace第二个参数必须是Buf或Str")
+    _=> panic!("buf.replace第二个参数必须是Buf或Str")
   });
 
   if let Some(n) = args.get(2) {

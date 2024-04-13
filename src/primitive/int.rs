@@ -29,27 +29,25 @@ pub fn method_int(n:isize, name:Interned, args:Vec<CalcRef>)-> Litr {
     args.get(0).map_or(0, |n|$deal(n))
   }}
   match name.vec() {
-    b"abs"=> Litr::Uint(n.unsigned_abs()),
-    b"popcnt"=> Litr::Uint(n.count_ones() as _),
-    b"rev"=> Litr::Int(n.swap_bytes()),
-    b"leading"=> Litr::Uint(n.leading_zeros() as _),
-    b"ending"=> Litr::Uint(n.trailing_zeros() as _),
     b"pow"=> args.get(0).map_or(Litr::Int(1), |val|match &**val{
       Litr::Uint(r)=> Litr::Int(n.pow(*r as _)),
       Litr::Int(r)=> Litr::Int(n.pow(*r as _)),
       Litr::Float(r)=> Litr::Float((n as f64).powf(*r)),
       _=> Litr::Int(1)
     }),
-    b"sqrt"=> Litr::Int(n.pow(2)),
     b"log"=> Litr::Uint(n.ilog(get_arg0!(to_isize)) as _),
     b"log2"=> Litr::Uint(n.ilog2() as _),
     b"log10"=> Litr::Uint(n.ilog10() as _),
+    
+    b"abs"=> Litr::Uint(n.unsigned_abs()),
     b"as_buf"=> Litr::Buf(n.to_ne_bytes().to_vec()),
-    b"to_oct"=> Litr::Str(format!("{:o}", n)),
     b"to_str"=> Litr::Str(n.to_string()),
+    b"to_oct"=> Litr::Str(format!("{:o}", n)),
     b"to_hex"=> Litr::Str(format!("{:X}", n)),
+    
     b"min"=> Litr::Int(n.min(get_arg0!(to_isize))),
     b"max"=> Litr::Int(n.max(get_arg0!(to_isize))),
+    b"rev"=> Litr::Int(n.swap_bytes()),
     _=> panic!("{}上没有{}方法","Int",name)
   }
 }
@@ -59,26 +57,33 @@ pub fn method_uint(n:usize, name:Interned, args:Vec<CalcRef>)-> Litr {
     args.get(0).map_or(0, |n|$deal(n))
   }}
   match name.vec() {
-    b"popcnt"=> Litr::Uint(n.count_ones() as _),
-    b"rev"=> Litr::Uint(n.swap_bytes()),
-    b"leading"=> Litr::Uint(n.leading_zeros() as _),
-    b"ending"=> Litr::Uint(n.trailing_zeros() as _),
     b"pow"=> args.get(0).map_or(Litr::Uint(1), |val|match &**val{
       Litr::Uint(r)=> Litr::Uint(n.pow(*r as _)),
       Litr::Int(r)=> Litr::Uint(n.pow(*r as _)),
       Litr::Float(r)=> Litr::Float((n as f64).powf(*r)),
       _=> Litr::Uint(1)
     }),
-    b"sqrt"=> Litr::Uint(n.pow(2)),
     b"log"=> Litr::Uint(n.ilog(get_arg0!(to_usize)) as _),
     b"log2"=> Litr::Uint(n.ilog2() as _),
     b"log10"=> Litr::Uint(n.ilog10() as _),
+
     b"as_buf"=> Litr::Buf(n.to_ne_bytes().to_vec()),
-    b"rotate_left"=> Litr::Uint(n.rotate_left(get_arg0!(to_u32))),
-    b"rotate_right"=> Litr::Uint(n.rotate_right(get_arg0!(to_u32))),
+    b"as8"=> Litr::Buf(vec![n as u8]),
+    b"as16"=> Litr::Buf(unsafe{std::mem::transmute::<_,[u8;2]>(n as u16)}.to_vec()),
+    b"as32"=> Litr::Buf(unsafe{std::mem::transmute::<_,[u8;4]>(n as u32)}.to_vec()),
+    b"as64"=> Litr::Buf(n.to_ne_bytes().to_vec()),
     b"to_oct"=> Litr::Str(format!("{:o}", n)),
     b"to_str"=> Litr::Str(n.to_string()),
     b"to_hex"=> Litr::Str(format!("{:X}", n)),
+    
+    // bin
+    b"popcnt"=> Litr::Uint(n.count_ones() as _),
+    b"rev"=> Litr::Uint(n.swap_bytes()),
+    b"leading"=> Litr::Uint(n.leading_zeros() as _),
+    b"ending"=> Litr::Uint(n.trailing_zeros() as _),
+    b"rotate_left"=> Litr::Uint(n.rotate_left(get_arg0!(to_u32))),
+    b"rotate_right"=> Litr::Uint(n.rotate_right(get_arg0!(to_u32))),
+    
     b"min"=> Litr::Uint(n.min(get_arg0!(to_usize))),
     b"max"=> Litr::Uint(n.max(get_arg0!(to_usize))),
     _=> panic!("{}上没有{}方法","Uint",name)
