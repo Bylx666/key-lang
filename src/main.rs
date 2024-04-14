@@ -38,7 +38,8 @@ static VERSION:usize = 100005;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // calc_ref的const变体
+  // clone版本的方法
+  // 更实用的宏
   // let [] = x
   // let a=0,b=0
   // prelude mod 让模块本身帮你初始化上下文

@@ -17,34 +17,26 @@ pub fn method(v:&mut Vec<u8>, scope:Scope, name:Interned, args:Vec<CalcRef>)-> L
     b"pop"=> pop(v, args),
     b"pop_front"=> pop_front(v, args),
     b"copy_within"=> copy_within(v, args),
-    b"repeat"=> repeat(v, args),
-    b"repeat_clone"=> repeat_clone(v, args),
+    b"repeat"=> repeat_clone(v, args),
     b"insert"=> insert(v, args),
-    b"insert_clone"=> insert_clone(v, args),
     b"remove"=> remove(v, args),
     b"splice"=> splice(v, args),
     b"fill"=> fill(v, args),
-    b"fill_clone"=> fill_clone(v, args),
     b"rotate"=> rotate(v, args),
     b"rev"=> rev(v),
-    b"rev_clone"=> rev_clone(v),
-    b"slice"=> slice(v, args),
-    b"slice_clone"=> slice_clone(v, args),
+    b"slice"=> slice_clone(v, args),
 
     // iter
     b"for_each"=> for_each(v, args, scope),
-    b"map_clone"=> map_clone(v, args, scope),
-    b"map"=> map(v, args, scope),
+    b"map"=> map_clone(v, args, scope),
     b"fold"=> fold(v, args, scope),
     b"dedup"=> dedup(v, args, scope),
     b"sort"=> sort(v, args, scope),
-    b"filter"=> filter(v, args, scope),
-    b"filter_clone"=> filter_clone(v, args, scope),
+    b"filter"=> filter_clone(v, args, scope),
     b"part"=> part(v, args, scope),
 
     // find
-    b"replace"=> replace(v, args),
-    b"replace_clone"=> replace_clone(v, args),
+    b"replace"=> replace_clone(v, args),
     b"includes"=> includes(v, args),
     b"index_of"=> index_of(v, args, scope),
     b"r_index_of"=> r_index_of(v, args, scope),
@@ -177,22 +169,6 @@ fn map_clone(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   }).collect())
 }
 
-/// map_clone的原地版本
-fn map(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("buf.map需要一个函数作为参数") {
-    Litr::Func(f)=> f,
-    _=> panic!("buf.map第一个参数只能传函数")
-  };
-  *v = v.iter().map(|a| match scope.call(vec![
-    CalcRef::Own(Litr::Uint(*a as usize))
-  ], f) {
-    Litr::Uint(n)=> n as u8,
-    Litr::Int(n)=> n as u8,
-    _=> 0
-  }).collect();
-  Litr::Uninit
-}
-
 /// 从末尾切去一个, 可传一个数字作为切去数量
 fn pop(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   if let Some(arg0) = args.get(0) {
@@ -238,27 +214,6 @@ fn pop_front(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 /// 反转Buf
 fn rev(v:&mut Vec<u8>)-> Litr {
   v.reverse();
-  Litr::Uninit
-}
-/// rev
-fn rev_clone(v:&mut Vec<u8>)-> Litr {
-  let mut v = v.clone();
-  v.reverse();
-  Litr::Buf(v)
-}
-
-/// 将当前数组按函数过滤
-fn filter(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("buf.filter需要一个函数作为参数") {
-    Litr::Func(f)=> f,
-    _=> panic!("buf.map第一个参数只能传函数")
-  };
-  v.retain(|a|match scope.call(
-    vec![CalcRef::Own(Litr::Uint(*a as usize))], f
-  ) {
-    Litr::Bool(b)=> b,
-    _=> false
-  });
   Litr::Uninit
 }
 
@@ -348,13 +303,6 @@ fn last(v:&mut Vec<u8>)-> Litr {
   v.last().map_or(Litr::Uninit, |v|Litr::Uint(*v as usize))
 }
 
-/// 将已有数组重复n次
-fn repeat(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let n = to_usize(args.get(0).expect("buf.repeat需要传入整数作为重复次数"));
-  *v = v.repeat(n);
-  Litr::Uninit
-}
-
 /// repeat的复制版
 fn repeat_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   let n = to_usize(args.get(0).expect("buf.repeat需要传入整数作为重复次数"));
@@ -378,26 +326,6 @@ fn insert(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
     n=> v.insert(index, to_u8(n))
   }
   Litr::Uninit
-}
-
-/// insert的复制版本
-fn insert_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let mut args = args.iter();
-  let index = to_usize(&**args.next().expect("buf.insert需要传入一个数字作为插入位置"));
-  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
-
-  match &**args.next().expect("buf.insert需要传入第二个参数:整数,列表或数组作为插入内容") {
-    Litr::Buf(b)=> {
-      v.splice(index..index, b.iter().copied()).collect::<Vec<_>>();
-    },
-    Litr::List(b)=> {
-      v.splice(index..index, b.iter()
-        .map(|n|to_u8(n))).collect::<Vec<_>>();
-    }
-    n=> v.insert(index, to_u8(n))
-  }
-  Litr::Buf(v)
 }
 
 /// 删除一个或一段元素
@@ -451,21 +379,6 @@ fn fill(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 
   v[start..end].fill(fill);
   Litr::Uninit
-}
-
-/// fill的复制版本
-fn fill_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let mut args = args.iter();
-  let fill = args.next().map_or(0, |n|to_u8(n));
-  let start = args.next().map_or(0, |n|to_usize(n));
-  let end = args.next().map_or(v.len(), |n|to_usize(n));
-
-  assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
-  assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
-
-  v[start..end].fill(fill);
-  Litr::Buf(v)
 }
 
 /// 扩大vec容量 如果空间足够可能会不做任何事
@@ -523,20 +436,6 @@ fn fold(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   v.iter().fold(init, |a, b|{
     scope.call(vec![CalcRef::Own(a), CalcRef::Own(Litr::Uint(*b as usize))], f)
   })
-}
-
-/// 将自己切成指定范围的数据
-fn slice(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  let len = v.len();
-  let start = args.get(0).map_or(0, |n|to_usize(n));
-  let end = args.get(0).map_or(len, |n|to_usize(n));
-
-  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
-  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
-
-  v.copy_within(start..end, 0);
-  v.truncate(end - start);
-  Litr::Uninit
 }
 
 /// slice的复制版本
@@ -719,8 +618,8 @@ fn as_utf16(v:&mut Vec<u8>)-> Litr {
   Litr::Str(String::from_utf16_lossy(s))
 }
 
-/// 替换的内部方法
-fn _replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> String {
+/// replace
+fn replace_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   let s = to_str(v);
 
   let from = match &** args.get(0).expect("buf.replace需要一个搜索Buf") {
@@ -734,22 +633,11 @@ fn _replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> String {
     _=> panic!("buf.replace第二个参数必须是Buf或Str")
   });
 
-  if let Some(n) = args.get(2) {
+  Litr::Buf(if let Some(n) = args.get(2) {
     s.replacen(from, to, to_usize(n))
   }else {
     s.replace(from, to)
-  }
-}
-
-/// 查找替换Buf或Str,可传入整数作为第三个参数作为替换次数
-fn replace(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  *v = _replace(v, args).into_bytes();
-  Litr::Uninit
-}
-
-/// replace复制版
-fn replace_clone(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
-  Litr::Str(_replace(v, args))
+  }.into_bytes())
 }
 
 // - statics -

@@ -45,31 +45,27 @@ pub fn method(s:&mut String, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Li
     b"ends_with"=> Litr::Bool(s.ends_with(get_arg0!(str "ends_with"))),
     b"index_of"=> index_of(s, args),
     b"r_index_of"=> r_index_of(s, args),
-    b"english_eq"=> Litr::Bool(s.eq_ignore_ascii_case(get_arg0!(str "englisheq"))),
-    b"split"=> split(s, args),
 
     // edit
-    b"part"=> Litr::Str(s.split_off(get_arg0!(index))),
-    b"remove"=> remove(s, args),
+    b"cut"=> Litr::Str(s.split_off(get_arg0!(index))),
     b"insert"=> insert(s, args),
+    b"remove"=> remove(s, args),
     b"push"=> void!(s.push_str(get_arg0!(str "push"))),
-    b"slice"=> void!(*s = _slice(s, args)),
-    b"slice_clone"=> Litr::Str(_slice(s, args)),
-    b"to_lowercase"=> void!(s.make_ascii_lowercase()),
-    b"to_uppercase"=> void!(s.make_ascii_uppercase()),
-    b"rev_clone"=> Litr::Str(s.chars().rev().collect()),
-    b"rev"=> void!(*s = s.chars().rev().collect()),
-    b"repeat_clone"=> Litr::Str(s.repeat(get_arg0!(usize))),
-    b"repeat"=> void!(*s = s.repeat(get_arg0!(usize))),
-    b"replace_clone"=> Litr::Str(_replace(s, args)),
-    b"replace"=> void!(*s = _replace(s, args)),
+    b"slice"=> void!(Litr::Str(_slice(s, args))),
+    b"to_lcase"=> void!(s.make_ascii_lowercase()),
+    b"to_ucase"=> void!(s.make_ascii_uppercase()),
+    b"rev"=> Litr::Str(s.chars().rev().collect()),
+    b"repeat"=> Litr::Str(s.repeat(get_arg0!(usize))),
+    b"replace"=> Litr::Str(_replace(s, args)),
     b"splice"=> splice(s, args),
     b"trim"=> void!(*s = s.trim().to_string()),
 
     // transmute
     b"to_buf"=> Litr::Buf(s.as_bytes().to_vec()),
     b"to_utf16"=> to_utf16(s),
+    b"split"=> split(s, args),
 
+    b"case_eq"=> Litr::Bool(s.eq_ignore_ascii_case(get_arg0!(str "englisheq"))),
     b"lines"=> lines(s),
     
     _=> panic!("Str上没有{}方法", name)
@@ -125,15 +121,11 @@ fn remove(s:&mut String, args:Vec<CalcRef>)-> Litr {
 
 /// 在索引处插入一段字符
 fn insert(s:&mut String, args:Vec<CalcRef>)-> Litr {
+  assert!(args.len()>=2, "str.insert必须传入两个参数");
   let mut indice = s.char_indices();
-  let index = args.get(0).map_or(s.len(), |n|to_usize(n));
-  let index = indice.nth(index).unwrap_or_else(||panic!("索引{}超出字符范围", index)).0;
+  let index = indice.nth(to_usize(args.get(0).unwrap())).unwrap_or_else(||panic!("字符索引超出字符范围")).0;
 
-  let to_insert = match args.get(1) {
-    Some(n)=> n,
-    None=> return Litr::Uninit
-  };
-  let to_insert = match &**to_insert {
+  let to_insert = match &**args.get(1).unwrap() {
     Litr::Str(s)=> s,
     _=> panic!("str.insert第二个参数必须是Str")
   };
@@ -269,7 +261,7 @@ fn s_from(args:Vec<CalcRef>, _cx:Scope)-> Litr {
 fn s_from_utf8(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   Litr::Str(
     args.get(0).map_or(String::new(), |s|match &**s {
-      Litr::Buf(s)=> String::from_utf8(s.clone()).expect("Str解析错误非法utf8字符"),
+      Litr::Buf(s)=> String::from_utf8(s.clone()).expect("Str解析错误 非法utf8字符"),
       _=> panic!("Str::from_utf8第一个参数必须是Buf")
     })
   )
@@ -281,7 +273,7 @@ fn s_from_utf16(args:Vec<CalcRef>, _cx:Scope)-> Litr {
     args.get(0).map_or(String::new(), |s|match &**s {
       Litr::Buf(s)=> String::from_utf16(
         unsafe {std::slice::from_raw_parts(s.as_ptr() as *const u16, s.len() / 2)}
-      ).expect("Str解析错误非法utf16字符"),
+      ).expect("Str解析错误 非法utf16字符"),
       _=> panic!("Str::from_utf16第一个参数必须是Buf")
     })
   )

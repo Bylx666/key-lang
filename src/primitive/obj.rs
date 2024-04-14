@@ -27,7 +27,6 @@ pub fn method(v:&mut HashMap<Interned, Litr>, scope:Scope, name:Interned, args:V
     b"entries"=> entries(v),
     b"len"=> Litr::Uint(v.len()),
     b"concat"=> concat(v, args),
-    b"concat_clone"=> concat_clone(v, args),
     _=> panic!("Obj没有{}方法",name)
   }
 }
@@ -122,13 +121,6 @@ fn _concat_extend(o:&mut HashMap<Interned, Litr>, arg:&Litr) {
 fn concat(o:&mut HashMap<Interned, Litr>, args:Vec<CalcRef>)-> Litr {
   _concat_extend(o, &**args.get(0).expect("obj.concat需要传入拼接对象或实例"));
   Litr::Uninit
-}
-
-/// concat的复制版
-fn concat_clone(o:&mut HashMap<Interned, Litr>, args:Vec<CalcRef>)-> Litr {
-  let mut o = o.clone();
-  _concat_extend(&mut o, &**args.get(0).expect("obj.concat_clone需要传入拼接对象或实例"));
-  Litr::Obj(o)
 }
 
 

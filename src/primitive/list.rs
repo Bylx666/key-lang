@@ -10,20 +10,15 @@ pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)->
     b"pop_front"=> pop_front(v, args),
     b"insert"=> insert(v, args),
     b"insert_many"=> insert_many(v, args),
-    b"insert_many_clone"=> insert_many_clone(v, args),
     b"remove"=> remove(v, args),
     b"splice"=> splice(v, args),
-    b"slice"=> slice(v, args),
-    b"slice_clone"=> slice_clone(v, args),
+    b"slice"=> slice_clone(v, args),
     b"concat"=> concat(v, args),
-    b"concat_clone"=> concat_clone(v, args),
 
     // 遍历
     b"for_each"=> for_each(v, args, scope),
-    b"map_clone"=> map_clone(v, args, scope),
-    b"map"=> map(v, args, scope),
-    b"filter"=> filter(v, args, scope),
-    b"filter_clone"=> filter_clone(v, args, scope),
+    b"map"=> map_clone(v, args, scope),
+    b"filter"=> filter_clone(v, args, scope),
     b"dedup"=> dedup(v, args, scope),
     b"fold"=> fold(v, args, scope),
     b"sort"=> sort(v, args, scope),
@@ -46,7 +41,6 @@ pub fn method(v:&mut Vec<Litr>, scope:Scope, name:Interned, args:Vec<CalcRef>)->
     // 本征
     b"rev"=> rev(v),
     b"fill"=> fill(v, args),
-    b"fill_clone"=> fill_clone(v, args),
     b"rotate"=> rotate(v, args),
     b"expand"=> expand(v, args),
     _=> panic!("List没有{}方法",name)
@@ -202,21 +196,6 @@ fn rev(v:&mut Vec<Litr>)-> Litr {
   Litr::Uninit
 }
 
-/// 将当前数组按函数过滤
-fn filter(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("list.filter需要一个函数作为参数") {
-    Litr::Func(f)=> f,
-    _=> panic!("list.map第一个参数只能传函数")
-  };
-  v.retain_mut(|a|match scope.call(
-    vec![CalcRef::Ref(a)], f
-  ) {
-    Litr::Bool(b)=> b,
-    _=> false
-  });
-  Litr::Uninit
-}
-
 /// filter的复制版本
 fn filter_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   let f = match &**args.get(0).expect("list.filter需要一个函数作为参数") {
@@ -264,25 +243,6 @@ fn insert_many(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
     _=> panic!("list.insert_many第二个参数必须是List或Buf")
   }
   Litr::Uninit
-}
-
-/// insert_may的复制版本
-fn insert_many_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let index = to_usize(&**args.get(0).expect("list.insert_many_clone需要传入一个数字作为插入位置"));
-  assert!(index<v.len(), "插入索引{index}不可大于等于数组长度{}",v.len());
-
-  match &**args.get(1).expect("list.insert_many_clone需要传入第二个参数作为插入内容") {
-    Litr::Buf(b)=> {
-      v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
-    },
-    Litr::List(b)=> {
-      v.splice(index..index, b.iter()
-        .map(|n|n.clone())).collect::<Vec<_>>();
-    }
-    _=> panic!("list.insert_many_clone第二个参数必须是List或Buf")
-  }
-  Litr::List(v)
 }
 
 
@@ -337,21 +297,6 @@ fn fill(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   Litr::Uninit
 }
 
-/// fill的复制版本
-fn fill_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let mut args = args.into_iter();
-  let fill = args.next().map_or(Litr::Uninit, |n|n.own());
-  let start = args.next().map_or(0, |n|to_usize(&n));
-  let end = args.next().map_or(v.len(), |n|to_usize(&n));
-
-  assert!(start<=end, "开始索引{start}不可大于结束索引{end}");
-  assert!(end<=v.len(), "结束索引{end}不可大于数组长度{}",v.len());
-
-  v[start..end].fill(fill);
-  Litr::List(v)
-}
-
 /// 扩大vec容量 如果空间足够可能会不做任何事
 fn expand(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let n = to_usize(args.get(0).expect("list.expand需要一个整数作为扩大字节数"));
@@ -382,7 +327,7 @@ fn rotate(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 fn concat(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let mut args = args.into_iter();
   let other:Vec<Litr> = match args.next().expect("list.concat需要传入另一个Buf或数组").own() {
-    Litr::List(b)=> b.into_iter().collect(),
+    Litr::List(b)=> b,
     Litr::Buf(b)=> b.into_iter().map(|n|Litr::Uint(n as usize)).collect(),
     n=> {
       v.push(n);
@@ -391,22 +336,6 @@ fn concat(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   };
   v.extend_from_slice(&*other);
   Litr::Uninit
-}
-
-/// concat复制版本
-fn concat_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
-  let mut v = v.clone();
-  let mut args = args.into_iter();
-  let other:Vec<Litr> = match args.next().expect("list.concat_clone需要传入另一个Buf或数组").own() {
-    Litr::List(b)=> b.into_iter().collect(),
-    Litr::Buf(b)=> b.into_iter().map(|n|Litr::Uint(n as usize)).collect(),
-    n=> {
-      v.push(n);
-      return Litr::Uninit;
-    }
-  };
-  v.extend_from_slice(&*other);
-  Litr::List(v)
 }
 
 /// 将十六进制数以字符的格式渲染, 传入一个分隔符
@@ -446,20 +375,7 @@ fn fold(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   )
 }
 
-/// 将自己切成指定范围的数据
-fn slice(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
-  let len = v.len();
-  let start = args.get(0).map_or(0, |n|to_usize(n));
-  let end = args.get(0).map_or(len, |n|to_usize(n));
-
-  assert!(start<=end, "切片起始索引{start}不可大于结束索引{end}");
-  assert!(end<=len, "切片结束索引{end}不可大于数组长度{len}");
-
-  *v = v[start..end].to_vec();
-  Litr::Uninit
-}
-
-/// slice的复制版本
+/// slice
 fn slice_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   let len = v.len();
   let start = args.get(0).map_or(0, |n|to_usize(n));
