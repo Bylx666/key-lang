@@ -273,17 +273,18 @@ impl Scanner<'_> {
           }
           ls.push(e);
           self.spaces();
-          if self.cur() != b',' {
-            break;
-          }
-          self.next();
-        }
-        if self.i() >= self.src.len() || self.cur() != b']' {
           if self.cur() == b',' {
-            panic!("列表不允许空元素");
+            self.next()
           }
+        }
+
+        if self.i() >= self.src.len() {
           panic!("未闭合的右括号']'。");
         }
+        if self.cur() == b',' {
+          panic!("列表不允许空元素");
+        }
+        
         self.next();
         Expr::List(ls)
       }
