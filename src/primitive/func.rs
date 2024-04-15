@@ -2,6 +2,8 @@ use crate::{
   intern::{intern, Interned}, native::NativeFn, primitive::litr::{ArgDecl, Function, KsType, Litr, LocalFunc, LocalFuncRaw}, runtime::{calc::CalcRef, Scope}, scan::{expr::Expr, stmt::Statements}
 };
 
+use super::litr::LocalFuncRawArg;
+
 pub fn method(f:&Function, name:Interned, cx: Scope, args:Vec<CalcRef>)-> Litr {
   match name.vec() {
     b"call"=> kcall(f, args, cx),
@@ -83,7 +85,7 @@ fn s_new(mut s:Vec<CalcRef>, cx:Scope)-> Litr {
     None=> Statements::default()
   };
 
-  let argdecl = match itr.next() {
+  let argdecl = LocalFuncRawArg::Normal(match itr.next() {
     Some(arg)=> match &**arg {
       Litr::List(v)=> 
         v.iter().map(|v|match v {
@@ -93,7 +95,7 @@ fn s_new(mut s:Vec<CalcRef>, cx:Scope)-> Litr {
       _=> panic!("Func::new第二个参数必须是Str组成的List, 用来定义该函数的参数名")
     },
     None=> Vec::new()
-  };
+  });
   
   Litr::Func(Function::Local(LocalFunc::new(Box::into_raw(Box::new(
     LocalFuncRaw {argdecl, stmts}

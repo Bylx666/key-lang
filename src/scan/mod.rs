@@ -6,7 +6,7 @@ use crate::intern::{
   intern,
   Interned
 };
-use crate::primitive::litr::{Litr, KsType, ArgDecl};
+use crate::primitive::litr::{ArgDecl, KsType, Litr, LocalFuncRawArg};
 use crate::runtime::Scope;
 use crate::LINE;
 
@@ -185,8 +185,19 @@ impl Scanner<'_> {
   }
 
   /// 解析函数声明的参数
-  fn arguments(&self)-> Vec::<ArgDecl> {
+  fn arguments(&self)-> LocalFuncRawArg {
     self.spaces();
+
+    // 使用自定义参数语法
+    if self.cur() == b'[' {
+      self.next();
+      let id = intern(self.ident().expect("自定义参数需要指定自定义参数名"));
+      self.spaces();
+      assert!(self.cur()==b']', "自定义参数的']'丢失");
+      self.next();
+      return LocalFuncRawArg::Custom(id);
+    }
+
     let mut args = Vec::new();
     while let Some(n) = self.ident() {
       let name = intern(n);
@@ -210,6 +221,6 @@ impl Scanner<'_> {
       self.spaces();
       args.push(ArgDecl {name, t, default});
     };
-    args
+    LocalFuncRawArg::Normal(args)
   }
 }

@@ -144,8 +144,17 @@ pub struct ArgDecl {
 /// 未绑定作用域的本地定义函数
 #[derive(Debug, Clone)]
 pub struct LocalFuncRaw {
-  pub argdecl: Vec<ArgDecl>, 
+  pub argdecl: LocalFuncRawArg, 
   pub stmts: Statements
+}
+
+/// 本地函数传参方式
+#[derive(Debug, Clone)]
+pub enum LocalFuncRawArg {
+  /// 正常按参数名传参
+  Normal(Vec<ArgDecl>),
+  /// 传入List由用户自由解析
+  Custom(Interned)
 }
 
 /// 插件只有一个Native类型

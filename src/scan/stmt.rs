@@ -357,7 +357,10 @@ impl Scanner<'_> {
       // 解析小括号包裹的参数声明
       assert!(self.cur()==b'(', "extern函数后应有括号");
       self.next();
-      let argdecl = self.arguments();
+      let argdecl = match self.arguments() {
+        crate::primitive::litr::LocalFuncRawArg::Normal(v)=> v,
+        _=> panic!("extern函数不可使用自定义参数")
+      };
       self.spaces();
       assert!(self.cur() == b')', "extern函数声明右括号缺失");
       self.next();

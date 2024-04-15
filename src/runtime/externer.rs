@@ -14,14 +14,16 @@ macro_rules! translate_local_impl {{
     $n:literal $fname:ident($($arg:ident$(,)?)*) 
   )*
 }=>{{
-  let len = $local.argdecl.len();
+
+  let len = match &$local.argdecl {
+    LocalFuncRawArg::Normal(v)=> v.len(),
+    _=> panic!("不可在extern中使用自定义参数")
+  };
   $(
     extern fn $fname($($arg:usize,)*)-> usize {
       let exec = unsafe {EXEC.as_mut().expect("未找到extern函数，这是bug")};
       let mut scope = exec.scope;
-      let args = [$($arg,)*];
-      let args = exec.argdecl.iter().enumerate()
-        .map(|(i,_)| Litr::Uint(*args.get(i).unwrap_or(&0))).collect();
+      let args = [$($arg,)*].into_iter().map(|n|Litr::Uint(n)).collect();
       let ret = scope.call_local(exec, args);
       match translate(&ret) {
         Ok(v)=> v,
@@ -65,7 +67,7 @@ pub fn translate(arg:&Litr)-> Result<usize,String> {
           7  agent7 (a,b,c,d,e,f,g)
         },
         Extern(f)=> Ok(f.ptr as _),
-        _=> Err("将运行时函数传进C函数是未定义行为".to_string())
+        _=> Err("将原生函数传进C函数是未定义行为".to_string())
       }
     }
     List(_)=> Err("列表类型不可作为C指针传递".to_string()),

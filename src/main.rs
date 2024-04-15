@@ -28,7 +28,7 @@ static mut LINE:usize = 1;
 static mut PLACE:String = String::new();
 
 /// 标志解释器的版本
-static VERSION:usize = 100005;
+static VERSION:usize = 100006;
 
 /// 解释器发行者(用于区分主版本和魔改版)
 /// 
@@ -38,9 +38,9 @@ static VERSION:usize = 100005;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // pub use
+  // expand_call
+  // pub use pub mod
   // 更实用的宏
-  // 可变参数([args])
   // ..[参数展开]
   // catch
   // 同名省略struct属性
