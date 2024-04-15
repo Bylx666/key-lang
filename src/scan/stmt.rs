@@ -37,10 +37,10 @@ pub enum Stmt {
   ExportFn  (Interned, LocalFuncRaw),
   ExportCls (*const ClassDefRaw),
 
-  Match,     // 模式匹配
+  Match, 
 
   // 块系列
-  Block    (Statements),   // 一个普通块
+  Block    (Statements), 
   If {
     condition: Expr,
     exec: Box<Stmt>,
@@ -59,8 +59,8 @@ pub enum Stmt {
 
   // 流程控制
   Break,
-  Continue,                           // 立刻进入下一次循环
-  Return    (Expr),                  // 函数返回
+  Continue, 
+  Return    (Expr),
 
   // 表达式作为语句
   Expression(Expr),
@@ -69,8 +69,20 @@ pub enum Stmt {
 /// 赋值语句
 #[derive(Debug, Clone)]
 pub struct AssignDef {
-  pub id: Interned,
-  pub val: Expr
+  /// =左侧
+  pub id: AssignTo,
+  /// =右侧
+  pub val: Expr,
+  /// 是否使用<代替=
+  pub take: bool
+}
+
+#[derive(Debug, Clone)]
+pub enum AssignTo {
+  /// 单体赋值
+  One(Interned),
+  /// 解构赋值
+  Destr(Vec<Interned>)
 }
 
 
@@ -175,7 +187,7 @@ impl Scanner<'_> {
       }
       // 修复开头遇到没定义的符号时死循环
       127..=u8::MAX|b')'|b'}'|b']'|b'?'|b','|b'\\'|b'$'|b'#'=> panic!("需要一个语句或表达式,但你写了'{}'",String::from_utf8_lossy(&[first])),
-      _=>{}
+      _=> ()
     }
 
     let ident = self.literal();
@@ -202,6 +214,7 @@ impl Scanner<'_> {
         b"break"=> Stmt::Break,
         b"continue"=> Stmt::Continue,
         b"async"|b"await"=> panic!("异步关键词暂时保留无法使用"),
+        b"match"=> panic!("match暂未实现"),
         _=> {
           let expr = self.expr_with_left(ident, vec![]);
           Stmt::Expression(expr)
@@ -227,8 +240,28 @@ impl Scanner<'_> {
   /// 解析let关键词
   fn letting(&self)-> AssignDef {
     self.spaces();
-    let id = self.ident().unwrap_or_else(||panic!("let后需要标识符"));
-    let id = intern(id);
+
+    let id = match self.cur() {
+      n@b'['|n@b'{'=> {
+        self.next();
+        let mut vec = Vec::new();
+        self.spaces();
+        while let Some(id) = self.ident() {
+          vec.push(intern(id));
+          self.spaces();
+          if self.cur() == b',' {
+            self.next();
+            self.spaces();
+          }
+        }
+        if n + 2 != self.cur() {
+          panic!("let解构错误:未闭合的括号'{}'", String::from_utf8_lossy(&[n]))
+        }
+        self.next();
+        AssignTo::Destr(vec)
+      }
+      _=> AssignTo::One(intern(self.ident().unwrap_or_else(||panic!("let后需要标识符"))))
+    };
   
     // 检查标识符后的符号
     self.spaces();
@@ -241,7 +274,18 @@ impl Scanner<'_> {
           panic!("无法为空气赋值")
         }
         AssignDef {
-          id, val
+          id, val, take:false
+        }
+      }
+      // take语法
+      b'<'=> {
+        self.next();
+        let val = self.expr();
+        if let Expr::Empty = val {
+          panic!("无法为空气赋值")
+        }
+        AssignDef {
+          id, val, take:true
         }
       }
       b'(' => {
@@ -264,12 +308,12 @@ impl Scanner<'_> {
         // 其生命周期应当和Statements相同，绑定作用域时将被复制
         // 绑定作用域行为发生在runtime::Scope::calc
         AssignDef {
-          id, 
+          id, take:false,
           val: Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })
         }
       }
       _ => AssignDef {
-        id, val:Expr::Literal(Litr::Uninit)
+        id, take:false, val:Expr::Literal(Litr::Uninit)
       }
     }
   }
@@ -328,7 +372,8 @@ impl Scanner<'_> {
         String::from_utf8_lossy(path), 
         String::from_utf8_lossy(sym)));
       self.push(Stmt::Let(AssignDef { 
-        id:intern($id), 
+        id: AssignTo::One(intern($id)), 
+        take: false,
         val: Expr::Literal(Litr::Func(Function::Extern(ExternFunc { 
           argdecl, 
           ptr
@@ -455,8 +500,11 @@ impl Scanner<'_> {
         self.next();
         // 套用let声明模板
         let asn = self.letting();
+        let id = if let AssignTo::One(n) = asn.id {n}else {
+          panic!("mod.语句一次只能导出一个函数");
+        };
         if let Expr::LocalDecl(f) = asn.val {
-          return Stmt::ExportFn(asn.id, f.clone());
+          return Stmt::ExportFn(id, f.clone());
         }
         panic!("模块只能导出本地函数。\n  若导出外界函数请用本地函数包裹。")
       },

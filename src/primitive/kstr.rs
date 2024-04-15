@@ -58,7 +58,7 @@ pub fn method(s:&mut String, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Li
     b"repeat"=> Litr::Str(s.repeat(get_arg0!(usize))),
     b"replace"=> Litr::Str(_replace(s, args)),
     b"splice"=> splice(s, args),
-    b"trim"=> void!(*s = s.trim().to_string()),
+    b"trim"=> Litr::Str(s.trim().to_string()),
 
     // transmute
     b"to_buf"=> Litr::Buf(s.as_bytes().to_vec()),

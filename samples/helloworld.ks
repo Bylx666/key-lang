@@ -2,4 +2,13 @@
 //mod D:\code\rs\tst\target\debug\tstlib.dll> m;
 
 
-log([2,4,6,5,3].map(|n|:n/2)); // [1,2,3,2,1]
+// 定义一个有a和b两个属性的本地类型A
+class A {
+  a b
+}
+
+// 创建一个A的实例
+let inst = A::{a:9, b:20};
+// 解构A实例得到a和b
+let {a b} = inst;
+log(a,b); // 9 20

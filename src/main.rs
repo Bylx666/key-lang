@@ -38,20 +38,11 @@ static VERSION:usize = 100005;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // clone版本的方法
-  // 更实用的宏
-  // let [] = x
-  // let a=0,b=0
-  // prelude mod 让模块本身帮你初始化上下文
-
   // pub use
-  // 传进Native的struct怎么处理？
-  // Native outlive api
-  // key intern
+  // 更实用的宏
   // 可变参数([args])
   // ..[参数展开]
-  // extern to_raw_args
-  // throw catch
+  // catch
   // 同名省略struct属性
   // 科学计数法0x 0b
   // linux macos支持
