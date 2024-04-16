@@ -67,6 +67,8 @@ impl Drop for LocalFunc {
 
 /// 增加一层作用域的引用计数
 pub fn increase_scope_count(mut scope:Scope) {
+  if scope.ptr.is_null() {return;}
+
   loop {
     scope.outlives.fetch_add(1, Ordering::Relaxed);
     if let Some(prt) = scope.parent {
@@ -79,9 +81,7 @@ pub fn increase_scope_count(mut scope:Scope) {
 
 /// 作用域减少一层引用计数
 pub fn decrease_scope_count(mut scope: Scope) {
-  // ks作用域结束时会手动减一层引用计数, 回收时又会碰到Drop再减一层
-  // 此判断防止回收时的Drop把0减成u64::MAX
-  if scope.outlives.load(Ordering::Relaxed) == 0 {return;}
+  if scope.ptr.is_null() {return;}
 
   loop {
     let prev = scope.outlives.fetch_sub(1, Ordering::Relaxed);
@@ -102,6 +102,8 @@ pub fn decrease_scope_count(mut scope: Scope) {
 /// 
 /// 若引用计数为0就回收作用域
 pub fn scope_end(mut scope:Scope) {
+  if scope.ptr.is_null() {return;}
+
   /// 为一个Litr中所有LocalFunc减一层引用计数
   pub fn drop_func(v:&crate::primitive::litr::Litr) {
     use crate::primitive::litr::{Litr, Function};
@@ -123,6 +125,8 @@ pub fn scope_end(mut scope:Scope) {
     drop_func(v);
   }
 
+  if scope.ended {return;}
+  
   // 回收作用域本身
   scope.ended = true;
   if scope.outlives.load(Ordering::Relaxed) == 0 {

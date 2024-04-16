@@ -238,7 +238,7 @@ pub struct RunResult {
 
 /// 创建顶级作用域并运行一段程序
 pub fn run(s:&Statements)-> RunResult {
-  let mut top_ret = Litr::Uint(0);
+  let mut top_ret = Litr::Uninit;
   let mut imports = Vec::new();
   let mut exports = Box::into_raw(Box::new(LocalMod { funcs: Vec::new(), classes: Vec::new() }));
   let mut kself = Litr::Uninit;

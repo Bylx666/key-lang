@@ -38,7 +38,7 @@ static VERSION:usize = 100006;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // expand_call
+  // fmt
   // pub use pub mod
   // 更实用的宏
   // ..[参数展开]
