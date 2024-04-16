@@ -15,7 +15,6 @@ pub fn prelude()-> Vec<Variant> {
   prel!{
     b"log":log
     b"debug":debug
-    b"throw":throw
     b"run_ks":run_ks
     b"version":version
     b"distribution":distribution
@@ -34,12 +33,6 @@ fn log(args:Vec<CalcRef>, _cx:Scope)-> Litr {
 fn debug(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   args.iter().for_each(|v|println!("{:?}", &**v));
   Litr::Uninit
-}
-
-/// 手动报错
-fn throw(args:Vec<CalcRef>, _cx:Scope)-> Litr {
-  let s = args.get(0).map_or("错误".to_string(),|s|s.str());
-  panic!("{s}");
 }
 
 /// 在当前作用域 解析并运行一段String

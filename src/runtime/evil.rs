@@ -162,6 +162,31 @@ impl Scope {
 
       Stmt::Match=>(),
 
+      Stmt::Throw(s)=> panic!("{}", self.calc_ref(s).str()),
+      Stmt::Try { stmt, catc }=> {
+        let mut _self = *self;
+
+        // 静默panic
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_inf|()));
+        let res = std::panic::catch_unwind(move|| _self.evil(stmt));
+        
+        std::panic::set_hook(hook);
+
+        if let Some((id, catc)) = catc {
+          if let Err(err) = res {
+            let s = if let Some(mes) = err.downcast_ref::<&'static str>() {
+              mes.to_string()
+            }else if let Some(mes) = err.downcast_ref::<String>() {
+              mes.clone()
+            }else{"错误".to_string()}; 
+            let mut scope = self.subscope();
+            scope.vars.push(Variant { name:*id, locked: false, v:  Litr::Str(s)});
+            scope.run(catc);
+          }
+        }
+      }
+
       // -
       Stmt::Break=> panic!("break不在循环体内"),
       Stmt::Continue=> panic!("continue不在循环体内"),
