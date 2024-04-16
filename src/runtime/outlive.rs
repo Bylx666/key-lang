@@ -85,11 +85,13 @@ pub fn decrease_scope_count(mut scope: Scope) {
 
   loop {
     let prev = scope.outlives.fetch_sub(1, Ordering::Relaxed);
+    let parent = scope.parent;
     if prev == 1 && scope.ended {
       // println!("{:02}: scope drop by func: {:p}",ln(), scope.ptr);
       unsafe{ std::ptr::drop_in_place(scope.ptr) }
+      scope.ptr = std::ptr::null_mut();
     }
-    if let Some(prt) = scope.parent {
+    if let Some(prt) = parent {
       scope = prt;
     }else {
       break;
