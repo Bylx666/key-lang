@@ -199,13 +199,57 @@ impl Scanner<'_> {
 
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
-  
+
         self.set_i(i+1);
         Expr::Literal(Litr::Buf(vec))
       }
   
       // 解析数字字面量
       b'0'..=b'9' => {
+        // 判断0x和0b
+        if self.cur()==b'0' {
+          match self.src[self.i()+1] {
+            // 解析16进制
+            b'x'=> {
+              self.set_i(self.i()+2);
+              let mut i = self.i();
+              loop {
+                match self.src[i] {
+                  b'0'..=b'9'|b'a'..=b'f'|b'A'..=b'F'=> i += 1,
+                  _=> break
+                }
+              }
+
+              let n = usize::from_str_radix(
+                &String::from_utf8_lossy(&self.src[self.i()..i]), 16
+              ).unwrap_or_else(|e|panic!("{e}"));
+              self.set_i(i);
+
+              return Expr::Literal(Litr::Uint(n));
+            }
+            // 解析2进制
+            b'b'=> {
+              self.set_i(self.i()+2);
+              let mut i = self.i();
+              loop {
+                match self.src[i] {
+                  b'0'|b'1'=> i += 1,
+                  _=> break
+                }
+              }
+
+              let n = usize::from_str_radix(
+                &String::from_utf8_lossy(&self.src[self.i()..i]), 2
+              ).unwrap_or_else(|e|panic!("{e}"));
+              self.set_i(i);
+
+              return Expr::Literal(Litr::Uint(n));
+            }
+            _=>()
+          }
+        }
+
+        // 解析十进制并解析后缀
         let mut is_float = false;
         while i < len {
           match self.src[i] {
@@ -218,7 +262,7 @@ impl Scanner<'_> {
               }
               is_float = true
             },
-            0x30..=0x39 | b'e' | b'E' => {}
+            b'0'..=b'9' => (),
             _=> break
           }
           i += 1;
