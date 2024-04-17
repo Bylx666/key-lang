@@ -38,11 +38,7 @@ static VERSION:usize = 100006;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // fmt
-  // 字符串作为变量名, 属性名和方法名
   // pub use pub mod
-  // 更实用的宏
-  // ..[参数展开]
   // 科学计数法0x 0b
   // linux macos支持
   // 脚本打包exe

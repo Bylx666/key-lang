@@ -20,6 +20,7 @@ pub fn prelude()-> Vec<Variant> {
     b"distribution":distribution
     b"swap":swap
     b"take":take
+    b"fmt":fmt
   }
 }
 
@@ -95,4 +96,20 @@ fn take(mut args:Vec<CalcRef>, _c:Scope)-> Litr {
   let mut b = Litr::Uninit;
   std::mem::swap(&mut **a, &mut b);
   b
+}
+
+/// format
+/// 
+/// 用`"{}", "{}"`打印`{}`
+fn fmt(args:Vec<CalcRef>, _cx:Scope)-> Litr {
+  let mut args = args.into_iter();
+  let mut fmtr = match args.next() {
+    Some(s)=> s.str(),
+    _=> return Litr::Str(String::new())
+  };
+
+  while let Some(s) = args.next() {
+    fmtr = fmtr.replacen("{}", &s.str(), 1);
+  }
+  Litr::Str(fmtr)
 }

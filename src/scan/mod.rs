@@ -60,7 +60,7 @@ impl Scanner<'_> {
   /// 获取当前字符(ascii u8)
   #[inline]
   fn cur(&self)-> u8 {
-    unsafe { *self.src.get(*self.i).unwrap() }
+    unsafe { *self.src.get(*self.i).expect("未闭合的括号") }
   }
 
   /// 使i += 1

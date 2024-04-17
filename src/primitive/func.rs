@@ -114,19 +114,16 @@ fn s_new(mut s:Vec<CalcRef>, cx:Scope)-> Litr {
     None=> Statements::default()
   };
 
-  let argdecl = LocalFuncRawArg::Normal(match itr.next() {
-    Some(arg)=> match &**arg {
-      Litr::List(v)=> 
-        v.iter().map(|v|match v {
-          Litr::Str(s)=> ArgDecl {default: Expr::Literal(Litr::Uninit), name: intern(s.as_bytes()), t:KsType::Any},
-          _=> ArgDecl {default: Expr::Literal(Litr::Uninit), name: intern(b"#ignored"), t:KsType::Any}
-        }).collect(),
-      _=> panic!("Func::new第二个参数必须是Str组成的List, 用来定义该函数的参数名")
-    },
-    None=> Vec::new()
-  });
-  
+  let mut argdecl = Vec::new();
+  while let Some(s) = itr.next() {
+    let name = match &**s {
+      Litr::Str(s)=> intern(s.as_bytes()),
+      _=> continue
+    };
+    argdecl.push(ArgDecl {default: Expr::Literal(Litr::Uninit), name, t:KsType::Any});
+  }
+
   Litr::Func(Function::Local(LocalFunc::new(Box::into_raw(Box::new(
-    LocalFuncRaw {argdecl, stmts}
+    LocalFuncRaw {argdecl:LocalFuncRawArg::Normal(argdecl), stmts}
   )),cx)))
 }

@@ -37,7 +37,11 @@ pub enum Stmt {
   ExportFn  (Interned, LocalFuncRaw),
   ExportCls (*const ClassDefRaw),
 
-  Match, 
+  Match {
+    to: Expr,
+    arms: Vec<(Vec<(Expr, MatchOrd)>, Statements)>,
+    def: Option<Statements>
+  }, 
 
   // 块系列
   Block    (Statements), 
@@ -147,6 +151,14 @@ pub struct ClassFunc {
   pub public: bool
 }
 
+#[derive(Debug, Clone)]
+pub enum MatchOrd {
+  Greater,
+  GreaterEq,
+  Less,
+  LessEq,
+  Eq
+}
 
 impl Scanner<'_> {
   /// 匹配一个语句
@@ -223,7 +235,7 @@ impl Scanner<'_> {
         b"throw"=> self.throwing(),
         b"try"=> self.trying(),
         b"catch"=> panic!("catch必须在try之后"),
-        b"match"=> panic!("match暂未实现"),
+        b"match"=> self.matching(),
         _=> {
           let expr = self.expr_with_left(ident, vec![]);
           Stmt::Expression(expr)
@@ -675,6 +687,90 @@ impl Scanner<'_> {
     }
 
     Stmt::Try { stmt: block, catc: None }
+  }
+
+  /// 模式匹配语法
+  fn matching(&self)-> Stmt {
+    self.spaces();
+    if self.cur() == b'{' {
+      panic!("match后必须有表达式")
+    }
+    let to = self.expr();
+    if let Expr::Empty = &to {
+      panic!("match后必须有表达式")
+    }
+    self.spaces();
+
+    assert!(self.cur()==b'{', "match表达式后必须有大括号");
+    self.next();
+
+    // 匹配条件和语句
+    let mut arms = Vec::new();
+    let mut def = None;
+    'arm: loop {
+      // 匹配条件
+      let mut conds = Vec::new();
+      loop {
+        self.spaces();
+        let mut ord = MatchOrd::Eq;
+
+        match self.cur() {
+          // 判断是否结束
+          b'}'=> {
+            self.next();
+            break 'arm;
+          }
+          // 判断是否默认语句
+          b'-'=> {
+            self.next();
+            self.spaces();
+            assert!(self.cur()==b'{', "match默认语句必须是块语句");
+            let run = if let Stmt::Block(stmt) = self.stmt() {stmt}else {
+              unreachable!();
+            };
+            def = Some(run);
+            continue 'arm;
+          }
+          // 判断大于小于前缀
+          b'>'=> {
+            self.next();
+            ord = if self.cur() == b'=' {
+              self.next();
+              MatchOrd::GreaterEq
+            }else {MatchOrd::Greater}
+          }
+          b'<'=> {
+            self.next();
+            ord = if self.cur() == b'=' {
+              self.next();
+              MatchOrd::LessEq
+            }else {MatchOrd::Less}
+          }
+          b'='=> self.next(),
+          _=> ()
+        }
+
+        // 非默认语句
+        let e = self.expr();
+        if let Expr::Empty = &e {
+          panic!("match条件不可留空")
+        }
+        conds.push((e, ord));
+        self.spaces();
+        
+        if self.cur() != b',' {break;}
+        self.next();
+      }
+
+      assert!(self.cur()==b'{', "match条件后必须是'{{'");
+      let run = if let Stmt::Block(stmt) = self.stmt() {stmt}else {
+        unreachable!();
+      };
+      
+      arms.push((conds, run))
+    }
+
+    Stmt::Match { to, arms, def }
   }
 }
 

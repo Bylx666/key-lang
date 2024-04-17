@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::primitive;
 
 use super::*;
@@ -160,7 +162,45 @@ impl Scope {
         }
       },
 
-      Stmt::Match=>(),
+      Stmt::Match{ to, arms, def }=> {
+        let to = self.calc_ref(to);
+        // 将Ordering和MatchOrd对比
+        let matcher = |(val, ord):&(Expr, MatchOrd)|
+         match (&*to).partial_cmp(&*self.calc_ref(val)) {
+          Some(Ordering::Equal)=> match ord {
+            MatchOrd::Eq|MatchOrd::GreaterEq|MatchOrd::LessEq=> true,
+            _=> false
+          }
+          Some(Ordering::Greater)=> match ord {
+            MatchOrd::Greater|MatchOrd::GreaterEq=> true,
+            _=> false
+          }
+          Some(Ordering::Less)=> match ord {
+            MatchOrd::Less|MatchOrd::LessEq=> true,
+            _=> false
+          }
+          None=> false
+        };
+
+        for (conds, stmts) in arms {
+          // 如果第一个条件的符号是=就是逻辑或(any, 任意符合)
+          let matched = if let MatchOrd::Eq = conds[0].1 {
+            conds.iter().any(matcher)
+          }else {
+          // 如果是大于小于就是逻辑与(all, 全部符合)
+            conds.iter().all(matcher)
+          };
+          // 匹配并运行
+          if matched {
+            self.subscope().run(stmts);
+            return;
+          };
+        }
+        // 运行默认语句
+        if let Some(def) = def {
+          self.subscope().run(def);
+        }
+      }
 
       Stmt::Throw(s)=> panic!("{}", self.calc_ref(s).str()),
       Stmt::Try { stmt, catc }=> {
