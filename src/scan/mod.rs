@@ -164,8 +164,10 @@ impl Scanner<'_> {
   
   /// 解析类型声明
   fn typ(&self)-> KsType {
+    self.spaces();
     if self.cur() == b':' {
       self.next();
+      self.spaces();
       if let Some(decl) = self.ident() {
         use KsType::*;
         match decl {
