@@ -114,7 +114,7 @@ impl Scanner<'_> {
             b'\''=> {
               let next_i = self.i() + 1;
               if next_i<len && self.src[next_i]==b'/' {
-                self.next();
+                self.set_i(next_i+1);
                 break;
               }
             }
