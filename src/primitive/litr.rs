@@ -231,9 +231,8 @@ impl KsType {
     use crate::runtime::Class;
     // 类型检查
     macro_rules! matcher {($($t:ident)*)=> {
-      // uninit可以当任何类型
       if let Litr::Uninit = &arg {
-        true
+        false
       } else {match self {
         KsType::Any=> true,
         $(

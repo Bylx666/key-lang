@@ -3,4 +3,4 @@ linker = "rust-lld"
 rustflags = ["-C", "linker-flavor=ld.lld"]
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=./target/icon.RES"]
+rustflags = ["-C", "link-arg=./.cargo/icon.RES"]
