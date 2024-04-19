@@ -1,6 +1,5 @@
 
 //mod D:\code\rs\tst\target\debug\tstlib.dll> m;
 
-let s = 99;
-
-log(0b10101010)
+let a = 5;
+log(`a的值是:{a+5}`);

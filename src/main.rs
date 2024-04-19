@@ -38,8 +38,6 @@ static VERSION:usize = 100006;
 static DISTRIBUTION:&str = "Subkey";
 
 fn main()-> ExitCode {
-  // pub use pub mod
-  // 科学计数法0x 0b
   // linux macos支持
   // 脚本打包exe
 

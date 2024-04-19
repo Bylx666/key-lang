@@ -2,18 +2,34 @@
 
 use std::ptr::NonNull;
 
-extern {
-  fn LoadLibraryA(src:*const u8)-> *const ();
-  fn GetProcAddress(lib:*const (), src:*const u8)-> *const ();
+#[cfg(windows)]
+mod dl {
+  extern {
+    fn LoadLibraryA(src:*const u8)-> *const ();
+    fn GetProcAddress(lib:*const (), src:*const u8)-> *const ();
+  }
+  pub unsafe fn dlopen(src:*const u8)-> *const () {
+    unsafe {LoadLibraryA(src)}
+  }
+  
+  pub unsafe fn dlsym(lib:*const (), src:*const u8)-> *const () {
+    unsafe {GetProcAddress(lib, src)}
+  }
 }
 
-pub unsafe fn dlopen(src:*const u8)-> *const () {
-  unsafe {LoadLibraryA(src)}
+#[cfg(target_os = "linux")]
+mod dl {
+  extern {
+    #[link_name = "dlopen"]
+    fn dlopen_(src:*const u8, m:i32)-> *const ();
+    pub fn dlsym(lib:*const (), src:*const u8)-> *const ();
+  }
+  pub unsafe fn dlopen(src:*const u8)-> *const () {
+    unsafe {dlopen_(src, 0)}
+  }
 }
 
-pub unsafe fn dlsym(lib:*const (), src:*const u8)-> *const () {
-  unsafe {GetProcAddress(lib, src)}
-}
+pub use dl::*;
 
 
 pub struct Clib (*const ());
