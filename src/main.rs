@@ -49,9 +49,10 @@ fn main()-> ExitCode {
   let path = if let Some(s) = args.next() {
     utils::to_absolute_path(s)
   }else {
-    panic!("Key暂时不支持REPL, 请先传入一个文件路径运行")
+    println!("> Key Lang\n  version: {}\n  by: {}", VERSION, DISTRIBUTION);
+    return ExitCode::SUCCESS;
   };
-  // let path = "D:\\code\\rs\\key-lang\\samples\\helloworld.ks";
+  
   while let Some(n) = args.next() {
     let opts = unsafe {&mut GLOBAL_OPTIONS};
     match &*n {
