@@ -93,7 +93,11 @@ impl Scope {
         let mut vars = Vec::with_capacity(f.stmts.vars + argdecl.len());
         let mut args = args.into_iter();
         for argdecl in argdecl.iter() {
-          let arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
+          let mut arg = args.next().unwrap_or_else(||f.scope.calc(&argdecl.default));
+          // 将传的空参数转为默认参数
+          if let Litr::Uninit = arg {
+            arg = f.scope.calc(&argdecl.default);
+          }
           assert!(argdecl.t.is(&arg, f.scope), "函数要求{:?}类型, 但传入了{:?}", argdecl.t, arg);
           let var = Variant {name:argdecl.name, v:arg, locked:false};
           vars.push(var);
