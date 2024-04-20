@@ -232,7 +232,9 @@ impl KsType {
     // 类型检查
     macro_rules! matcher {($($t:ident)*)=> {
       if let Litr::Uninit = &arg {
-        false
+        if let KsType::Any = self {
+          true
+        }else { false }
       } else {match self {
         KsType::Any=> true,
         $(
