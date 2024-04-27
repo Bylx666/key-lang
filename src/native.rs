@@ -97,7 +97,7 @@ static FUNCTABLE:FuncTable = FuncTable {
 };
 
 /// 原生类型实例
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[repr(C)]
 pub struct NativeInstance {
   pub v: usize,

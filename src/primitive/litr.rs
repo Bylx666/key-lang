@@ -275,12 +275,19 @@ impl std::fmt::Debug for KsType {
 
 impl PartialEq for Litr {
   fn eq(&self, other: &Self) -> bool {
-    if let Litr::Obj(l) = self {
-      return if let Litr::Obj(r) = other {
-        l == r
-      }else {false}
+    match self {
+      Litr::Ninst(l)=> if let Litr::Ninst(r) = other {l == r}else {false},
+      Litr::Func(l)=> if let Litr::Func(r) = other {
+        match (l, r) {
+          (Function::Local(l), Function::Local(r))=> 
+            l.ptr==r.ptr&&l.scope.ptr==r.scope.ptr,
+          (Function::Native(l), Function::Native(r))=> l==r,
+          _=> false
+        }
+      }else {false},
+      Litr::Obj(l)=> if let Litr::Obj(r) = other {l == r}else {false},
+      _=> self.partial_cmp(other) == Some(std::cmp::Ordering::Equal)
     }
-    self.partial_cmp(other) == Some(std::cmp::Ordering::Equal)
   }
 }
 

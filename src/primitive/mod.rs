@@ -188,6 +188,6 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
       _=> Litr::Uninit
     }),
 
-    _=> CalcRef::uninit()
+    v=> panic!("{:?}没有{}属性", v, find)
   }
 }
