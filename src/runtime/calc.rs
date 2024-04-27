@@ -475,6 +475,8 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
               Litr::Uint(n)=> n as u8,
               _=> 0
             };
+          }else {
+            panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
           }
         }
         _=> *get_index(CalcRef::Ref(left), i) = right
@@ -582,14 +584,15 @@ fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
             Litr::Int(n)=> (*n) as usize,
             _=> panic!("Buf的index必须是整数")
           };
-          if i<v.len() {
-            let ori = Litr::Uint(v[i] as usize);
-            v[i] = match f(&ori) {
-              Litr::Int(n)=> n as u8,
-              Litr::Uint(n)=> n as u8,
-              _=> 0
-            };
+          if i>=v.len() {
+            panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
           }
+          let ori = Litr::Uint(v[i] as usize);
+          v[i] = match f(&ori) {
+            Litr::Int(n)=> n as u8,
+            Litr::Uint(n)=> n as u8,
+            _=> 0
+          };
         }
         _=> {
           let mut ori = get_index(CalcRef::Ref(left), i);
@@ -645,11 +648,15 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   };
   match &mut *left {
     Litr::Buf(v)=> {
-      if i>=v.len() {return CalcRef::uninit()}
+      if i>=v.len() {
+        panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
+      }
       CalcRef::Own(Litr::Uint(v[i] as usize))
     }
     Litr::List(v)=> {
-      if i>=v.len() {return CalcRef::uninit()}
+      if i>=v.len() {
+        panic!("列表越界: 下标{}不可大于等于列表长度{}", i, v.len())
+      }
       CalcRef::Ref(&mut v[i])
     }
     Litr::Str(n)=> {
