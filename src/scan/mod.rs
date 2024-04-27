@@ -25,7 +25,7 @@ pub fn scan(src: &[u8])-> Statements {
   let mut i = 0;
   let mut sttms = Statements::default();
   let mut scanner = Scanner {
-    src, i:&mut i, 
+    src, i:&mut i,
     sttms:&mut sttms as *mut Statements
   };
   scanner.scan();
@@ -135,7 +135,7 @@ impl Scanner<'_> {
     if i >= len {
       return None;
     }
-    
+
     // 判断首字是否为数字
     let first = self.src[i];
     if first>=b'0' && first<=b'9' {return None;}
@@ -161,7 +161,7 @@ impl Scanner<'_> {
     self.set_i(i);
     Some(ident)
   }
-  
+
   /// 解析类型声明
   fn typ(&self)-> KsType {
     self.spaces();
@@ -175,7 +175,7 @@ impl Scanner<'_> {
           b"Uint"=>Uint,
           b"Float"=>Float,
           b"Bool"=>Bool,
-          b"Func"=>Func, 
+          b"Func"=>Func,
           b"Str"=>Str,
           b"Buf"=>Buf,
           b"List"=>List,
@@ -224,5 +224,27 @@ impl Scanner<'_> {
       args.push(ArgDecl {name, t, default});
     };
     LocalFuncRawArg::Normal(args)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::scan::scan;
+
+  #[test]
+  fn test_scan_empty_str() {
+    let statements = scan("".as_bytes());
+    assert_eq!(statements.vars, 0);
+    assert_eq!(statements.v.len(), 0);
+  }
+
+  #[test]
+  fn test_scan_empty_statement() {
+    let statements = scan(";".as_bytes());
+    assert_eq!(statements.vars, 0);
+    assert_eq!(statements.v.len(), 0);
+    let statements = scan(";;".as_bytes());
+    assert_eq!(statements.vars, 0);
+    assert_eq!(statements.v.len(), 0);
   }
 }
