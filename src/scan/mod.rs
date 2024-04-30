@@ -229,7 +229,12 @@ impl Scanner<'_> {
 
 #[cfg(test)]
 mod tests {
+  use crate::intern;
   use crate::scan::scan;
+
+  fn set_up() {
+    intern::init();
+  }
 
   #[test]
   fn test_scan_empty_str() {
@@ -246,5 +251,46 @@ mod tests {
     let statements = scan(";;".as_bytes());
     assert_eq!(statements.vars, 0);
     assert_eq!(statements.v.len(), 0);
+  }
+
+
+  mod let_statement {
+    use crate::intern;
+    use crate::primitive::litr::Litr;
+    use crate::scan::expr::Expr::Literal;
+    use crate::scan::scan;
+    use crate::scan::stmt::AssignTo::One;
+    use crate::scan::stmt::Stmt::Let;
+    use super::*;
+
+
+    #[test]
+    fn test_scan_let_statement0() {
+      set_up();
+      let statements = scan("let a = 1".as_bytes());
+      // 全局作用域暂时不解析
+      assert_eq!(statements.vars, 0);
+      assert_eq!(statements.v.len(), 1);
+      let tuple_stmt = &statements.v[0];
+      assert_eq!(1, tuple_stmt.0);
+      let stmt = &tuple_stmt.1;
+      if let Let(assign_def) = stmt {
+        assert!(!assign_def.take);
+        let id = &assign_def.id;
+        let expr = &assign_def.val;
+        if let One(str) = id {
+          assert_eq!("a", str.str());
+        } else {
+          panic!("assignTo should be One");
+        }
+        if let Literal(litr) = expr {
+          assert!(matches!(litr, Litr::Int(1)))
+        } else {
+          panic!("expr should be Literal");
+        }
+      } else {
+        panic!("statement should be Let");
+      }
+    }
   }
 }
