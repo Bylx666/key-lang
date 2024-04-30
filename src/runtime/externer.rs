@@ -1,9 +1,6 @@
 //! 提供Ks数据和C交互的转换
 
 use std::mem::transmute;
-use std::slice::from_raw_parts as raw;
-use crate::intern::Interned;
-use crate::c::{dlopen,dlsym};
 use crate::primitive::litr::*;
 
 static mut EXEC:Option<LocalFunc> = None;
@@ -22,7 +19,7 @@ macro_rules! translate_local_impl {{
   $(
     extern fn $fname($($arg:usize,)*)-> usize {
       let exec = unsafe {EXEC.as_mut().expect("未找到extern函数，这是bug")};
-      let mut scope = exec.scope;
+      let scope = exec.scope;
       let args = [$($arg,)*].into_iter().map(|n|Litr::Uint(n)).collect();
       let ret = scope.call_local(exec, args);
       match translate(&ret) {
@@ -50,7 +47,7 @@ pub fn translate(arg:&Litr)-> Result<usize,String> {
     Bool(n)=> Ok(*n as usize),
     Int(n)=> unsafe{Ok(transmute(*n))},
     Uint(n)=> Ok(*n),
-    Float(n)=> (unsafe{Ok(transmute(*n))}),
+    Float(n)=> unsafe{Ok(transmute(*n))},
     Str(p)=> Ok((*p).as_ptr() as usize),
     Buf(v)=> Ok(v.as_ptr() as usize),
     Func(exec)=> {
@@ -78,7 +75,7 @@ pub fn translate(arg:&Litr)-> Result<usize,String> {
 }
 
 
-use super::{ExternFunc, Scope};
+use super::ExternFunc;
 pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
   let len = f.argdecl.len();
   let mut args = args.into_iter();

@@ -1,7 +1,7 @@
 use super::{Scanner, scan};
 use crate::intern::{Interned,intern};
-use crate::native::{NativeClassDef, NativeMod};
-use crate::runtime::{Scope, ScopeInner, Module};
+use crate::native::NativeMod;
+use crate::runtime::Scope;
 use crate::LINE;
 use crate::primitive::litr::{
   Litr, Function, LocalFuncRaw, LocalFunc, ExternFunc, KsType
@@ -34,7 +34,7 @@ pub enum Stmt {
 
   Mod       (Interned, *const LocalMod),
   NativeMod (Interned, *const NativeMod),
-  ExportFn  (Interned, LocalFuncRaw),
+  ExportFn  (Interned, *mut LocalFuncRaw),
   ExportCls (*const ClassDefRaw),
 
   Match {
@@ -99,7 +99,8 @@ pub enum AssignTo {
 #[derive(Debug, Clone)]
 pub struct LocalMod {
   pub funcs: Vec<(Interned, LocalFunc)>,
-  pub classes: Vec<(Interned, *mut ClassDef)>
+  pub classes: Vec<(Interned, *mut ClassDef)>,
+  pub modpath: &'static str
 }
 
 /// 未绑定作用域的类声明
@@ -138,7 +139,6 @@ pub struct ClassProp {
 /// 类中的未绑定作用域的函数声明
 #[derive(Debug,Clone)]
 pub struct ClassFuncRaw {
-  pub name: Interned,
   pub f: LocalFuncRaw,
   pub public: bool
 }
@@ -316,7 +316,7 @@ impl Scanner<'_> {
         self.next();
   
         let stmt = self.stmt();
-        let mut stmts = if let Stmt::Block(b) = stmt {
+        let stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
           Statements {
@@ -325,12 +325,16 @@ impl Scanner<'_> {
           }
         };
   
+        let fname = match id {
+          AssignTo::One(n)=>n,
+          AssignTo::Destr(_)=>intern(b"unnamed")
+        };
         // scan过程产生的LocalFunc是没绑定作用域的，因此不能由运行时来控制其内存释放
         // 其生命周期应当和Statements相同，绑定作用域时将被复制
         // 绑定作用域行为发生在runtime::Scope::calc
         AssignDef {
           id, take:false,
-          val: Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })
+          val: Expr::LocalDecl(Box::into_raw(Box::new(LocalFuncRaw { argdecl: args, stmts, name:fname })))
         }
       }
       _ => AssignDef {
@@ -462,7 +466,7 @@ impl Scanner<'_> {
       }else {false};
   
       let id = match self.ident() {
-        Some(id)=> id,
+        Some(id)=> intern(id),
         None=> break
       };
 
@@ -476,7 +480,7 @@ impl Scanner<'_> {
   
         // 函数体
         let stmt = self.stmt();
-        let mut stmts = if let Stmt::Block(b) = stmt {
+        let stmts = if let Stmt::Block(b) = stmt {
           b
         }else {
           Statements {
@@ -485,7 +489,7 @@ impl Scanner<'_> {
           }
         };
   
-        let v = ClassFuncRaw {name: intern(id), f:LocalFuncRaw{argdecl:args,stmts}, public};
+        let v = ClassFuncRaw {f:LocalFuncRaw{argdecl:args,stmts,name:id}, public};
         if is_method {
           methods.push(v);
         }else {
@@ -495,7 +499,7 @@ impl Scanner<'_> {
       }else {
         let typ = self.typ();
         let v = ClassProp {
-          name: intern(id), typ, public
+          name: id, typ, public
         };
         props.push(v);
       }
@@ -547,53 +551,51 @@ impl Scanner<'_> {
     self.spaces();
     let mut i = self.i();
     let len = self.src.len();
-    let mut dot = 0;
     loop {
       assert!(i<len, "mod后需要 > 符号");
       let cur = self.src[i];
       if cur == b'>' {
         break;
       }
-      if cur == b'.' {
-        dot = i;
-      }
       i += 1;
     }
   
     let path = String::from_utf8_lossy(&self.src[self.i()..i]).into_owned();
     let path = crate::utils::to_absolute_path(path);
+    let path_path = std::path::Path::new(&path);
     self.set_i(i + 1);
 
     self.spaces();
-    let name = intern(&self.ident().unwrap_or_else(||panic!("需要为模块命名")));
+    let name = intern(&self.ident().expect("需要为模块命名"));
     self.spaces();
 
-    assert!(dot!=0, "未知模块类型");
-    let suffix = &self.src[dot..i];
-    match suffix {
-      b".ksm"|b".dll"=> unsafe{
-        /// 让mod过程出错时知道是原生模块的锅
-        let mut place = std::mem::take(&mut crate::PLACE);
-        crate::PLACE = format!("'{}'中:\n  解析原生模块'{}'时出现错误", place, path);
+    let ext = path_path.extension().expect("未知模块类型\n  原生模块应有ksm|dll|so|dylib后缀").as_encoded_bytes();
+    match ext {
+      b"ksm"|b"dll"|b"so"|b"dylib"=> unsafe{
+        // 让mod过程出错时知道是原生模块的锅
+        let mut file_dir = std::mem::take(&mut crate::FILE_PATH);
+        crate::FILE_PATH = path_path.to_string_lossy().into_owned().leak();
+
         let module = crate::native::parse(path.as_bytes());
-        crate::PLACE = std::mem::take(&mut place);
+
+        crate::FILE_PATH = std::mem::take(&mut file_dir);
         Stmt::NativeMod(name, module)
       }
-      b".ks"=> {
-        let file = std::fs::read(&*path).unwrap_or_else(|e|panic!(
+      b"ks"=> {
+        let file = std::fs::read(&*path).unwrap_or_else(|_|panic!(
           "无法找到模块'{}'", path
         ));
         unsafe {
           // 将报错位置写为该模块 并保存原先的报错数据
-          let mut place = std::mem::take(&mut crate::PLACE);
-          crate::PLACE = path.clone();
+          let mut file_dir = std::mem::take(&mut crate::FILE_PATH);
+          crate::FILE_PATH = path_path.to_string_lossy().into_owned().leak();
           let line = crate::LINE;
           crate::LINE = 1;
 
-          let mut module = crate::runtime::run(&scan(&file)).exports;
+          let module = crate::runtime::run(&scan(&file), crate::FILE_PATH).exports;
 
           // 还原报错信息
-          crate::PLACE = std::mem::take(&mut place);
+          crate::FILE_PATH = std::mem::take(&mut file_dir);
           crate::LINE = line;
           
           Stmt::Mod(name, module)

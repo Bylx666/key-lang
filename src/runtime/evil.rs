@@ -21,7 +21,7 @@ impl Scope {
       Stmt::Let(asn)=> assign(*self, asn, false),
       // const语句
       Stmt::Const(asn)=> assign(*self, asn, true), 
-      /// 锁定语句
+      // 锁定语句
       Stmt::Lock(id)=> self.lock(*id),
 
       // 块语句
@@ -63,9 +63,7 @@ impl Scope {
 
       // 导出函数 mod.
       Stmt::ExportFn(id, f)=> {
-        // 将函数本体生命周期拉为static
-        let func_raw = Box::into_raw(Box::new(f.clone()));
-        let f = LocalFunc::new(func_raw, *self);
+        let f = LocalFunc::new(*f, *self);
         // 将函数定义处的作用域生命周期永久延长
         outlive::increase_scope_count(f.scope);
         self.vars.push(Variant {
@@ -124,7 +122,7 @@ impl Scope {
         use primitive::iter::LitrIterator;
 
         let mut iter_ = self.calc_ref(iter);
-        let mut iter = LitrIterator::new(&mut iter_);
+        let iter = LitrIterator::new(&mut iter_);
         let mut breaked = false;
 
         match &**exec {
@@ -150,8 +148,8 @@ impl Scope {
           
           // 单语句运行
           _=> if let None = id {
-            let mut scope = self.subscope();
-            for v in iter {
+            let scope = self.subscope();
+            for _ in iter {
               self.evil(exec);
             }
             outlive::scope_end(scope);
@@ -238,7 +236,7 @@ impl Scope {
 /// let和const
 fn assign(mut s:Scope, asn:&AssignDef, locked: bool) {
   // 如果用的是<而不是=, 则直接夺取右侧值所有权
-  let mut v = if asn.take {
+  let v = if asn.take {
     std::mem::take(&mut *s.calc_ref(&asn.val))
   } else {
     s.calc(&asn.val)
@@ -366,7 +364,7 @@ fn loop_run(mut scope:Scope,breaked:&mut bool,exec:&Statements) {
       Stmt::Break=> return *breaked = true,
       Stmt::Continue=> return,
       // 把直属该for下的块拦截,检测break和continue
-      Stmt::Block(v)=> loop_run(scope, breaked, exec),
+      Stmt::Block(_)=> loop_run(scope, breaked, exec),
       Stmt::If { condition, exec, els }=> {
         if cond(scope.calc(condition)) {
           loop_run_stmt!(&**exec)

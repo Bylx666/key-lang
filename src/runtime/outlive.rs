@@ -8,9 +8,8 @@ use super::LocalFuncRaw;
 use std::sync::atomic::Ordering;
 
 
-use std::sync::atomic::AtomicUsize;
 use super::Scope;
-fn ln()->usize{unsafe{crate::LINE}}
+// fn ln()->usize{unsafe{crate::LINE}}
 
 /// 本地函数指针
 #[derive(Debug)]
@@ -58,7 +57,7 @@ impl Clone for LocalFunc {
 // 或者a=||{};a=0的时候,此函数会直接原地drop
 impl Drop for LocalFunc {
   fn drop(&mut self) {
-    let count = &self.scope.outlives;
+    // let count = &self.scope.outlives;
     // println!("{:02}: func drop inplace : {:?}",ln(), self.ptr);
     decrease_scope_count(self.scope);
   }

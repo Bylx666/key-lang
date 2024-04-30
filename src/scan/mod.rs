@@ -1,13 +1,7 @@
 //! 将源码扫描为 AST的过程
 
-use std::collections::HashMap;
-
-use crate::intern::{
-  intern,
-  Interned
-};
+use crate::intern::intern;
 use crate::primitive::litr::{ArgDecl, KsType, Litr, LocalFuncRawArg};
-use crate::runtime::Scope;
 use crate::LINE;
 
 pub mod charts;
@@ -20,29 +14,26 @@ use expr::Expr;
 
 /// 将字符扫描为ast
 pub fn scan(src: &[u8])-> Statements {
-  // 已知此处所有变量未泄露
-  // 为了规避&mut所有权检查，将引用改为指针
   let mut i = 0;
-  let mut sttms = Statements::default();
-  let mut scanner = Scanner {
-    src, i:&mut i, 
-    sttms:&mut sttms as *mut Statements
+  let mut stmts = Statements::default();
+  let scanner = Scanner {
+    src, i:&mut i, stmts:&mut stmts
   };
   scanner.scan();
-  sttms
+  stmts
 }
 
 struct Scanner<'a> {
   src: &'a [u8],
   i: *mut usize,
-  sttms: *mut Statements,
+  stmts: *mut Statements,
 }
 
 
 /// 通用方法
 impl Scanner<'_> {
   /// 启动扫描
-  fn scan(mut self) {
+  fn scan(self) {
     let len = self.src.len();
     while self.i() < len {
       let s = self.stmt();
@@ -55,7 +46,7 @@ impl Scanner<'_> {
 
   #[inline]
   fn push(&self, s:Stmt) {
-    unsafe{(*self.sttms).v.push((LINE, s));}
+    unsafe{(*self.stmts).v.push((LINE, s));}
   }
   /// 获取当前字符(ascii u8)
   #[inline]

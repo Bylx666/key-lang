@@ -36,8 +36,8 @@ impl Litr {
       Float(n)=> n.to_string(),
       Bool(n)=> n.to_string(),
       Func(f)=> {
-        match *f {
-          Function::Local(_)=> "<Local Function>".to_string(),
+        match f {
+          Function::Local(f)=> format!("<Function {}>", f.name),
           Function::Extern(_)=> "<Extern Function>".to_string(),
           Function::Native(_)=> "<Native Function>".to_string()
         }
@@ -92,7 +92,7 @@ impl Litr {
             s.push_str(": ");
             s.push_str(&next_v);
           }
-        }}};
+        }}}
         
         s.push_str(&cls.name.str());
         s.push_str(" { ");
@@ -144,6 +144,7 @@ pub struct ArgDecl {
 /// 未绑定作用域的本地定义函数
 #[derive(Debug, Clone)]
 pub struct LocalFuncRaw {
+  pub name: Interned,
   pub argdecl: LocalFuncRawArg, 
   pub stmts: Statements
 }
@@ -175,7 +176,7 @@ impl Clone for Instance {
   /// 为想要管理内存的实例提供@clone方法
   fn clone(&self) -> Self {
     let fname = intern(b"@clone");
-    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.name==fname);
+    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.f.name==fname);
     let cloned = Instance { cls: self.cls.clone(), v: self.v.clone() };
     match opt {
       Some(cls_f)=> {
@@ -184,7 +185,7 @@ impl Clone for Instance {
         if let Litr::Inst(v) = res {
           v
         }else {
-          panic!("'{}'的@clone方法必须返回实例", cls_f.name);
+          panic!("'{}'的@clone方法必须返回实例", cls_f.f.name);
         }
       }
       None=> cloned
@@ -196,7 +197,7 @@ impl Drop for Instance {
   /// 调用自定义drop
   fn drop(&mut self) {
     let fname = intern(b"@drop");
-    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.name==fname);
+    let opt = unsafe{&*self.cls}.methods.iter().find(|f|f.f.name==fname);
     match opt {
       Some(cls_f)=> {
         let f = LocalFunc::new(&cls_f.f, unsafe{&*self.cls}.cx);
@@ -240,7 +241,6 @@ impl KsType {
         $(
           KsType::$t=> matches!(arg, Litr::$t(_)),
         )*
-        KsType::Bool=> matches!(arg, Litr::Bool(_)),
         KsType::Class(cls)=> {
           let cls = cx.find_class(*cls).unwrap_or_else(||panic!("无法找到'{}'类型",cls));
           match cls {
@@ -313,7 +313,7 @@ impl PartialOrd for Litr {
         (Str(l), Str(r))=> l.partial_cmp(r),
         (Buf(l), Buf(r))=> l.partial_cmp(r),
         (List(l), List(r))=> match_list(l,r),
-        (Obj(l), Obj(r))=> None,
+        (Obj(_), Obj(_))=> None,
         (Inst(l),Inst(r))=> {
           if l.cls==r.cls {
             match_list(&*l.v, &*r.v)

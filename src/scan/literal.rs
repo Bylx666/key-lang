@@ -1,9 +1,6 @@
 use super::*;
 use crate::{
-  native::NativeInstance, 
-  runtime::{calc::CalcRef, Module, Scope},
   intern::Interned,
-  scan::stmt::ClassDef,
   primitive::litr::{Litr, LocalFuncRaw}
 };
 
@@ -356,7 +353,7 @@ impl Scanner<'_> {
 
         // 解析闭包内容
         let stmt = self.stmt();
-        let mut stmts = if let super::Stmt::Block(b) = stmt {
+        let stmts = if let super::Stmt::Block(b) = stmt {
           b
         }else {
           Statements {
@@ -365,7 +362,7 @@ impl Scanner<'_> {
           }
         };
 
-        Expr::LocalDecl(LocalFuncRaw { argdecl: args, stmts })
+        Expr::LocalDecl(Box::into_raw(Box::new(LocalFuncRaw { argdecl: args, stmts, name: intern(b"unnamed") })))
       }
   
       // 解析字面量或变量

@@ -2,7 +2,6 @@
 //! 
 //! 可阻塞可回调, 类似Promise
 
-use self::litr::LocalFunc;
 use super::*;
 use std::sync::{Mutex, Condvar};
 
@@ -55,7 +54,7 @@ pub fn init()-> (Interned, *mut NativeClassDef) {
     planet.methods.push((intern(b"fall"), fall));
     planet.methods.push((intern(b"then"), fall));
     planet.onclone = |_|panic!("无法复制行星!请尝试使用`take`函数.");
-    planet.ondrop = |inst|unsafe {std::ptr::drop_in_place(inst.v as *mut Planet)};
+    planet.ondrop = |inst|std::ptr::drop_in_place(inst.v as *mut Planet);
 
     // 初始化Planet okay调用者的类
     PLANET_CALLER_CLASS = new_static_class(b"Planet.okay", vec![]).1;
@@ -77,14 +76,14 @@ fn to_func(args:&Vec<CalcRef>)-> &Function {
 }
 
 /// 让行星坠落阻塞主线程
-fn fall(inst:&mut NativeInstance, args:Vec<CalcRef>, cx:Scope)-> Litr {
+fn fall(inst:&mut NativeInstance, _args:Vec<CalcRef>, _cx:Scope)-> Litr {
   let plan = unsafe{&mut*(inst.v as *mut Planet)};
   rust_fall(plan)
 }
 
 
 /// 完成行星任务并传回答案
-fn ok(inst:&mut NativeInstance, args:Vec<CalcRef>, cx:Scope)-> Litr {
+fn ok(inst:&mut NativeInstance, args:Vec<CalcRef>, _cx:Scope)-> Litr {
   let plan = unsafe{&mut*(inst.v as *mut Planet)};
   if !matches!(plan.state, PlanetState::Scroll) {return Litr::Uninit;}
 
@@ -114,7 +113,7 @@ fn new(args:Vec<CalcRef>, cx:Scope)-> Litr {
 
 
 /// 降落所有行星并返回参数长度的列表作为结果
-fn all(args:Vec<CalcRef>, cx:Scope)-> Litr {
+fn all(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   let mut res = Vec::with_capacity(args.len());
   for arg in args {
     let plan = if let Litr::Ninst(inst) = &*arg {

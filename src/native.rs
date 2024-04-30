@@ -9,8 +9,7 @@ use crate::{
     litr::{Instance, Litr}, 
     planet
   },
-  runtime::{outlive::{self, LocalFunc}, Variant}, 
-  scan::stmt::LocalMod
+  runtime::{outlive::{self, LocalFunc}, Variant}
 };
 use crate::runtime::{calc::CalcRef, Scope};
 

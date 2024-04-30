@@ -12,7 +12,7 @@ fn to_usize(n:&Litr)-> usize {
 
 static mut ITER_LINES: *mut NativeClassDef = std::ptr::null_mut();
 
-pub fn method(s:&mut String, scope:Scope, name:Interned, args:Vec<CalcRef>)-> Litr {
+pub fn method(s:&mut String, _scope:Scope, name:Interned, args:Vec<CalcRef>)-> Litr {
   macro_rules! get_arg0 {
     // 解析为usize
     (usize)=> {

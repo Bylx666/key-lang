@@ -31,9 +31,9 @@ impl Interned {
   pub fn str(&self)-> String {
     String::from_utf8_lossy(self.vec()).into_owned()
   }
-  pub const fn ptr(&self)-> *const Vec<u8> {
-    self.p as *const Vec<u8>
-  }
+  // pub const fn ptr(&self)-> *const Vec<u8> {
+  //   self.p as *const Vec<u8>
+  // }
 }
 
 impl std::fmt::Debug for Interned {

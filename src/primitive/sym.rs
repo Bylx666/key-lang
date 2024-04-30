@@ -1,5 +1,5 @@
 use crate::{
-  intern::{intern, Interned}, native::{NativeClassDef, NativeFn, NativeInstance}, primitive::litr::Litr, runtime::{calc::CalcRef, Scope}
+  intern::{intern, Interned}, native::{NativeClassDef, NativeInstance}, primitive::litr::Litr
 };
 
 pub const ITER_END:usize = 1;

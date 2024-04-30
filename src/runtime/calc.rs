@@ -1,9 +1,6 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::{
-  native::NativeInstance, 
-  primitive::{self, litr::*, get_prop}
-};
+use crate::primitive::{litr::*, get_prop};
 use super::*;
 
 /// calc_ref既可能得到引用，也可能得到计算过的值
@@ -55,7 +52,7 @@ impl Scope {
   /// 解析一个表达式，对应Expr
   /// 
   /// 该函数必定发生复制
-  pub fn calc(mut self,e:&Expr)-> Litr {
+  pub fn calc(self,e:&Expr)-> Litr {
     match e {
       Expr::Call { args, targ }=> {
         let targ_ = self.calc_ref(targ);
@@ -92,7 +89,7 @@ impl Scope {
 
       // 函数表达式
       Expr::LocalDecl(local)=> {
-        let exec = LocalFunc::new(local, self);
+        let exec = LocalFunc::new(*local, self);
         Litr::Func(Function::Local(exec))
       }
 
@@ -149,9 +146,9 @@ impl Scope {
         if let Class::Local(cls) = cls {
           let cls = unsafe {&*cls};
           let mut v = vec![Litr::Uninit;cls.props.len()];
-          /// 记录哪个属性没有写入
+          // 记录哪个属性没有写入
           let mut writen = vec![false; cls.props.len()];
-          /// 确认你在模块内还是模块外
+          // 确认你在模块内还是模块外
           let can_access_private = self.exports == cls.cx.exports;
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
@@ -226,7 +223,7 @@ impl Scope {
               let cls = unsafe {&*m};
               let can_access_private = cls.cx.exports == this_module;
               for func in cls.statics.iter() {
-                if func.name == find {
+                if func.f.name == find {
                   assert!(func.public || can_access_private, 
                     "'{}'类型的静态方法'{}'是私有的。", cls.name, find);
                   
@@ -235,7 +232,7 @@ impl Scope {
                 }
               }
               for func in cls.methods.iter() {
-                if func.name == find {
+                if func.f.name == find {
                   assert!(!func.public || can_access_private,
                     "'{}'类型中的方法'{}'是私有的。", cls.name, find);
                   
@@ -272,7 +269,6 @@ impl Scope {
       }
 
       Expr::Property(e, find)=> {
-        let scope = self;
         let from = self.calc_ref(&**e);
         get_prop(self, from, *find).own()
       }
@@ -307,8 +303,8 @@ impl Scope {
               _=> false
             }),
             Litr::Ninst(inst)=> Litr::Bool(match self.find_class(*right) {
+              Some(Class::Native(c))=> c == inst.cls,
               _=> false,
-              Some(Class::Native(c))=> c == inst.cls
             }),
             Litr::Uninit=> Litr::Bool(false),
             $(
@@ -393,7 +389,7 @@ impl Scope {
 
 
 /// 在一个作用域设置一个表达式为v
-fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
+fn expr_set(this: Scope, left: &Expr, right: Litr) {
   match left {
     // 捕获native instance的setter
     Expr::Property(e, find)=> {
@@ -445,7 +441,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
         Litr::Inst(inst)=> {
           let fname = intern(b"@index_set");
           let cls = unsafe{&*inst.cls};
-          let opt = cls.methods.iter().find(|v|v.name == fname);
+          let opt = cls.methods.iter().find(|v|v.f.name == fname);
           match opt {
             Some(f)=> {
               let f = LocalFunc::new(&f.f, cls.cx);
@@ -492,7 +488,7 @@ fn expr_set(mut this: Scope, left: &Expr, right: Litr) {
 
 
 /// 先读后写版的expr_set
-fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
+fn expr_set_diff(this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
   match left {
     // 捕获native instance的setter
     Expr::Property(e, find)=> {
@@ -545,7 +541,7 @@ fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
           let cls = unsafe{&*inst.cls};
           let write = {
             let fname = intern(b"@index_get");
-            let opt = cls.methods.iter().find(|v|v.name == fname);
+            let opt = cls.methods.iter().find(|v|v.f.name == fname);
             match opt {
               Some(func_raw)=> {
                 let ori = Scope::call_local_with_self(&LocalFunc::new(&func_raw.f, cls.cx), vec![i.clone().own()], left);
@@ -555,7 +551,7 @@ fn expr_set_diff(mut this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
             }
           };
           let fname = intern(b"@index_set");
-          let opt = cls.methods.iter().find(|v|v.name == fname);
+          let opt = cls.methods.iter().find(|v|v.f.name == fname);
           match opt {
             Some(f)=> {
               let f = LocalFunc::new(&f.f, cls.cx);
@@ -627,7 +623,7 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   if let Litr::Inst(inst) = left {
     let fname = intern(b"@index_get");
     let cls = unsafe{&*inst.cls};
-    let opt = cls.methods.iter().find(|v|v.name == fname);
+    let opt = cls.methods.iter().find(|v|v.f.name == fname);
     if let Some(f) = opt {
       let f = LocalFunc::new(&f.f, cls.cx);
       return CalcRef::Own(Scope::call_local_with_self(&f, vec![i.own()], left));
@@ -674,7 +670,7 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
 }
 
 
-fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
+fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
   use Litr::*;
 
   // 先捕获赋值行为
@@ -761,7 +757,7 @@ fn binary(mut this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> L
   }
 
   // 不是赋值行为再去正常计算
-  let mut left = this.calc_ref(&left);
+  let left = this.calc_ref(&left);
   let right = this.calc_ref(&right);
   /// 二元运算中普通数字的戏份
   macro_rules! impl_num {

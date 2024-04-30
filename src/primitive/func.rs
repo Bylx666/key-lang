@@ -16,7 +16,7 @@ pub fn method(f:&Function, name:Interned, cx: Scope, args:Vec<CalcRef>)-> Litr {
 }
 
 /// 传入self并调用
-pub fn kcall(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+pub fn kcall(f:&Function, mut args:Vec<CalcRef>, cx:Scope)-> Litr {
   assert!(args.len()>=1, "func.call必须传入一个值作为self");
   let trans_args = args.split_off(1);
   let mut kself = args.pop().unwrap();
@@ -32,7 +32,7 @@ pub fn kcall(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
 }
 
 /// 复制一个函数,但上下文在当前作用域
-pub fn clone_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+pub fn clone_here(f:&Function, _args:Vec<CalcRef>, cx:Scope)-> Litr {
   Litr::Func(match f {
     Function::Local(f)=> Function::Local(LocalFunc::new(f.ptr, cx)),
     // 如果不是local就正常调用
@@ -41,7 +41,7 @@ pub fn clone_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
 }
 
 /// 复制一个函数,但上下文在当前作用域
-pub fn call_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+pub fn call_here(f:&Function, mut args:Vec<CalcRef>, cx:Scope)-> Litr {
   assert!(args.len()>=1, "func.call_here必须传入一个值作为self");
   let trans_args = args.split_off(1);
   let mut kself = args.pop().unwrap();
@@ -57,7 +57,7 @@ pub fn call_here(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
 }
 
 /// 复制一个函数,但上下文在该模块的顶级作用域
-pub fn clone_top(f:&Function, mut args:Vec<CalcRef>, mut cx:Scope)-> Litr {
+pub fn clone_top(f:&Function, _args:Vec<CalcRef>, mut cx:Scope)-> Litr {
   // 获取顶级作用域
   while let Some(s) = &cx.parent {
     cx = s.clone()
@@ -124,6 +124,6 @@ fn s_new(mut s:Vec<CalcRef>, cx:Scope)-> Litr {
   }
 
   Litr::Func(Function::Local(LocalFunc::new(Box::into_raw(Box::new(
-    LocalFuncRaw {argdecl:LocalFuncRawArg::Normal(argdecl), stmts}
+    LocalFuncRaw {argdecl:LocalFuncRawArg::Normal(argdecl), stmts, name: intern(b"unnamed")}
   )),cx)))
 }

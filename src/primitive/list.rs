@@ -138,16 +138,6 @@ fn map_clone(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
     .map(|a| scope.call(vec![CalcRef::Ref(a)], f) ).collect())
 }
 
-/// map_clone的原地版本
-fn map(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let f = match &**args.get(0).expect("list.map需要一个函数作为参数") {
-    Litr::Func(f)=> f,
-    _=> panic!("list.map第一个参数只能传函数")
-  };
-  *v = v.iter_mut().map(|a| scope.call(vec![CalcRef::Ref(a)], f)).collect();
-  Litr::Uninit
-}
-
 /// 从末尾切去一个, 可传一个数字作为切去数量
 fn pop(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   if let Some(arg0) = args.get(0) {
@@ -234,10 +224,10 @@ fn insert_many(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 
   match &**args.get(1).expect("list.insert_many需要传入第二个参数作为插入内容") {
     Litr::Buf(b)=> {
-      v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
+      let _ = v.splice(index..index, b.iter().map(|n|Litr::Uint(*n as usize))).collect::<Vec<_>>();
     },
     Litr::List(b)=> {
-      v.splice(index..index, b.iter()
+      let _ = v.splice(index..index, b.iter()
         .map(|n|n.clone())).collect::<Vec<_>>();
     }
     _=> panic!("list.insert_many第二个参数必须是List或Buf")
@@ -349,13 +339,14 @@ fn join(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
   }else {""};
 
   use std::fmt::Write;
+  const WRITE_ERR: &str = "list.join错误";
   let mut res = String::new();
-  res.write_fmt(format_args!("{}", v[0].str()));
+  res.write_fmt(format_args!("{}", v[0].str())).expect(WRITE_ERR);
   for n in &mut v[1..] {
     if let Litr::Str(s) = n {
-      res.write_fmt(format_args!("{sep}{}",s));
+      res.write_fmt(format_args!("{sep}{}",s)).expect(WRITE_ERR);
     }else {
-      res.write_fmt(format_args!("{sep}{}",n.str()));
+      res.write_fmt(format_args!("{sep}{}",n.str())).expect(WRITE_ERR);
     }
   }
   Litr::Str(res)
@@ -364,7 +355,7 @@ fn join(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 /// 嘎嘎复制和计算, 将整个数组折叠成一个值
 fn fold(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
   let mut args = args.into_iter();
-  let mut init = args.next().expect("list.fold需要一个初始值").clone().own();
+  let init = args.next().expect("list.fold需要一个初始值").clone().own();
   let f_ = args.next().expect("list.fold需要第二个参数的函数来处理数据");
   let f = match &*f_ {
     Litr::Func(f)=> f,
@@ -397,7 +388,7 @@ fn includes(v:&mut Vec<Litr>, args:Vec<CalcRef>)-> Litr {
 }
 
 /// 找数组中第一个所指数字, 也可以传函数来自定义判断
-fn index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+fn index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, _cx:Scope)-> Litr {
   let find = &**args.get(0).expect("list.index_of需要传入一个值");
   let res = v.iter().position(|n|n==find);
   match res {
@@ -407,11 +398,11 @@ fn index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
 }
 
 /// index_of反向版
-fn r_index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, scope:Scope)-> Litr {
+fn r_index_of(v:&mut Vec<Litr>, args:Vec<CalcRef>, _cx:Scope)-> Litr {
   let find = &**args.get(0).expect("list.r_index_of需要传入一个值");
   let res = v.iter().rev().position(|n|n==find);
   match res {
-    Some(n)=> Litr::Uint((v.len() - n - 1)),
+    Some(n)=> Litr::Uint(v.len() - n - 1),
     None=> Litr::Uninit
   }
 }

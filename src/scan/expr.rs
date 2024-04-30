@@ -1,6 +1,6 @@
 use super::{Scanner, charts};
 use crate::primitive::litr::{
-  KsType, Litr, LocalFuncRaw
+  Litr, LocalFuncRaw
 };
 use crate::intern::{intern, Interned};
 
@@ -16,7 +16,7 @@ pub enum Expr {
   Kself,
 
   /// 未绑定作用域的本地函数
-  LocalDecl (LocalFuncRaw),
+  LocalDecl (*mut LocalFuncRaw),
 
   /// -.运算符 module-.func
   ModFuncAcc(Interned, Interned),
@@ -102,7 +102,6 @@ impl Scanner<'_> {
     let mut expr_stack = vec![left];
     let mut op_stack = Vec::<&[u8]>::new();
   
-    let len = self.src.len();
     loop {
       // 向后检索二元运算符
       self.spaces();
@@ -193,7 +192,7 @@ impl Scanner<'_> {
           self.next();
           self.spaces();
           let targ = Box::new(expr_stack.pop().unwrap());
-          let mut args = parse_input_args(self);
+          let args = parse_input_args(self);
           expr_stack.push(Expr::Call { args, targ });
           continue;
         }

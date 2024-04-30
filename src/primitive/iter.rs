@@ -1,10 +1,8 @@
-use std::cell::UnsafeCell;
-
 use crate::{
   intern::intern, 
-  native::{NativeInstance, NativeMethod}, 
+  native::NativeInstance, 
   primitive::litr::{Litr, LocalFunc},
-  runtime::{calc::CalcRef, Scope}
+  runtime::Scope
 };
 
 /// instance类型专用的迭代器
@@ -56,7 +54,7 @@ impl<'a> LitrIterator<'a> {
       Litr::List(v)=> Box::new(v.iter().cloned()),
       Litr::Inst(inst)=> {
         let f = & unsafe{&*inst.cls}.methods.iter()
-          .find(|f|f.name == intern(b"@next"))
+          .find(|f|f.f.name == intern(b"@next"))
           .expect("迭代class需要定义'.@next()'方法").f;
         let f = LocalFunc::new(f, unsafe{&*inst.cls}.cx);
         Box::new(InstanceIter { f, kself:v })

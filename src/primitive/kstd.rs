@@ -1,6 +1,6 @@
 //! 定义顶级作用域的函数
 
-use crate::intern::{Interned,intern};
+use crate::intern::intern;
 use crate::primitive::litr::{Litr, Function};
 use crate::runtime::{calc::CalcRef, Scope, Variant};
 
@@ -47,17 +47,15 @@ fn run_ks(args:Vec<CalcRef>, mut cx:Scope)-> Litr {
 
   unsafe {
     // 将报错位置写为evil 并保存原先的报错数据
-    let mut place = std::mem::take(&mut crate::PLACE);
+    let mut file_dir = std::mem::take(&mut crate::FILE_PATH);
     let line = crate::LINE;
-    crate::PLACE = format!("run_ks: {}({})", place, line);
+    crate::FILE_PATH = "run_ks";
     crate::LINE = 1;
 
     // 解析并运行
     let scanned = crate::scan::scan(s);
     for (l, sm) in &scanned.v {
-      unsafe{
-        crate::LINE = *l;
-      }
+      crate::LINE = *l;
       cx.evil(sm);
       // 如果evil到return或break就在这停下
       if cx.ended {
@@ -66,7 +64,7 @@ fn run_ks(args:Vec<CalcRef>, mut cx:Scope)-> Litr {
     }
 
     // 还原报错信息
-    crate::PLACE = std::mem::take(&mut place);
+    crate::FILE_PATH = std::mem::take(&mut file_dir);
     crate::LINE = line;
   }
   Litr::Uninit

@@ -139,6 +139,11 @@ pub fn get_prop(this:Scope, mut from:CalcRef, find:Interned)-> CalcRef {
     }),
 
     Litr::Func(f)=> CalcRef::Own(match find.vec() {
+      b"name"=> match f {
+        Function::Local(f)=> Litr::Str(f.name.str()),
+        Function::Extern(_)=> Litr::Str("@extern".to_owned()),
+        Function::Native(_)=> Litr::Str("@native".to_owned())
+      }
       b"type"=> match f {
         Function::Local(_)=> Litr::Str("local".to_owned()),
         Function::Extern(_)=> Litr::Str("extern".to_owned()),

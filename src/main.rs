@@ -1,7 +1,6 @@
-#![allow(unused)]
 #![feature(hash_set_entry)]
 
-use std::{fs, collections::HashMap, mem::transmute, hash::{BuildHasher, Hash}, vec};
+use std::fs;
 use std::process::ExitCode;
 
 mod intern;
@@ -24,11 +23,11 @@ static mut GLOBAL_OPTIONS:GlobalOptions = GlobalOptions {
 
 /// 标志目前走到的行号
 static mut LINE:usize = 1;
-/// 用于标记报错文件
-static mut PLACE:String = String::new();
+/// 用于标记目前文件路径 在模块导入搜索时使用此作为搜索目录
+static mut FILE_PATH:&str = "";
 
 /// 标志解释器的版本
-static VERSION:usize = 100006;
+static VERSION:usize = 100062;
 
 /// 解释器发行者(用于区分主版本和魔改版)
 /// 
@@ -47,7 +46,7 @@ fn main()-> ExitCode {
   let mut args = std::env::args();
   args.next();
   let path = if let Some(s) = args.next() {
-    utils::to_absolute_path(s)
+    utils::to_absolute_path(s).leak()
   }else {
     println!("> Key Lang\n  version: {}\n  by: {}", VERSION, DISTRIBUTION);
     return ExitCode::SUCCESS;
@@ -62,17 +61,26 @@ fn main()-> ExitCode {
   }
 
   // 自定义报错
-  unsafe {PLACE = path.clone()}
+  unsafe {FILE_PATH = path}
   std::panic::set_hook(Box::new(|inf| {
     use crate::utils::date;
     let line = unsafe{LINE};
-    let place = unsafe{&*PLACE};
+    let place = unsafe{&*FILE_PATH};
     let s = if let Some(mes) = inf.payload().downcast_ref::<&'static str>() {
       mes
     }else if let Some(mes) = inf.payload().downcast_ref::<String>() {
       mes
     }else{"错误"};
-    println!("\n> {}\n  {}:第{}行\n\n> Key Script CopyLeft by Subkey\n  {}\n", s, place, line, date());
+
+    let stack = unsafe{
+      let mut s = String::new();
+      use std::fmt::Write;
+      for n in runtime::call::CALL_STACK.iter().rev() {
+        let _ = s.write_fmt(format_args!("\n    {} at {}:{}",n.fname,n.file,n.line));
+      }
+      s
+    };
+    println!("\n> {}\n  {}:第{}行{}\n\n> Key Script CopyLeft by {}\n  {}", s, place, line, stack, DISTRIBUTION, date());
   }));
 
   // 运行并返回
@@ -80,7 +88,7 @@ fn main()-> ExitCode {
     panic!("无法读取'{}': {}", path, e)));
   if unsafe{GLOBAL_OPTIONS.print_ast} {println!("{scanned:?}")}
 
-  let exit = runtime::run(&scanned);
+  let exit = runtime::run(&scanned, path);
 
   // 如果原生模块调用了wait_inc就堵住当前线程
   unsafe {

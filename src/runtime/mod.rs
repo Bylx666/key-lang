@@ -6,16 +6,14 @@ pub mod outlive;
 
 mod evil;
 pub mod calc;
-mod call;
+pub mod call;
 mod externer;
 
 use crate::intern::{intern, Interned};
 use crate::LINE;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize,self};
-use std::ptr::NonNull;
+use std::sync::atomic::AtomicUsize;
 use crate::scan::{
-  literal::*,
   stmt::*,
   expr::*
 };
@@ -97,22 +95,6 @@ impl Scope {
     let ptr = Box::into_raw(Box::new(s));
     // println!("{:02}: scope new : {:p}",unsafe{LINE},ptr);
     Scope {ptr}
-  }
-
-  /// 确认此作用域是否为一个作用域的子作用域
-  pub fn subscope_of(&self,upper:Scope)-> bool {
-    let mut scope = *self;
-    let upper = upper.ptr;
-    if scope.ptr == upper {
-      return true;
-    }
-    while let Some(parent) = scope.parent {
-      if parent.ptr == upper {
-        return true;
-      }
-      scope = parent;
-    }
-    false
   }
 
   /// 生成一个子作用域
@@ -237,12 +219,12 @@ pub struct RunResult {
 }
 
 /// 创建顶级作用域并运行一段程序
-pub fn run(s:&Statements)-> RunResult {
+pub fn run(s:&Statements, modpath:&'static str)-> RunResult {
   let mut top_ret = Litr::Uninit;
-  let mut imports = Vec::new();
-  let mut exports = Box::into_raw(Box::new(LocalMod { funcs: Vec::new(), classes: Vec::new() }));
+  let imports = Box::into_raw(Box::new(Vec::new()));
+  let exports = Box::into_raw(Box::new(LocalMod { funcs: Vec::new(), classes: Vec::new(), modpath }));
   let mut kself = Litr::Uninit;
-  let mut top = top_scope(&mut top_ret, &mut imports, exports,&mut kself);
+  let top = top_scope(&mut top_ret, imports, exports,&mut kself);
   top.run(s);
   RunResult { returned: top_ret, exports, kself }
 }
@@ -252,7 +234,7 @@ pub fn run(s:&Statements)-> RunResult {
 /// 自定义此函数可添加初始函数和变量
 pub fn top_scope(return_to:*mut Litr, imports:*mut Vec<(Interned, Module)>, exports:*mut LocalMod, kself:*mut Litr)-> Scope {
   let vars = crate::primitive::kstd::prelude();
-  let mut class_uses = crate::primitive::classes();
+  let class_uses = crate::primitive::classes();
 
   Scope::new(ScopeInner {
     parent: None, 

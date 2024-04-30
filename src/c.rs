@@ -1,7 +1,5 @@
 //! 所有跨平台相关的函数都在这
 
-use std::ptr::NonNull;
-
 #[cfg(windows)]
 mod dl {
   extern {
@@ -47,7 +45,7 @@ impl Clib {
   }
   /// 从动态库中寻找一个函数
   pub fn get(&self, sym:&[u8])-> Option<*const ()> {
-    let mut s = [sym,&[0]].concat();
+    let s = [sym,&[0]].concat();
     unsafe {
       let v = dlsym(self.0, s.as_ptr());
       if v.is_null() {

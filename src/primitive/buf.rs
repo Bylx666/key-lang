@@ -317,10 +317,10 @@ fn insert(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
 
   match &**args.next().expect("buf.insert需要传入第二个参数:整数,列表或数组作为插入内容") {
     Litr::Buf(b)=> {
-      v.splice(index..index, b.iter().copied()).collect::<Vec<_>>();
+      let _ = v.splice(index..index, b.iter().copied()).collect::<Vec<_>>();
     },
     Litr::List(b)=> {
-      v.splice(index..index, b.iter()
+      let _ = v.splice(index..index, b.iter()
         .map(|n|to_u8(n))).collect::<Vec<_>>();
     }
     n=> v.insert(index, to_u8(n))
@@ -418,17 +418,18 @@ fn join(v:&mut Vec<u8>, args:Vec<CalcRef>)-> Litr {
   }else {""};
 
   use std::fmt::Write;
+  const WRITE_ERR: &str = "buf.join写入错误";
   let mut s = String::new();
-  s.write_fmt(format_args!("{:02X}",v[0]));
+  s.write_fmt(format_args!("{:02X}",v[0])).expect(WRITE_ERR);
   for n in &v[1..] {
-    s.write_fmt(format_args!("{sep}{n:02X}"));
+    s.write_fmt(format_args!("{sep}{n:02X}")).expect(WRITE_ERR);
   }
   Litr::Str(s)
 }
 
 /// 嘎嘎复制和计算, 将整个数组折叠成一个值
 fn fold(v:&mut Vec<u8>, args:Vec<CalcRef>, scope:Scope)-> Litr {
-  let mut init = args.get(0).expect("buf.fold需要一个初始值").clone().own();
+  let init = args.get(0).expect("buf.fold需要一个初始值").clone().own();
   let f = match &**args.get(1).expect("buf.fold需要第二个参数的函数来处理数据") {
     Litr::Func(f)=> f,
     _=> panic!("buf.fold第二个参数只能是函数")
@@ -653,14 +654,14 @@ pub fn statics()-> Vec<(Interned, NativeFn)> {
 }
 
 /// 创建n长度的Buf
-fn s_new(args:Vec<CalcRef>, cx:Scope)-> Litr {
+fn s_new(args:Vec<CalcRef>, _cx:Scope)-> Litr {
   // 如果传入了大小就按大小分配
   if let Some(n) = args.get(0) {
     let n = to_usize(n);
 
     unsafe {
       let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
-      let alc = unsafe {std::alloc::alloc_zeroed(layout)};
+      let alc = std::alloc::alloc_zeroed(layout);
       Litr::Buf(Vec::from_raw_parts(alc, n, n))
     }
   }else {
@@ -676,7 +677,7 @@ fn s_new_uninit(args:Vec<CalcRef>, _cx:Scope)-> Litr {
 
     unsafe {
       let layout = std::alloc::Layout::from_size_align_unchecked(n, 1);
-      let alc = unsafe {std::alloc::alloc(layout)};
+      let alc = std::alloc::alloc(layout);
       Litr::Buf(Vec::from_raw_parts(alc, n, n))
     }
   }else {
