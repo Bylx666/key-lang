@@ -1,14 +1,14 @@
 //! 提供Ks数据和C交互的转换
 
-use std::mem::transmute;
 use crate::primitive::litr::*;
+use std::mem::transmute;
 
-static mut EXEC:Option<LocalFunc> = None;
+static mut EXEC: Option<LocalFunc> = None;
 
 /// 将ks函数传进extern函数的参数的实现
 macro_rules! translate_local_impl {{
   $local:ident $(
-    $n:literal $fname:ident($($arg:ident$(,)?)*) 
+    $n:literal $fname:ident($($arg:ident$(,)?)*)
   )*
 }=>{{
 
@@ -40,20 +40,20 @@ macro_rules! translate_local_impl {{
 }}}
 
 /// 将ks参数转为可与C交互的参数
-pub fn translate(arg:&Litr)-> Result<usize,String> {
+pub fn translate(arg: &Litr) -> Result<usize, String> {
   use Litr::*;
   match arg {
-    Uninit=> Ok(0),
-    Bool(n)=> Ok(*n as usize),
-    Int(n)=> unsafe{Ok(transmute(*n))},
-    Uint(n)=> Ok(*n),
-    Float(n)=> unsafe{Ok(transmute(*n))},
-    Str(p)=> Ok((*p).as_ptr() as usize),
-    Buf(v)=> Ok(v.as_ptr() as usize),
-    Func(exec)=> {
+    Uninit => Ok(0),
+    Bool(n) => Ok(*n as usize),
+    Int(n) => unsafe { Ok(transmute(*n)) },
+    Uint(n) => Ok(*n),
+    Float(n) => unsafe { Ok(transmute(*n)) },
+    Str(p) => Ok((*p).as_ptr() as usize),
+    Buf(v) => Ok(v.as_ptr() as usize),
+    Func(exec) => {
       use Function::*;
       match exec {
-        Local(f)=> translate_local_impl! { f 
+        Local(f) => translate_local_impl! { f
           0  agent0 ()
           1  agent1 (a)
           2  agent2 (a,b)
@@ -63,20 +63,19 @@ pub fn translate(arg:&Litr)-> Result<usize,String> {
           6  agent6 (a,b,c,d,e,f)
           7  agent7 (a,b,c,d,e,f,g)
         },
-        Extern(f)=> Ok(f.ptr as _),
-        _=> Err("将原生函数传进C函数是未定义行为".to_string())
+        Extern(f) => Ok(f.ptr as _),
+        _ => Err("将原生函数传进C函数是未定义行为".to_string()),
       }
     }
-    List(_)=> Err("列表类型不可作为C指针传递".to_string()),
-    Obj(_)=> Err("Ks对象不可作为C指针传递".to_string()),
-    Inst(_)=> Err("Ks实例不可作为C指针传递".to_string()),
-    Ninst(_)=> Err("Ks原生实例不可作为C指针传递".to_string())
+    List(_) => Err("列表类型不可作为C指针传递".to_string()),
+    Obj(_) => Err("Ks对象不可作为C指针传递".to_string()),
+    Inst(_) => Err("Ks实例不可作为C指针传递".to_string()),
+    Ninst(_) => Err("Ks原生实例不可作为C指针传递".to_string()),
   }
 }
 
-
 use super::ExternFunc;
-pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
+pub fn call_extern(f: &ExternFunc, args: Vec<Litr>) -> Litr {
   let len = f.argdecl.len();
   let mut args = args.into_iter();
 
@@ -104,17 +103,17 @@ pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
       }
     }
   }
-  impl_arg!{
+  impl_arg! {
     0
     1  a
     2  a b
     3  a b c
     4  a b c d
-    5  a b c d e 
-    6  a b c d e f 
+    5  a b c d e
+    6  a b c d e f
     7  a b c d e f g
     8  a b c d e f g h
-    9  a b c d e f g h i 
+    9  a b c d e f g h i
     10 a b c d e f g h i j
     11 a b c d e f g h i j k
     12 a b c d e f g h i j k l
@@ -123,4 +122,3 @@ pub fn call_extern(f:&ExternFunc, args:Vec<Litr>)-> Litr {
     15 a b c d e f g h i j k l m n o
   }
 }
-
