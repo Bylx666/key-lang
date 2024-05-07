@@ -1,32 +1,32 @@
 //! 注释都在mod.rs里，这没有注解
 
-use crate::primitive::{litr::*, get_prop};
 use super::*;
+use crate::primitive::{get_prop, litr::*};
 
 /// calc_ref既可能得到引用，也可能得到计算过的值
 #[derive(Debug, Clone)]
 pub enum CalcRef {
   Ref(*mut Litr),
-  Own(Litr)
+  Own(Litr),
 }
 impl CalcRef {
   /// 消耗CalcRef返回内部值
-  pub fn own(self)-> Litr {
+  pub fn own(self) -> Litr {
     match self {
-      CalcRef::Ref(p)=> unsafe {(*p).clone()}
-      CalcRef::Own(v)=> v
+      CalcRef::Ref(p) => unsafe { (*p).clone() },
+      CalcRef::Own(v) => v,
     }
   }
   /// 拿走Calcref可变引用的所有权
-  pub fn take(&mut self)-> Litr {
+  pub fn take(&mut self) -> Litr {
     let mut v = Self::uninit();
     std::mem::swap(&mut v, self);
     match v {
-      CalcRef::Ref(p)=> unsafe {(*p).clone()},
-      CalcRef::Own(v)=> v
+      CalcRef::Ref(p) => unsafe { (*p).clone() },
+      CalcRef::Own(v) => v,
     }
   }
-  pub const fn uninit()-> Self {
+  pub const fn uninit() -> Self {
     CalcRef::Own(Litr::Uninit)
   }
 }
@@ -34,118 +34,119 @@ impl std::ops::Deref for CalcRef {
   type Target = Litr;
   fn deref(&self) -> &Self::Target {
     match self {
-      CalcRef::Ref(p)=> unsafe{&**p},
-      CalcRef::Own(b)=> b
+      CalcRef::Ref(p) => unsafe { &**p },
+      CalcRef::Own(b) => b,
     }
   }
 }
 impl std::ops::DerefMut for CalcRef {
   fn deref_mut(&mut self) -> &mut Self::Target {
     match self {
-      CalcRef::Ref(p)=> unsafe{&mut **p},
-      CalcRef::Own(b)=> b
+      CalcRef::Ref(p) => unsafe { &mut **p },
+      CalcRef::Own(b) => b,
     }
   }
 }
 
 impl Scope {
   /// 解析一个表达式，对应Expr
-  /// 
+  ///
   /// 该函数必定发生复制
-  pub fn calc(self,e:&Expr)-> Litr {
+  pub fn calc(self, e: &Expr) -> Litr {
     match e {
-      Expr::Call { args, targ }=> {
+      Expr::Call { args, targ } => {
         let targ_ = self.calc_ref(targ);
         let targ = match &*targ_ {
-          Litr::Func(f)=> f,
-          _=> {
+          Litr::Func(f) => f,
+          _ => {
             let s = match &**targ {
-              Expr::Literal(n)=> n.str(),
-              Expr::Variant(n)=> n.str(),
-              _=> "".to_string()
+              Expr::Literal(n) => n.str(),
+              Expr::Variant(n) => n.str(),
+              _ => "".to_string(),
             };
             panic!("{s}不是一个函数")
           }
         };
-        let args = args.iter().map(|v|self.calc_ref(v)).collect();
+        let args = args.iter().map(|v| self.calc_ref(v)).collect();
         self.call(args, targ)
-      },
+      }
 
-      Expr::CallMethod { args, targ, name }=> {
+      Expr::CallMethod { args, targ, name } => {
         let targ = self.calc_ref(targ);
-        let args = args.iter().map(|v|self.calc_ref(v)).collect();
+        let args = args.iter().map(|v| self.calc_ref(v)).collect();
         self.call_method(args, targ, *name)
-      },
+      }
 
-      Expr::Index { left, i }=> {
+      Expr::Index { left, i } => {
         let left = self.calc_ref(left);
         let i = self.calc_ref(i);
         get_index(left, i).own()
-      },
+      }
 
-      Expr::Literal(litr)=> litr.clone(),
+      Expr::Literal(litr) => litr.clone(),
 
-      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||panic!("无法找到变量 '{}'", id.str())).own(),
+      Expr::Variant(id) => self
+        .var(*id)
+        .unwrap_or_else(|| panic!("无法找到变量 '{}'", id.str()))
+        .own(),
 
       // 函数表达式
-      Expr::LocalDecl(local)=> {
+      Expr::LocalDecl(local) => {
         let exec = LocalFunc::new(*local, self);
         Litr::Func(Function::Local(exec))
       }
 
       // 二元运算符
-      Expr::Binary { left, right, op }=> binary(self, left, right, op),
+      Expr::Binary { left, right, op } => binary(self, left, right, op),
 
       // 一元运算符
-      Expr::Unary{right, op}=> {
+      Expr::Unary { right, op } => {
         use Litr::*;
         let right = self.calc_ref(right);
         match op {
-          b'-'=> {
-            match &*right {
-              Int(n)=> Int(-n),
-              Float(n)=> Float(-n),
-              _=> panic!("负号只能用在有符号数")
-            }
-          }
-          b'!'=> {
-            match &*right {
-              Bool(b)=> Bool(!b),
-              Int(n)=> Int(!n),
-              Uint(n)=> Uint(!n),
-              Uninit => Bool(true),
-              _=> panic!("!运算符只能用于整数和Bool")
-            }
-          }_=>Uninit
+          b'-' => match &*right {
+            Int(n) => Int(-n),
+            Float(n) => Float(-n),
+            _ => panic!("负号只能用在有符号数"),
+          },
+          b'!' => match &*right {
+            Bool(b) => Bool(!b),
+            Int(n) => Int(!n),
+            Uint(n) => Uint(!n),
+            Uninit => Bool(true),
+            _ => panic!("!运算符只能用于整数和Bool"),
+          },
+          _ => Uninit,
         }
       }
 
       // [列表]
-      Expr::List(v)=> Litr::List(
-        v.iter().map(|e| self.calc(e)).collect()
-      ),
+      Expr::List(v) => Litr::List(v.iter().map(|e| self.calc(e)).collect()),
 
       // {a:"对",b:"象"}
-      Expr::Obj(decl)=> {
+      Expr::Obj(decl) => {
         let mut map = HashMap::new();
-        decl.iter().for_each(|(name, v)|{
+        decl.iter().for_each(|(name, v)| {
           map.insert(*name, self.calc(v));
         });
         Litr::Obj(map)
       }
 
       // Class::{}创建实例
-      Expr::NewInst{cls, val}=> {
+      Expr::NewInst { cls, val } => {
         let (cls, clsname) = match &**cls {
-          Expr::ModClsAcc(modname, clsname)=> 
-            (self.find_class_in(*modname, *clsname), clsname),
-          Expr::Variant(clsname)=> 
-            (self.find_class(*clsname).unwrap_or_else(||panic!("未定义类 '{}'", clsname.str())), clsname),
-          _=> panic!("构建实例::左侧必须是类型名")
+          Expr::ModClsAcc(modname, clsname) => (self.find_class_in(*modname, *clsname), clsname),
+          Expr::Variant(clsname) => (
+            self
+              .find_class(*clsname)
+              .unwrap_or_else(|| panic!("未定义类 '{}'", clsname.str())),
+            clsname,
+          ),
+          _ => panic!("构建实例::左侧必须是类型名"),
         };
         if let Class::Local(cls) = cls {
-          let cls = unsafe {&*cls};
-          let mut v = vec![Litr::Uninit;cls.props.len()];
+          let cls = unsafe { &*cls };
+          let mut v = vec![Litr::Uninit; cls.props.len()];
           // 记录哪个属性没有写入
           let mut writen = vec![false; cls.props.len()];
           // 确认你在模块内还是模块外
@@ -153,13 +154,22 @@ impl Scope {
           'a: for (id, e) in val.iter() {
             for (n, prop) in cls.props.iter().enumerate() {
               if prop.name == *id {
-                assert!(prop.public || can_access_private,
-                  "成员属性'{}'是私有的",id);
+                assert!(
+                  prop.public || can_access_private,
+                  "成员属性'{}'是私有的",
+                  id
+                );
                 // 类型检查
                 let right = self.calc(e);
-                assert!(prop.typ.is(&right, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", id, prop.typ, right);
+                assert!(
+                  prop.typ.is(&right, cls.cx),
+                  "'{}'属性要求{:?}类型, 但传入了{:?}",
+                  id,
+                  prop.typ,
+                  right
+                );
                 // 写入值
-                unsafe{
+                unsafe {
                   *v.get_unchecked_mut(n) = right;
                   *writen.get_unchecked_mut(n) = true;
                 }
@@ -170,80 +180,103 @@ impl Scope {
           }
           // 如果你在模块外, 就不能缺省属性
           if !can_access_private {
-            let strs = writen.iter().enumerate().filter_map(|(n,b)|if !*b {
-              Some(unsafe{cls.props.get_unchecked(n).name}.str())
-            }else {None}).collect::<Vec<String>>();
+            let strs = writen
+              .iter()
+              .enumerate()
+              .filter_map(|(n, b)| {
+                if !*b {
+                  Some(unsafe { cls.props.get_unchecked(n).name }.str())
+                } else {
+                  None
+                }
+              })
+              .collect::<Vec<String>>();
             // 如果有一个属性没写就报错
             if strs.len() > 0 {
-              panic!("正在创建'{}'类型, 但以下属性{}的值未定义", cls.name, strs.join(", "));
+              panic!(
+                "正在创建'{}'类型, 但以下属性{}的值未定义",
+                cls.name,
+                strs.join(", ")
+              );
             }
           }
-          Litr::Inst(Instance {cls, v:v.into()})
-        }else {
+          Litr::Inst(Instance { cls, v: v.into() })
+        } else {
           panic!("无法直接构建原生类型'{}'", clsname.str())
         }
       }
 
       // -.运算符
-      Expr::ModFuncAcc(modname, funcname)=> {
-        let imports = unsafe {&*self.imports};
+      Expr::ModFuncAcc(modname, funcname) => {
+        let imports = unsafe { &*self.imports };
         for (name, module) in imports.iter() {
           if name == modname {
             match module {
-              Module::Local(m)=> {
-                for (id, func) in unsafe{(**m).funcs.iter()} {
+              Module::Local(m) => {
+                for (id, func) in unsafe { (**m).funcs.iter() } {
                   if *id == *funcname {
                     return Litr::Func(Function::Local(func.clone()));
                   }
                 }
-                panic!("模块'{}'中没有'{}'函数",modname,funcname)
+                panic!("模块'{}'中没有'{}'函数", modname, funcname)
               }
-              Module::Native(m)=> {
-                for (id, func) in unsafe{(**m).funcs.iter()} {
+              Module::Native(m) => {
+                for (id, func) in unsafe { (**m).funcs.iter() } {
                   if *id == *funcname {
                     return Litr::Func(Function::Native(func.clone()));
                   }
                 }
-                panic!("原生模块'{}'中没有'{}'函数",modname,funcname)
+                panic!("原生模块'{}'中没有'{}'函数", modname, funcname)
               }
             }
           }
         }
-        panic!("没有导入'{}'模块",modname)
+        panic!("没有导入'{}'模块", modname)
       }
 
-      Expr::ModClsAcc(a,b)=> panic!("类型声明不是一个值。考虑使用`class T = {}-:{}`语句代替",a, b),
+      Expr::ModClsAcc(a, b) => panic!(
+        "类型声明不是一个值。考虑使用`class T = {}-:{}`语句代替",
+        a, b
+      ),
 
       // 访问类方法
-      Expr::ImplAccess(e, find)=> {
+      Expr::ImplAccess(e, find) => {
         /// 在class中找一个函数
-        fn find_fn(cls:Class, find:Interned, this_module:*mut LocalMod)->Litr {
+        fn find_fn(cls: Class, find: Interned, this_module: *mut LocalMod) -> Litr {
           match cls {
-            Class::Local(m)=> {
-              let cls = unsafe {&*m};
+            Class::Local(m) => {
+              let cls = unsafe { &*m };
               let can_access_private = cls.cx.exports == this_module;
               for func in cls.statics.iter() {
                 if func.f.name == find {
-                  assert!(func.public || can_access_private, 
-                    "'{}'类型的静态方法'{}'是私有的。", cls.name, find);
-                  
+                  assert!(
+                    func.public || can_access_private,
+                    "'{}'类型的静态方法'{}'是私有的。",
+                    cls.name,
+                    find
+                  );
+
                   let f = LocalFunc::new(&func.f, cls.cx);
                   return Litr::Func(Function::Local(f));
                 }
               }
               for func in cls.methods.iter() {
                 if func.f.name == find {
-                  assert!(!func.public || can_access_private,
-                    "'{}'类型中的方法'{}'是私有的。", cls.name, find);
-                  
+                  assert!(
+                    !func.public || can_access_private,
+                    "'{}'类型中的方法'{}'是私有的。",
+                    cls.name,
+                    find
+                  );
+
                   let f = LocalFunc::new(&func.f, cls.cx);
                   return Litr::Func(Function::Local(f));
                 }
               }
               panic!("'{}'类型没有'{}'方法", cls.name, find.str());
             }
-            Class::Native(m)=> {
-              let cls = unsafe {&*m};
+            Class::Native(m) => {
+              let cls = unsafe { &*m };
               for (name, func) in &cls.statics {
                 if *name == find {
                   return Litr::Func(Function::Native(*func));
@@ -256,7 +289,9 @@ impl Scope {
         }
 
         if let Expr::Variant(id) = &**e {
-          let cls = self.find_class(*id).unwrap_or_else(||panic!("未定义类 '{}'", id.str()));
+          let cls = self
+            .find_class(*id)
+            .unwrap_or_else(|| panic!("未定义类 '{}'", id.str()));
           return find_fn(cls, *find, self.exports);
         }
 
@@ -268,33 +303,33 @@ impl Scope {
         panic!("::左侧必须是个类型")
       }
 
-      Expr::Property(e, find)=> {
+      Expr::Property(e, find) => {
         let from = self.calc_ref(&**e);
         get_prop(self, from, *find).own()
       }
 
-      Expr::Kself => unsafe{(*self.kself).clone()},
+      Expr::Kself => unsafe { (*self.kself).clone() },
 
       // is操作符
-      Expr::Is { left, right }=> {
+      Expr::Is { left, right } => {
         let v = self.calc_ref(left);
         let right = match &**right {
-          Expr::Variant(id)=> id,
-          Expr::ModClsAcc(modname, clsname)=> {
+          Expr::Variant(id) => id,
+          Expr::ModClsAcc(modname, clsname) => {
             let cls = self.find_class_in(*modname, *clsname);
             return Litr::Bool(match &*v {
-              Litr::Inst(inst)=> match cls {
-                Class::Local(cls)=> cls == inst.cls,
-                _=> false
-              }
-              Litr::Ninst(inst)=> match cls {
-                Class::Native(cls)=> cls == inst.cls,
-                _=> false
-              }
-              _=> false
-            })
+              Litr::Inst(inst) => match cls {
+                Class::Local(cls) => cls == inst.cls,
+                _ => false,
+              },
+              Litr::Ninst(inst) => match cls {
+                Class::Native(cls) => cls == inst.cls,
+                _ => false,
+              },
+              _ => false,
+            });
           }
-          _=> panic!("is操作符右边必须是类型名")
+          _ => panic!("is操作符右边必须是类型名"),
         };
         macro_rules! matcher {($($d:ident)*)=> {
           match &*v {
@@ -312,57 +347,59 @@ impl Scope {
             )*
           }
         }}
-        matcher!{
+        matcher! {
           Bool Buf Float Func Int List Obj Str Uint
         }
       }
-      
+
       Expr::Empty => panic!("得到空表达式"),
     }
   }
 
   /// 能引用优先引用的calc，能避免很多复制同时保证引用正确
-  pub fn calc_ref(mut self, e:&Expr)-> CalcRef {
+  pub fn calc_ref(mut self, e: &Expr) -> CalcRef {
     match e {
-      Expr::Kself=> {
-        let v = unsafe{&mut *self.kself};
+      Expr::Kself => {
+        let v = unsafe { &mut *self.kself };
         CalcRef::Ref(v)
       }
-      Expr::Property(left, name)=> {
+      Expr::Property(left, name) => {
         let left = self.calc_ref(left);
         get_prop(self, left, *name)
       }
-      Expr::Index { left, i }=> {
+      Expr::Index { left, i } => {
         let left = self.calc_ref(left);
         let i = self.calc_ref(i);
         get_index(left, i)
-      },
-      Expr::Variant(id)=> self.var(*id).unwrap_or_else(||panic!("无法找到变量 '{}'", id.str())),
-      _=> {
+      }
+      Expr::Variant(id) => self
+        .var(*id)
+        .unwrap_or_else(|| panic!("无法找到变量 '{}'", id.str())),
+      _ => {
         let v = self.calc(e);
         CalcRef::Own(v)
       }
     }
   }
-  
+
   /// 遇到locked的变量会报错版的 calc_ref
-  pub fn calc_ref_unlocked(mut self, e:&Expr)-> CalcRef {
+  pub fn calc_ref_unlocked(mut self, e: &Expr) -> CalcRef {
     match e {
-      Expr::Kself=> {
-        let v = unsafe{&mut *self.kself};
+      Expr::Kself => {
+        let v = unsafe { &mut *self.kself };
         CalcRef::Ref(v)
       }
-      Expr::Property(left, name)=> {
+      Expr::Property(left, name) => {
         let left = self.calc_ref_unlocked(left);
         get_prop(self, left, *name)
       }
-      Expr::Index { left, i }=> {
+      Expr::Index { left, i } => {
         let left = self.calc_ref_unlocked(left);
         let i = self.calc_ref(i);
         get_index(left, i)
-      },
-      Expr::Variant(id)=> {
-        fn var_locked(inner: &mut ScopeInner, id:Interned)-> CalcRef {
+      }
+      Expr::Variant(id) => {
+        fn var_locked(inner: &mut ScopeInner, id: Interned) -> CalcRef {
           for Variant { name, v, locked } in inner.vars.iter_mut().rev() {
             if id == *name {
               if *locked {
@@ -379,240 +416,269 @@ impl Scope {
         }
         let inner = &mut (*self);
         var_locked(inner, *id)
-      },
-      _=> self.calc_ref(e)
+      }
+      _ => self.calc_ref(e),
     }
   }
-
 }
-
-
 
 /// 在一个作用域设置一个表达式为v
 fn expr_set(this: Scope, left: &Expr, right: Litr) {
   match left {
     // 捕获native instance的setter
-    Expr::Property(e, find)=> {
+    Expr::Property(e, find) => {
       // 如果左值不是引用就没必要继续运行
       let left = match this.calc_ref_unlocked(e) {
-        CalcRef::Ref(p)=> unsafe {&mut*p},
-        _=> return
+        CalcRef::Ref(p) => unsafe { &mut *p },
+        _ => return,
       };
       match left {
-        Litr::Ninst(inst)=> {
-          let cls = unsafe {&*inst.cls};
+        Litr::Ninst(inst) => {
+          let cls = unsafe { &*inst.cls };
           (cls.setter)(inst, *find, right)
         }
-        Litr::Obj(o)=> {
+        Litr::Obj(o) => {
           o.insert(*find, right);
         }
-        Litr::Inst(inst)=> {
-          let cls = unsafe {&*inst.cls};
-          let can_access_private = unsafe {(*inst.cls).cx.exports} == this.exports;
+        Litr::Inst(inst) => {
+          let cls = unsafe { &*inst.cls };
+          let can_access_private = unsafe { (*inst.cls).cx.exports } == this.exports;
           let props = &cls.props;
           for (n, prop) in props.iter().enumerate() {
             if prop.name == *find {
-              assert!(prop.public || can_access_private,
-                "'{}'类型的成员属性'{}'是私有的", cls.name, find);
-              
+              assert!(
+                prop.public || can_access_private,
+                "'{}'类型的成员属性'{}'是私有的",
+                cls.name,
+                find
+              );
+
               // 类型检查
-              assert!(prop.typ.is(&right, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", find, prop.typ, right);
+              assert!(
+                prop.typ.is(&right, cls.cx),
+                "'{}'属性要求{:?}类型, 但传入了{:?}",
+                find,
+                prop.typ,
+                right
+              );
               // 写入值
-              unsafe{*inst.v.get_unchecked_mut(n) = right;}
+              unsafe {
+                *inst.v.get_unchecked_mut(n) = right;
+              }
               return;
             }
           }
           panic!("'{}'类型上没有'{}'属性", cls.name, find)
         }
-        _=> ()
+        _ => (),
       }
     }
 
     // 捕获index_set
-    Expr::Index{left,i}=> {
+    Expr::Index { left, i } => {
       let left = this.calc_ref_unlocked(left);
       // 如果左值不是引用就没必要继续运行
       let left = match left {
-        CalcRef::Ref(p)=> unsafe {&mut*p},
-        _=> return
+        CalcRef::Ref(p) => unsafe { &mut *p },
+        _ => return,
       };
       let i = this.calc_ref(i);
       match left {
-        Litr::Inst(inst)=> {
+        Litr::Inst(inst) => {
           let fname = intern(b"@index_set");
-          let cls = unsafe{&*inst.cls};
-          let opt = cls.methods.iter().find(|v|v.f.name == fname);
+          let cls = unsafe { &*inst.cls };
+          let opt = cls.methods.iter().find(|v| v.f.name == fname);
           match opt {
-            Some(f)=> {
+            Some(f) => {
               let f = LocalFunc::new(&f.f, cls.cx);
               Scope::call_local_with_self(&f, vec![i.own(), right], left);
             }
-            None=> panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name)
+            None => panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name),
           }
-        },
-        Litr::Ninst(inst)=> {
-          (unsafe{&*inst.cls}.index_set)(inst, i, right);
-        },
-        Litr::Obj(map)=> {
+        }
+        Litr::Ninst(inst) => {
+          (unsafe { &*inst.cls }.index_set)(inst, i, right);
+        }
+        Litr::Obj(map) => {
           if let Litr::Str(s) = &*i {
             map.insert(intern(s.as_bytes()), right);
-          }else {panic!("Obj索引必须是Str")}
+          } else {
+            panic!("Obj索引必须是Str")
+          }
         }
         // buf不能*get_index因为u8转uint会丢失引用
-        Litr::Buf(v)=> {
+        Litr::Buf(v) => {
           let i = match &*i {
-            Litr::Uint(n)=> *n,
-            Litr::Int(n)=> (*n) as usize,
-            _=> panic!("Buf的index必须是整数")
+            Litr::Uint(n) => *n,
+            Litr::Int(n) => (*n) as usize,
+            _ => panic!("Buf的index必须是整数"),
           };
-          if i<v.len() {
+          if i < v.len() {
             v[i] = match right {
-              Litr::Int(n)=> n as u8,
-              Litr::Uint(n)=> n as u8,
-              _=> 0
+              Litr::Int(n) => n as u8,
+              Litr::Uint(n) => n as u8,
+              _ => 0,
             };
-          }else {
+          } else {
             panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
           }
         }
-        _=> *get_index(CalcRef::Ref(left), i) = right
+        _ => *get_index(CalcRef::Ref(left), i) = right,
       }
     }
 
-    _=>{
+    _ => {
       let mut left = this.calc_ref_unlocked(left);
       *left = right;
     }
   }
 }
 
-
 /// 先读后写版的expr_set
-fn expr_set_diff(this: Scope, left: &Expr, f:impl Fn(&Litr)-> Litr) {
+fn expr_set_diff(this: Scope, left: &Expr, f: impl Fn(&Litr) -> Litr) {
   match left {
     // 捕获native instance的setter
-    Expr::Property(e, find)=> {
+    Expr::Property(e, find) => {
       // 修改并赋值的定义中是包含读一次数值的行为的
       // 即使不是引用也要写入
       let left = &mut *this.calc_ref_unlocked(e);
       match left {
-        Litr::Ninst(inst)=> {
-          let cls = unsafe {&*inst.cls};
+        Litr::Ninst(inst) => {
+          let cls = unsafe { &*inst.cls };
           let ori = (cls.getter)(inst, *find);
           let write = f(&ori);
           (cls.setter)(inst, *find, write)
         }
-        Litr::Obj(o)=> {
-          let ori = o.get(find).unwrap_or_else(||panic!("该对象没有{}属性",find));
+        Litr::Obj(o) => {
+          let ori = o
+            .get(find)
+            .unwrap_or_else(|| panic!("该对象没有{}属性", find));
           let write = f(ori);
           o.insert(*find, write);
         }
-        Litr::Inst(inst)=> {
-          let cls = unsafe {&*inst.cls};
-          let can_access_private = unsafe {(*inst.cls).cx.exports} == this.exports;
+        Litr::Inst(inst) => {
+          let cls = unsafe { &*inst.cls };
+          let can_access_private = unsafe { (*inst.cls).cx.exports } == this.exports;
           let props = &cls.props;
           for (n, prop) in props.iter().enumerate() {
             if prop.name == *find {
-              assert!(prop.public || can_access_private,
-                "'{}'类型的成员属性'{}'是私有的", cls.name, find);
-              
-              let ori = unsafe{inst.v.get_unchecked(n)};
+              assert!(
+                prop.public || can_access_private,
+                "'{}'类型的成员属性'{}'是私有的",
+                cls.name,
+                find
+              );
+
+              let ori = unsafe { inst.v.get_unchecked(n) };
               let write = f(ori);
               // 类型检查
-              assert!(prop.typ.is(&write, cls.cx), "'{}'属性要求{:?}类型, 但传入了{:?}", find, prop.typ, write);
+              assert!(
+                prop.typ.is(&write, cls.cx),
+                "'{}'属性要求{:?}类型, 但传入了{:?}",
+                find,
+                prop.typ,
+                write
+              );
               // 写入值
-              unsafe{*inst.v.get_unchecked_mut(n) = write;}
+              unsafe {
+                *inst.v.get_unchecked_mut(n) = write;
+              }
               return;
             }
           }
           panic!("'{}'类型上没有'{}'属性", cls.name, find)
         }
-        _=> ()
+        _ => (),
       }
     }
 
     // 捕获index_set
-    Expr::Index{left,i}=> {
+    Expr::Index { left, i } => {
       let mut left = this.calc_ref_unlocked(left);
-      let left = &mut*left;
+      let left = &mut *left;
       let i = this.calc_ref(i);
       match left {
-        Litr::Inst(inst)=> {
-          let cls = unsafe{&*inst.cls};
+        Litr::Inst(inst) => {
+          let cls = unsafe { &*inst.cls };
           let write = {
             let fname = intern(b"@index_get");
-            let opt = cls.methods.iter().find(|v|v.f.name == fname);
+            let opt = cls.methods.iter().find(|v| v.f.name == fname);
             match opt {
-              Some(func_raw)=> {
-                let ori = Scope::call_local_with_self(&LocalFunc::new(&func_raw.f, cls.cx), vec![i.clone().own()], left);
+              Some(func_raw) => {
+                let ori = Scope::call_local_with_self(
+                  &LocalFunc::new(&func_raw.f, cls.cx),
+                  vec![i.clone().own()],
+                  left,
+                );
                 f(&ori)
               }
-              None=> panic!("读取'{}'实例索引需要定义`.@index_get`方法", cls.name)
+              None => panic!("读取'{}'实例索引需要定义`.@index_get`方法", cls.name),
             }
           };
           let fname = intern(b"@index_set");
-          let opt = cls.methods.iter().find(|v|v.f.name == fname);
+          let opt = cls.methods.iter().find(|v| v.f.name == fname);
           match opt {
-            Some(f)=> {
+            Some(f) => {
               let f = LocalFunc::new(&f.f, cls.cx);
               Scope::call_local_with_self(&f, vec![i.own(), write], left);
             }
-            None=> panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name)
+            None => panic!("为'{}'实例索引赋值需要定义`.@index_set`方法", cls.name),
           }
-        },
-        Litr::Ninst(inst)=> {
-          let ori = (unsafe{&*inst.cls}.index_get)(inst, i.clone());
+        }
+        Litr::Ninst(inst) => {
+          let ori = (unsafe { &*inst.cls }.index_get)(inst, i.clone());
           let write = f(&ori);
-          (unsafe{&*inst.cls}.index_set)(inst, i, write);
-        },
-        Litr::Obj(map)=> {
+          (unsafe { &*inst.cls }.index_set)(inst, i, write);
+        }
+        Litr::Obj(map) => {
           if let Litr::Str(s) = &*i {
             let s = intern(s.as_bytes());
-            let ori = map.get(&s).unwrap_or_else(||panic!("该对象没有{}属性",s));
+            let ori = map.get(&s).unwrap_or_else(|| panic!("该对象没有{}属性", s));
             let write = f(ori);
             map.insert(s, write);
-          }else {panic!("Obj索引必须是Str")}
+          } else {
+            panic!("Obj索引必须是Str")
+          }
         }
         // buf不能*get_index因为u8转uint会丢失引用
-        Litr::Buf(v)=> {
+        Litr::Buf(v) => {
           let i = match &*i {
-            Litr::Uint(n)=> *n,
-            Litr::Int(n)=> (*n) as usize,
-            _=> panic!("Buf的index必须是整数")
+            Litr::Uint(n) => *n,
+            Litr::Int(n) => (*n) as usize,
+            _ => panic!("Buf的index必须是整数"),
           };
-          if i>=v.len() {
+          if i >= v.len() {
             panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
           }
           let ori = Litr::Uint(v[i] as usize);
           v[i] = match f(&ori) {
-            Litr::Int(n)=> n as u8,
-            Litr::Uint(n)=> n as u8,
-            _=> 0
+            Litr::Int(n) => n as u8,
+            Litr::Uint(n) => n as u8,
+            _ => 0,
           };
         }
-        _=> {
+        _ => {
           let mut ori = get_index(CalcRef::Ref(left), i);
           *ori = f(&*ori);
         }
       }
     }
 
-    _=>{
+    _ => {
       let mut left = this.calc_ref_unlocked(left);
       *left = f(&*left);
     }
   }
 }
 
-
 /// 获取一个ks值索引处的值
-fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
+fn get_index(mut left: CalcRef, i: CalcRef) -> CalcRef {
   // 先判断Obj
   if let Litr::Obj(map) = &mut *left {
     if let Litr::Str(s) = &*i {
       return match map.get_mut(&intern(s.as_bytes())) {
-        Some(v)=> CalcRef::Ref(v),
-        None=> CalcRef::uninit()
+        Some(v) => CalcRef::Ref(v),
+        None => CalcRef::uninit(),
       };
     }
     panic!("Obj的索引必须使用Str")
@@ -622,8 +688,8 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
   let left = &mut *left;
   if let Litr::Inst(inst) = left {
     let fname = intern(b"@index_get");
-    let cls = unsafe{&*inst.cls};
-    let opt = cls.methods.iter().find(|v|v.f.name == fname);
+    let cls = unsafe { &*inst.cls };
+    let opt = cls.methods.iter().find(|v| v.f.name == fname);
     if let Some(f) = opt {
       let f = LocalFunc::new(&f.f, cls.cx);
       return CalcRef::Own(Scope::call_local_with_self(&f, vec![i.own()], left));
@@ -633,44 +699,43 @@ fn get_index(mut left:CalcRef, i:CalcRef)-> CalcRef {
 
   // 判断原生类实例
   if let Litr::Ninst(inst) = &mut *left {
-    return CalcRef::Own(unsafe{((*inst.cls).index_get)(inst, i)});
+    return CalcRef::Own(unsafe { ((*inst.cls).index_get)(inst, i) });
   }
 
   // 把只会用到数字索引的放一起判断
   let i = match &*i {
-    Litr::Uint(n)=> *n,
-    Litr::Int(n)=> (*n) as usize,
-    _=> panic!("index必须是整数")
+    Litr::Uint(n) => *n,
+    Litr::Int(n) => (*n) as usize,
+    _ => panic!("index必须是整数"),
   };
   match &mut *left {
-    Litr::Buf(v)=> {
-      if i>=v.len() {
+    Litr::Buf(v) => {
+      if i >= v.len() {
         panic!("数组越界: 下标{}不可大于等于数组长度{}", i, v.len())
       }
       CalcRef::Own(Litr::Uint(v[i] as usize))
     }
-    Litr::List(v)=> {
-      if i>=v.len() {
+    Litr::List(v) => {
+      if i >= v.len() {
         panic!("列表越界: 下标{}不可大于等于列表长度{}", i, v.len())
       }
       CalcRef::Ref(&mut v[i])
     }
-    Litr::Str(n)=> {
-      match n.chars().nth(i) {
-        Some(c)=> CalcRef::Own(Litr::Str(c.to_string())),
-        None=> CalcRef::uninit()
+    Litr::Str(n) => match n.chars().nth(i) {
+      Some(c) => CalcRef::Own(Litr::Str(c.to_string())),
+      None => CalcRef::uninit(),
+    },
+    Litr::Uint(n) => {
+      if i >= 64 {
+        return CalcRef::Own(Litr::Bool(false));
       }
+      CalcRef::Own(Litr::Bool((*n & (1 << i)) != 0))
     }
-    Litr::Uint(n)=> {
-      if i>=64 {return CalcRef::Own(Litr::Bool(false));}
-      CalcRef::Own(Litr::Bool((*n & (1<<i)) != 0))
-    }
-    _=> CalcRef::uninit()
+    _ => CalcRef::uninit(),
   }
 }
 
-
-fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr {
+fn binary(this: Scope, left: &Box<Expr>, right: &Box<Expr>, op: &Box<[u8]>) -> Litr {
   use Litr::*;
 
   // 先捕获赋值行为
@@ -713,36 +778,36 @@ fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr 
   }
 
   match &**op {
-    b"="=> {
+    b"=" => {
       let v = this.calc(&right);
       expr_set(this, &left, v);
       return Uninit;
     }
     b"+=" => {
-      expr_set_diff(this, left, |left|{
+      expr_set_diff(this, left, |left| {
         let right = this.calc_ref(right);
         if let Str(l) = left {
           // litr.str()方法会把内部String复制一遍
           // 直接使用原String的引用可以避免这次复制
           if let Str(r) = &*right {
-            return Str([l.as_str(),r.as_str()].concat());
+            return Str([l.as_str(), r.as_str()].concat());
           }
           let r = right.str();
-          return Str([l.as_str(),r.as_str()].concat());
+          return Str([l.as_str(), r.as_str()].concat());
         }
 
         match (left, &*right) {
-          (Uint(l), Uint(r))=> Uint(l + r),
-          (Uint(l), Int(r))=> Uint(*l + *r as usize),
-          (Int(l), Int(r))=> Int(l + r),
-          (Float(l), Float(r))=> Float(*l + r),
-          (Float(l), Int(r))=> Float(*l + *r as f64),
-          (Int(l), Float(r))=> Float((*l as f64) + r),
-          (l,r)=> panic!("无法进行+=, {:?}和{:?}无法运算",l,r)
+          (Uint(l), Uint(r)) => Uint(l + r),
+          (Uint(l), Int(r)) => Uint(*l + *r as usize),
+          (Int(l), Int(r)) => Int(l + r),
+          (Float(l), Float(r)) => Float(*l + r),
+          (Float(l), Int(r)) => Float(*l + *r as f64),
+          (Int(l), Float(r)) => Float((*l as f64) + r),
+          (l, r) => panic!("无法进行+=, {:?}和{:?}无法运算", l, r),
         }
       });
-      return Uninit
-    },
+      return Uninit;
+    }
     b"-=" => impl_num_assign!(-),
     b"*=" => impl_num_assign!(*),
     b"/=" => impl_num_assign!(/),
@@ -753,7 +818,7 @@ fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr 
     b"|=" => impl_unsigned_assign!(|),
     b"<<=" => impl_unsigned_assign!(<<),
     b">>=" => impl_unsigned_assign!(>>),
-    _=> ()
+    _ => (),
   }
 
   // 不是赋值行为再去正常计算
@@ -808,13 +873,13 @@ fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr 
         // litr.str()方法会把内部String复制一遍
         // 直接使用原String的引用可以避免这次复制
         if let Str(r) = &*right {
-          return Str([l.as_str(),r.as_str()].concat());
+          return Str([l.as_str(), r.as_str()].concat());
         }
         let r = right.str();
-        return Str([l.as_str(),r.as_str()].concat());
+        return Str([l.as_str(), r.as_str()].concat());
       }
       impl_num!(+)
-    },
+    }
     b"-" => impl_num!(-),
     b"*" => impl_num!(*),
     // 本应该判断非0的,还是让rust帮我报错吧
@@ -841,6 +906,6 @@ fn binary(this: Scope, left:&Box<Expr>, right:&Box<Expr>, op:&Box<[u8]>)-> Litr 
     b"&&" => impl_logic!(&&),
     b"||" => impl_logic!(||),
 
-    _=> panic!("未知运算符'{}'", String::from_utf8_lossy(&op))
+    _ => panic!("未知运算符'{}'", String::from_utf8_lossy(&op)),
   }
 }

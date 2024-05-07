@@ -1,19 +1,18 @@
 use super::*;
 use crate::{
   intern::Interned,
-  primitive::litr::{Litr, LocalFuncRaw}
+  primitive::litr::{Litr, LocalFuncRaw},
 };
-
 
 impl Scanner<'_> {
   /// 解析一段字面量
-  /// 
+  ///
   /// 同时解析一元运算符
-  pub fn literal(&self)-> Expr {
+  pub fn literal(&self) -> Expr {
     let first = self.cur();
     let len = self.src.len();
     let mut i = self.i();
-  
+
     match first {
       // 解析字符字面量
       b'"' => {
@@ -22,47 +21,51 @@ impl Scanner<'_> {
           i += 1;
           assert!(i < len, "未闭合的\"。");
         }
-        let s = String::from_utf8_lossy(&self.src[(self.i()+1)..i]);
-        self.set_i(i+1);
+        let s = String::from_utf8_lossy(&self.src[(self.i() + 1)..i]);
+        self.set_i(i + 1);
         Expr::Literal(Litr::Str(s.to_string()))
       }
-  
+
       // 解析带转义的字符串
       b'`' => {
         i += 1;
         let mut start = i; // 开始结算的起点
         let mut vec = Vec::<u8>::new();
         // 给`{}`变量捕获用的
-        let mut expr_catch:Option<Expr> = None;
+        let mut expr_catch: Option<Expr> = None;
 
         loop {
           let c = self.src[i];
           match c {
             b'`' => break,
-            b'\\'=> {
+            b'\\' => {
               // 结算一次
               vec.extend_from_slice(&self.src[start..i]);
-  
+
               i += 1;
               // 先测试转义换行符
-              macro_rules! escape_enter {() => {{
-                i += 1;
-                while self.src[i] == b' ' {
+              macro_rules! escape_enter {
+                () => {{
                   i += 1;
-                }
-              }}}
+                  while self.src[i] == b' ' {
+                    i += 1;
+                  }
+                }};
+              }
               let escaper = self.src[i];
               match escaper {
-                b'\r'=> {
+                b'\r' => {
                   i += 1;
                   escape_enter!();
                 }
-                b'\n'=> {
-                  unsafe { LINE += 1; }
+                b'\n' => {
+                  unsafe {
+                    LINE += 1;
+                  }
                   escape_enter!()
-                },
+                }
                 // 非换行符就按转义表转义
-                _=> {
+                _ => {
                   let escaped = charts::escape(escaper);
                   if escaped == 255 {
                     panic!("错误的转义符:{}", String::from_utf8_lossy(&[escaper]));
@@ -76,36 +79,40 @@ impl Scanner<'_> {
               start = i;
             }
             // 变量捕获,其实就是自动变成字符串加号
-            b'{'=> {
+            b'{' => {
               // 结算一次
               vec.extend_from_slice(&self.src[start..i]);
-              
-              self.set_i(i+1);
+
+              self.set_i(i + 1);
               let this_e = Box::new(self.expr());
               let part_vec = std::mem::take(&mut vec);
               assert!(self.cur() == b'}', "转义字符串内的大括号未闭合");
               self.next();
-              
+
               if let Some(last_e) = &mut expr_catch {
                 let mut left = Box::new(Expr::Empty);
                 std::mem::swap(&mut *left, last_e);
                 // 先把原来的left和后来扫上的字符串相加
                 let left = Box::new(Expr::Binary {
                   left,
-                  right: Box::new(Expr::Literal(
-                    Litr::Str(String::from_utf8(part_vec).expect("字符串含非法字符")))),
-                  op: b"+".to_vec().into()
+                  right: Box::new(Expr::Literal(Litr::Str(
+                    String::from_utf8(part_vec).expect("字符串含非法字符"),
+                  ))),
+                  op: b"+".to_vec().into(),
                 });
                 // 再把上述expr和这次的捕获表达式相加
                 expr_catch = Some(Expr::Binary {
-                  left, 
-                  right: this_e, op: b"+".to_vec().into()
+                  left,
+                  right: this_e,
+                  op: b"+".to_vec().into(),
                 });
-              }else {
+              } else {
                 expr_catch = Some(Expr::Binary {
-                  left: Box::new(Expr::Literal(
-                    Litr::Str(String::from_utf8(part_vec).expect("字符串含非法字符")))), 
-                  right: this_e, op: b"+".to_vec().into()
+                  left: Box::new(Expr::Literal(Litr::Str(
+                    String::from_utf8(part_vec).expect("字符串含非法字符"),
+                  ))),
+                  right: this_e,
+                  op: b"+".to_vec().into(),
                 });
               }
 
@@ -113,9 +120,11 @@ impl Scanner<'_> {
               i = self.i();
               start = i;
             }
-            _=> i += 1
+            _ => i += 1,
           }
-          if i >= len {panic!("未闭合的'`'。")}
+          if i >= len {
+            panic!("未闭合的'`'。")
+          }
         }
 
         // 结算 结算起点到末尾
@@ -125,16 +134,19 @@ impl Scanner<'_> {
         if let Some(e) = &mut expr_catch {
           let mut left = Box::new(Expr::Empty);
           std::mem::swap(&mut *left, e);
-          Expr::Binary { left, right: Box::new(Expr::Literal(
-            Litr::Str(String::from_utf8(std::mem::take(&mut vec)).expect("字符串含非法字符")))), 
-            op: b"+".to_vec().into()
+          Expr::Binary {
+            left,
+            right: Box::new(Expr::Literal(Litr::Str(
+              String::from_utf8(std::mem::take(&mut vec)).expect("字符串含非法字符"),
+            ))),
+            op: b"+".to_vec().into(),
           }
-        }else {
+        } else {
           let str = String::from_utf8(vec).expect("字符串含非法字符");
           Expr::Literal(Litr::Str(str))
         }
       }
-  
+
       // 解析'buf'
       b'\'' => {
         i += 1;
@@ -152,97 +164,103 @@ impl Scanner<'_> {
               while i < len {
                 match self.src[i] {
                   // 跳过空格和换行
-                  b'\n'=> {
-                    unsafe{LINE += 1}
+                  b'\n' => {
+                    unsafe { LINE += 1 }
                     i += 1;
                   }
-                  b'\r'|b' '=> i += 1,
+                  b'\r' | b' ' => i += 1,
                   // 跳过注释
-                  b'/'=> while i < len {
-                    if self.src[i]==b'\n' {
-                      unsafe {LINE += 1}
-                      i += 1;
-                      break;
-                    }else {i += 1;}
+                  b'/' => {
+                    while i < len {
+                      if self.src[i] == b'\n' {
+                        unsafe { LINE += 1 }
+                        i += 1;
+                        break;
+                      } else {
+                        i += 1;
+                      }
+                    }
                   }
                   // 遇到}就结束
-                  b'}'=> break,
+                  b'}' => break,
                   // 解析数字
-                  c=> match charts::char_to_u8(c) {
-                    Some(first)=> {
+                  c => match charts::char_to_u8(c) {
+                    Some(first) => {
                       i += 1;
                       if i < len {
                         if let Some(second) = charts::char_to_u8(self.src[i]) {
-                          vec.push((first<<4)|second);
+                          vec.push((first << 4) | second);
                           i += 1;
                           continue;
                         }
                       }
                       vec.push(first)
                     }
-                    None=> panic!("buf字面量不允许'{}'字符",String::from_utf8_lossy(&[c]))
-                  }
+                    None => panic!("buf字面量不允许'{}'字符", String::from_utf8_lossy(&[c])),
+                  },
                 }
               }
-              if i >= len {panic!("buf字面量中未闭合的'}}'")}
+              if i >= len {
+                panic!("buf字面量中未闭合的'}}'")
+              }
 
               // 把}跳过去
               start = i + 1;
-            },
-            _=> i += 1
+            }
+            _ => i += 1,
           }
         }
-        if i >= len {panic!("buf字面量的'''未闭合")}
+        if i >= len {
+          panic!("buf字面量的'''未闭合")
+        }
 
         // 结算 结算起点到末尾
         vec.extend_from_slice(&self.src[start..i]);
 
-        self.set_i(i+1);
+        self.set_i(i + 1);
         Expr::Literal(Litr::Buf(vec))
       }
-  
+
       // 解析数字字面量
       b'0'..=b'9' => {
         // 判断0x和0b
-        if self.cur()==b'0' {
-          match self.src[self.i()+1] {
+        if self.cur() == b'0' {
+          match self.src[self.i() + 1] {
             // 解析16进制
-            b'x'=> {
-              self.set_i(self.i()+2);
+            b'x' => {
+              self.set_i(self.i() + 2);
               let mut i = self.i();
               loop {
                 match self.src[i] {
-                  b'0'..=b'9'|b'a'..=b'f'|b'A'..=b'F'=> i += 1,
-                  _=> break
+                  b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' => i += 1,
+                  _ => break,
                 }
               }
 
-              let n = usize::from_str_radix(
-                &String::from_utf8_lossy(&self.src[self.i()..i]), 16
-              ).unwrap_or_else(|e|panic!("{e}"));
+              let n = usize::from_str_radix(&String::from_utf8_lossy(&self.src[self.i()..i]), 16)
+                .unwrap_or_else(|e| panic!("{e}"));
               self.set_i(i);
 
               return Expr::Literal(Litr::Uint(n));
             }
             // 解析2进制
-            b'b'=> {
-              self.set_i(self.i()+2);
+            b'b' => {
+              self.set_i(self.i() + 2);
               let mut i = self.i();
               loop {
                 match self.src[i] {
-                  b'0'|b'1'=> i += 1,
-                  _=> break
+                  b'0' | b'1' => i += 1,
+                  _ => break,
                 }
               }
 
-              let n = usize::from_str_radix(
-                &String::from_utf8_lossy(&self.src[self.i()..i]), 2
-              ).unwrap_or_else(|e|panic!("{e}"));
+              let n = usize::from_str_radix(&String::from_utf8_lossy(&self.src[self.i()..i]), 2)
+                .unwrap_or_else(|e| panic!("{e}"));
               self.set_i(i);
 
               return Expr::Literal(Litr::Uint(n));
             }
-            _=>()
+            _ => (),
           }
         }
 
@@ -250,7 +268,7 @@ impl Scanner<'_> {
         let mut is_float = false;
         while i < len {
           match self.src[i] {
-            b'.'=> {
+            b'.' => {
               if is_float ||
               // 判断下一个字符是否数字
                 (i+1 < len && !(0x30..=0x39).contains(&self.src[i+1]))
@@ -258,54 +276,54 @@ impl Scanner<'_> {
                 break;
               }
               is_float = true
-            },
+            }
             b'0'..=b'9' => (),
-            _=> break
+            _ => break,
           }
           i += 1;
         }
-  
+
         let str = String::from_utf8_lossy(&self.src[self.i()..i]);
         use Litr::*;
         macro_rules! parsed {
           ($t:ty, $i:ident) => {{
-            let n: Result<$t,_> = str.parse();
+            let n: Result<$t, _> = str.parse();
             match n {
-              Err(e)=> {
-                panic!("无法解析数字:{}\n  {}",str,e)
+              Err(e) => {
+                panic!("无法解析数字:{}\n  {}", str, e)
               }
-              Ok(n)=> {
+              Ok(n) => {
                 self.next();
                 return Expr::Literal($i(n));
               }
             }
-          }}
+          }};
         }
-  
+
         self.set_i(i);
         if i < len {
           let cur = self.src[i];
           match cur {
             b'f' => parsed!(f64, Float),
             b'u' => parsed!(usize, Uint),
-            b'i'=> parsed!(isize, Int),
-            _=> ()
+            b'i' => parsed!(isize, Int),
+            _ => (),
           }
         }
-        self.set_i(i-1);
-  
+        self.set_i(i - 1);
+
         if is_float {
           parsed!(f64, Float)
-        }else {
+        } else {
           parsed!(isize, Int)
         }
-      },
-  
+      }
+
       // 解析List
-      b'['=> {
+      b'[' => {
         self.next();
         self.spaces();
-  
+
         let mut ls = Vec::new();
         loop {
           let e = self.expr();
@@ -325,58 +343,64 @@ impl Scanner<'_> {
         if self.cur() == b',' {
           panic!("列表不允许空元素");
         }
-        
+
         self.next();
         Expr::List(ls)
       }
 
       // 解析对象
-      b'{'=> Expr::Obj(self.obj()),
+      b'{' => Expr::Obj(self.obj()),
 
       // 解析闭包或管道占位符
-      b'|'=> {
+      b'|' => {
         self.next();
 
         // 遇到管道占位符时 直接将管道暂存的表达式返回
-        if self.cur()==b'%' {
+        if self.cur() == b'%' {
           self.next();
           self.next();
           return unsafe {
-            super::expr::ON_PIPE.take().expect("管道占位符只能在管道操作符'|>'后使用")
+            super::expr::ON_PIPE
+              .take()
+              .expect("管道占位符只能在管道操作符'|>'后使用")
           };
         }
-        
+
         // 解析闭包参数
         let args = self.arguments();
-        assert!(self.cur()==b'|', "闭包声明右括号缺失");
+        assert!(self.cur() == b'|', "闭包声明右括号缺失");
         self.next();
 
         // 解析闭包内容
         let stmt = self.stmt();
         let stmts = if let super::Stmt::Block(b) = stmt {
           b
-        }else {
+        } else {
           Statements {
-            v:vec![(unsafe{crate::LINE}, stmt)],
-            vars:0
+            v: vec![(unsafe { crate::LINE }, stmt)],
+            vars: 0,
           }
         };
 
-        Expr::LocalDecl(Box::into_raw(Box::new(LocalFuncRaw { argdecl: args, stmts, name: intern(b"unnamed") })))
+        Expr::LocalDecl(Box::into_raw(Box::new(LocalFuncRaw {
+          argdecl: args,
+          stmts,
+          name: intern(b"unnamed"),
+        })))
       }
-  
+
       // 解析字面量或变量
-      _=> {
+      _ => {
         let id_res = self.ident();
         if let Some(id) = id_res {
           match &*id {
-            b"true"=> Expr::Literal(Litr::Bool(true)),
-            b"false"=> Expr::Literal(Litr::Bool(false)),
-            b"self"=> Expr::Kself,
-            b"uninit"=> Expr::Literal(Litr::Uninit),
-            _=> Expr::Variant(intern(id))
+            b"true" => Expr::Literal(Litr::Bool(true)),
+            b"false" => Expr::Literal(Litr::Bool(false)),
+            b"self" => Expr::Kself,
+            b"uninit" => Expr::Literal(Litr::Uninit),
+            _ => Expr::Variant(intern(id)),
           }
-        }else {
+        } else {
           Expr::Empty
         }
       }
@@ -384,7 +408,7 @@ impl Scanner<'_> {
   }
 
   /// 解析对象表达式
-  fn obj(&self)-> Vec<(Interned,Expr)> {
+  fn obj(&self) -> Vec<(Interned, Expr)> {
     self.next();
     self.spaces();
     let mut decl = Vec::new();
@@ -392,8 +416,10 @@ impl Scanner<'_> {
       let v = if self.cur() == b':' {
         self.next();
         self.expr()
-      }else {Expr::Literal(Litr::Uninit)};
-      decl.push((intern(id),v));
+      } else {
+        Expr::Literal(Litr::Uninit)
+      };
+      decl.push((intern(id), v));
 
       if self.cur() == b',' {
         self.next()
@@ -408,4 +434,3 @@ impl Scanner<'_> {
     decl
   }
 }
-
